@@ -950,7 +950,7 @@ Tài nguyên có thể là:
 
 **Lợi ích:**
 
-- Giảm nguy cơ quên giải phóng tài nguyên.
+- Giảm nguy cơ quên giải phóng tài nguyên, dẫn đến `Memory Leak`.
 - Mã nguồn dễ kiểm soát hơn.
 - Hoạt động tốt khi hàm có nhiều đường `return`.
 
