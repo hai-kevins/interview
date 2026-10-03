@@ -142,27 +142,65 @@ if (ptr == nullptr) {
 <a id="muc-01-04"></a>
 ### 1.4. `namespace`
 
-- `namespace` dùng để nhóm các tên liên quan và tránh trùng tên giữa các phần của chương trình.
+- `namespace` là một phạm vi đặt tên dùng để phân chia mã nguồn thành các nhóm riêng biệt, giúp tránh xung đột tên khi có nhiều hàm, biến hoặc lớp trùng tên. `std` là một namespace lớn nhất trong thư viện chuẩn C++ chứa: cout, cin, vector, string, ...
 
 **Ví dụ:**
 
 ```cpp
-namespace Motor
-{
-    void init()
-    {
-        // Khởi tạo động cơ
+#include <iostream>
+
+// Group all functions and variables related to Sensors
+namespace Sensor {
+    int readValue = 0;
+
+    void init() {
+        std::cout << " Sensors initialized.\n";
+    }
+
+    int readData() {
+        readValue = 42; // Simulate reading data from hardware
+        return readValue;
     }
 }
 
-int main()
-{
+// Group all functions and variables related to Motors
+namespace Motor {
+    int currentSpeed = 0;
+
+    void init() {
+        std::cout << " Motors initialized.\n";
+    }
+
+    void spin(int speed) {
+        currentSpeed = speed;
+        std::cout << " Motor is spinning at speed: " << speed << " RPM.\n";
+    }
+
+    void stop() {
+        currentSpeed = 0;
+        std::cout << " Motor stopped.\n";
+    }
+}
+
+int main() {
+    // Thanks to namespaces, you can call two init() functions with the same name without any error
+    Sensor::init();
     Motor::init();
+
+    // Use separate functionalities
+    int data = Sensor::readData();
+    if (data > 40) {
+        Motor::spin(1000);
+    } else {
+        Motor::stop();
+    }
+
+    return 0;
 }
 ```
 
 - Toán tử `::` được gọi là **toán tử phạm vi**.
-- Có thể dùng `using`, nhưng trong tệp tiêu đề và dự án lớn nên hạn chế `using namespace ...` vì dễ gây xung đột tên.
+- Có thể dùng `using`, nhưng trong tệp tiêu đề và dự án lớn nên hạn chế `using namespace ...` vì dễ gây xung đột tên nếu bạn tự viết một hàm trùng tên với thư viện chuẩn.
 
 [↑ Về mục lục](#muc-luc)
 
