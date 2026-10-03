@@ -2303,12 +2303,6 @@ std::unique_ptr<Motor> motor = std::make_unique<Motor>();
 - Đối tượng được giải phóng khi không còn `shared_ptr` nào sở hữu nó.
 - Thường cần cơ chế đếm số lượng tham chiếu nên có chi phí quản lý lớn hơn `unique_ptr`.
 
-Ở mức Intern Embedded Firmware:
-
-- Biết mục đích của `shared_ptr`.
-- Biết nó có chi phí quản lý.
-- Không cần học sâu về `weak_ptr` hoặc các trường hợp phức tạp nếu JD không yêu cầu.
-
 [↑ Về mục lục](#muc-luc)
 
 ---
