@@ -1,13 +1,10 @@
 # Ghi chú phỏng vấn C++ — Intern Embedded Firmware
 
-> **Mục tiêu:** Ôn phần C++ cần thiết cho phỏng vấn vị trí Intern Embedded Firmware.  
+> **Mục tiêu:** Ôn phần C++ cần thiết cho phỏng vấn.  
 > **Tiền đề:** Đã nắm phần C cơ bản và C cho Embedded. Tài liệu này tập trung vào những phần C++ khác C hoặc thường được hỏi khi dùng C++ trong firmware.  
-> **Phạm vi:** Chỉ học đến mức Intern; không đi sâu vào metaprogramming, concepts, perfect forwarding hoặc các kỹ thuật C++ nâng cao.
 
 <a id="muc-luc"></a>
 ## Mục lục
-
-> Bấm vào tên chủ đề để chuyển nhanh đến phần cần ôn.
 
 1. [Tổng quan C++ trong Embedded](#chuong-01)
    - [1.1. C++ khác C ở điểm nào?](#muc-01-01)
@@ -107,23 +104,7 @@
   - Tạo giao diện chung bằng kế thừa và hàm `virtual`.
   - Viết mã tổng quát bằng template.
   - Tận dụng kiểm tra kiểu mạnh hơn và các tiện ích của thư viện chuẩn.
-
-**Các phần quan trọng cần học sau C:**
-
-- Tham chiếu.
-- `class` và object.
-- Constructor/destructor.
-- `const` trong C++.
-- RAII.
-- Copy/move semantics.
-- Kế thừa và đa hình.
-- Template.
-- STL cơ bản.
-- Smart pointer.
-- Các kiểu ép kiểu của C++.
-- `enum class`, `constexpr`.
-- `extern "C"`.
-
+  
 <a id="muc-01-02"></a>
 ### 1.2. `bool`
 

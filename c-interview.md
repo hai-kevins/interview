@@ -6,8 +6,6 @@
 <a id="muc-luc"></a>
 ## Mục lục
 
-> Bấm vào tên chủ đề để chuyển nhanh đến phần cần ôn.
-
 1. [Tổng quan](#chuong-01)
    - [1.1. Hệ thống nhúng là gì?](#muc-01-01)
 2. [Quá trình biên dịch](#chuong-02)
