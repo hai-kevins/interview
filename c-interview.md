@@ -1085,7 +1085,192 @@ int max = (a > b) ? a : b;
 <a id="muc-11-02"></a>
 ### 11.2. Thao tác bit
 
-set/clear/toggle/check bit, masking
+- Thao tác bit là việc đọc hoặc thay đổi trực tiếp từng bit trong một giá trị.
+- Trong Embedded, thao tác bit thường được dùng để:
+  - Điều khiển các bit trong thanh ghi ngoại vi.
+  - Bật/tắt một chức năng phần cứng.
+  - Kiểm tra các cờ trạng thái.
+  - Đóng gói nhiều trạng thái vào một biến.
+
+#### Các toán tử thao tác bit
+
+| Toán tử | Ý nghĩa |
+|---|---|
+| `&` | AND bit |
+| `|` | OR bit |
+| `^` | XOR bit |
+| `~` | Đảo bit |
+| `<<` | Dịch trái |
+| `>>` | Dịch phải |
+
+**Ví dụ:**
+
+```c
+uint8_t a = 0b00001100;
+uint8_t b = 0b00001010;
+
+a & b;   // 00001000
+a | b;   // 00001110
+a ^ b;   // 00000110
+~a;      // Đảo tất cả các bit
+```
+
+#### Mặt nạ bit
+
+- Mặt nạ bit là một giá trị dùng để xác định bit nào cần thao tác.
+
+**Ví dụ muốn thao tác với bit số 3:**
+
+```c
+uint8_t mask = (1U << 3);
+```
+
+**Kết quả:**
+
+```text
+00001000
+```
+
+#### Bật một bit
+
+- Dùng toán tử OR `|`.
+
+```c
+value |= (1U << bit);
+```
+
+**Ví dụ bật bit số 3:**
+
+```c
+value |= (1U << 3);
+```
+
+Nếu ban đầu:
+
+```text
+value = 00000000
+```
+
+Sau khi bật bit số 3:
+
+```text
+value = 00001000
+```
+
+#### Xóa một bit
+
+- Dùng AND `&` kết hợp với đảo bit `~`.
+
+```c
+value &= ~(1U << bit);
+```
+
+**Ví dụ xóa bit số 3:**
+
+```c
+value &= ~(1U << 3);
+```
+
+#### Đảo trạng thái một bit
+
+- Dùng XOR `^`.
+
+```c
+value ^= (1U << bit);
+```
+
+- Nếu bit đang bằng `0` thì thành `1`.
+- Nếu bit đang bằng `1` thì thành `0`.
+
+#### Kiểm tra một bit
+
+- Dùng AND `&`.
+
+```c
+if (value & (1U << bit))
+{
+    // Bit đang bằng 1
+}
+```
+
+**Ví dụ kiểm tra bit số 3:**
+
+```c
+if (value & (1U << 3))
+{
+    // Bit số 3 đang được bật
+}
+```
+
+#### Dịch bit
+
+**Dịch trái:**
+
+```c
+value << n;
+```
+
+- Các bit được dịch sang trái `n` vị trí.
+
+**Ví dụ:**
+
+```text
+00000001 << 3
+00001000
+```
+
+**Dịch phải:**
+
+```c
+value >> n;
+```
+
+- Các bit được dịch sang phải `n` vị trí.
+
+**Ví dụ:**
+
+```text
+00001000 >> 3
+00000001
+```
+
+#### Ví dụ trong Embedded
+
+Giả sử bit số 5 của một thanh ghi dùng để bật một ngoại vi:
+
+```c
+#define ENABLE_BIT (1U << 5)
+
+REGISTER |= ENABLE_BIT;      // Bật
+REGISTER &= ~ENABLE_BIT;     // Tắt
+REGISTER ^= ENABLE_BIT;      // Đảo trạng thái
+
+if (REGISTER & ENABLE_BIT)
+{
+    // Ngoại vi đang được bật
+}
+```
+
+#### Phân biệt toán tử bit và toán tử logic
+
+- `&`, `|`, `^`, `~`: thao tác trên từng bit.
+- `&&`, `||`, `!`: dùng cho biểu thức logic.
+
+**Ví dụ:**
+
+```c
+a & b     // AND bit
+a && b    // AND logic
+```
+
+#### Công thức cần nhớ
+
+```c
+value |=  (1U << n);   // Bật bit
+value &= ~(1U << n);   // Xóa bit
+value ^=  (1U << n);   // Đảo bit
+value &   (1U << n);   // Kiểm tra bit
+```
 
 [↑ Về mục lục](#muc-luc)
 
