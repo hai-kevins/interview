@@ -1,8 +1,7 @@
-# Ghi chú phỏng vấn C — Thực tập sinh Firmware nhúng
+# Ghi chú phỏng vấn C
 
-> **Mục tiêu:** Ôn phần C cho phỏng vấn vị trí Thực tập sinh Firmware nhúng.  
+> **Mục tiêu:** Ôn phần C cho phỏng vấn.  
 > **Cách dùng:** Học theo từng chương, dùng mục lục để nhảy nhanh đến chủ đề cần ôn.  
-> **Phạm vi:** Giữ nguyên các chủ đề của bản trước, chỉ chuẩn hóa trình bày và sửa bố cục.
 
 <a id="muc-luc"></a>
 ## Mục lục
