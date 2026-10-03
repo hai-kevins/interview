@@ -783,7 +783,7 @@ void run()
 ```
 
 - Hàm dựng chạy khi `motor` được tạo.
-- Hàm hủy chạy khi `motor` hết vòng đời khi rời khỏi phạm vi.
+- Hàm hủy chạy khi `motor` hết vòng đời (tức là hàm `run()` kết thúc) khi rời khỏi phạm vi.
 - Các đối tượng cục bộ trong cùng phạm vi thường bị hủy theo thứ tự ngược với thứ tự được tạo.
 
 **Ví dụ:**
