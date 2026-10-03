@@ -553,75 +553,6 @@ private:
 };
 ```
 
-
-#### Ví dụ kinh điển về đóng gói
-
-- **Đóng gói** là việc gom dữ liệu và các hàm thao tác với dữ liệu đó vào cùng một lớp.
-- Dữ liệu bên trong thường được đặt `private` để mã bên ngoài không thể sửa trực tiếp.
-- Việc đọc hoặc thay đổi dữ liệu được thực hiện thông qua các hàm `public` do lớp cung cấp.
-- Mục đích là bảo vệ trạng thái của đối tượng và kiểm soát cách dữ liệu được thay đổi.
-
-**Ví dụ:**
-
-```cpp
-#include <iostream>
-
-class BankAccount
-{
-private:
-    int balance = 0;  // Dữ liệu được đóng gói và bảo vệ
-
-public:
-    void deposit(int amount)
-    {
-        if (amount > 0) {
-            balance += amount;
-        }
-    }
-
-    bool withdraw(int amount)
-    {
-        if (amount > 0 && amount <= balance) {
-            balance -= amount;
-            return true;
-        }
-
-        return false;
-    }
-
-    int getBalance() const
-    {
-        return balance;
-    }
-};
-
-int main()
-{
-    BankAccount account;
-
-    account.deposit(1000);
-    account.withdraw(300);
-
-    std::cout << account.getBalance() << "\n";
-
-    // account.balance = 100000;
-    // Lỗi: balance là private nên mã bên ngoài không được sửa trực tiếp.
-
-    return 0;
-}
-```
-
-**Giải thích:**
-
-- `balance` được đặt `private`, nên bên ngoài lớp không thể gán tùy ý.
-- Muốn tăng số dư phải đi qua `deposit()`.
-- Muốn giảm số dư phải đi qua `withdraw()`, nên lớp có thể kiểm tra điều kiện trước khi thay đổi.
-- `getBalance()` chỉ đọc dữ liệu nên được khai báo `const`.
-
-**Ý cần nhớ:**
-
-> Đóng gói không chỉ là “giấu biến bằng `private`”, mà là **kiểm soát cách trạng thái của đối tượng được truy cập và thay đổi**.
-
 <a id="muc-04-04"></a>
 ### 4.4. Hàm thành viên
 
@@ -1277,7 +1208,7 @@ Buffer &operator=(Buffer &&other)
 <a id="muc-10-01"></a>
 ### 10.1. Kế thừa
 
-- Kế thừa cho phép lớp dẫn xuất (lớp con) sử dụng hoặc mở rộng hành vi của lớp cơ sở (lớp cha).
+- Kế thừa cho phép lớp dẫn xuất (lớp con) sử dụng hoặc mở rộng phương thức của lớp cơ sở (lớp cha).
 
 **Ví dụ:**
 
@@ -1300,64 +1231,6 @@ public:
     }
 };
 ```
-
-
-#### Ví dụ kinh điển về kế thừa
-
-- **Kế thừa** cho phép lớp con sử dụng lại các thành phần của lớp cha và bổ sung hành vi riêng.
-- Quan hệ thường được hiểu theo kiểu **“là một”**.
-
-Ví dụ:
-
-```text
-Car là một Vehicle
-Motorcycle là một Vehicle
-```
-
-**Ví dụ C++:**
-
-```cpp
-#include <iostream>
-
-class Vehicle
-{
-public:
-    void start()
-    {
-        std::cout << "Phuong tien khoi dong\n";
-    }
-};
-
-class Car : public Vehicle
-{
-public:
-    void openTrunk()
-    {
-        std::cout << "Mo cop xe\n";
-    }
-};
-
-int main()
-{
-    Car car;
-
-    car.start();      // Kế thừa từ Vehicle
-    car.openTrunk();  // Hàm riêng của Car
-
-    return 0;
-}
-```
-
-**Giải thích:**
-
-- `Car : public Vehicle` nghĩa là `Car` kế thừa công khai từ `Vehicle`.
-- `Car` nhận được hàm `start()` từ lớp cha.
-- `Car` có thể bổ sung thêm hành vi riêng như `openTrunk()`.
-- Nhờ kế thừa, phần chức năng chung không cần viết lại trong từng lớp con.
-
-**Ý cần nhớ:**
-
-> Kế thừa chủ yếu dùng để **tái sử dụng và mở rộng hành vi của lớp cơ sở** khi giữa hai lớp có quan hệ “là một”.
 
 <a id="muc-10-02"></a>
 ### 10.2. Hàm `virtual`
@@ -1401,94 +1274,6 @@ int value = sensor.read();
 ```text
 value = 25
 ```
-
-
-#### Ví dụ kinh điển về đa hình
-
-- **Đa hình** cho phép cùng một lời gọi hàm nhưng hành vi thực tế khác nhau tùy đối tượng.
-- Trong C++, đa hình lúc chạy thường được thực hiện bằng:
-  - Kế thừa.
-  - Hàm `virtual`.
-  - Con trỏ hoặc tham chiếu tới lớp cơ sở.
-
-**Ví dụ:**
-
-```cpp
-#include <iostream>
-
-class Animal
-{
-public:
-    virtual void sound() const
-    {
-        std::cout << "Am thanh cua dong vat\n";
-    }
-
-    virtual ~Animal() = default;
-};
-
-class Dog : public Animal
-{
-public:
-    void sound() const override
-    {
-        std::cout << "Cho sua\n";
-    }
-};
-
-class Cat : public Animal
-{
-public:
-    void sound() const override
-    {
-        std::cout << "Meo keu\n";
-    }
-};
-
-void makeSound(const Animal &animal)
-{
-    animal.sound();
-}
-
-int main()
-{
-    Dog dog;
-    Cat cat;
-
-    makeSound(dog);
-    makeSound(cat);
-
-    return 0;
-}
-```
-
-**Kết quả:**
-
-```text
-Cho sua
-Meo keu
-```
-
-**Giải thích:**
-
-- `makeSound()` chỉ nhận một tham chiếu `const Animal&`.
-- Khi truyền `Dog`, lời gọi `animal.sound()` chạy `Dog::sound()`.
-- Khi truyền `Cat`, lời gọi giống hệt nhưng chạy `Cat::sound()`.
-- `virtual` làm cho hàm được lựa chọn theo **kiểu thực tế của đối tượng** tại thời gian chạy.
-
-Có thể hình dung:
-
-```text
-Cùng một lời gọi:
-animal.sound()
-
-Dog -> Dog::sound()
-Cat -> Cat::sound()
-```
-
-**Ý cần nhớ:**
-
-> Đa hình cho phép mã phía trên làm việc thông qua một **giao diện chung**, còn mỗi lớp con tự quyết định cách thực hiện hành vi đó.
 
 <a id="muc-10-03"></a>
 ### 10.3. `override`
@@ -1540,112 +1325,6 @@ public:
         return 25;
     }
 };
-```
-
-
-#### Ví dụ kinh điển về trừu tượng hóa
-
-- **Trừu tượng hóa** là chỉ cung cấp cho bên sử dụng những gì cần thiết và che giấu chi tiết triển khai bên trong.
-- Người dùng chỉ cần biết **đối tượng làm được gì**, không cần biết toàn bộ **nó làm như thế nào**.
-- Trong C++, có thể tạo trừu tượng hóa bằng:
-  - Lớp.
-  - Hàm `public` che giấu dữ liệu và xử lý bên trong.
-  - Lớp trừu tượng và hàm thuần ảo.
-
-**Ví dụ gần với Embedded:**
-
-```cpp
-#include <iostream>
-
-class Sensor
-{
-public:
-    virtual int read() = 0;
-    virtual ~Sensor() = default;
-};
-
-class TemperatureSensor : public Sensor
-{
-public:
-    int read() override
-    {
-        // Chi tiết thật có thể gồm:
-        // 1. Đọc thanh ghi ADC.
-        // 2. Chuyển đổi giá trị ADC.
-        // 3. Tính ra nhiệt độ.
-        return 25;
-    }
-};
-
-void printSensorValue(Sensor &sensor)
-{
-    std::cout << sensor.read() << "\n";
-}
-
-int main()
-{
-    TemperatureSensor sensor;
-
-    printSensorValue(sensor);
-
-    return 0;
-}
-```
-
-**Giải thích:**
-
-Phần chương trình sử dụng cảm biến chỉ cần biết:
-
-```cpp
-sensor.read();
-```
-
-Nó không cần biết bên trong `TemperatureSensor::read()` thực hiện:
-
-```text
-Đọc ADC
-    ↓
-Xử lý dữ liệu
-    ↓
-Chuyển đổi sang nhiệt độ
-    ↓
-Trả về kết quả
-```
-
-Lớp `Sensor` chỉ định nghĩa **giao diện chung**:
-
-```cpp
-virtual int read() = 0;
-```
-
-Còn lớp cụ thể quyết định cách thực hiện:
-
-```cpp
-class TemperatureSensor : public Sensor
-```
-
-**Ý cần nhớ:**
-
-> Trừu tượng hóa là **ẩn chi tiết triển khai và chỉ đưa ra giao diện cần thiết cho người sử dụng**.
-
-#### Phân biệt nhanh đóng gói và trừu tượng hóa
-
-| Khái niệm | Ý chính |
-|---|---|
-| Đóng gói | Bảo vệ và kiểm soát dữ liệu/trạng thái bên trong đối tượng. |
-| Trừu tượng hóa | Ẩn chi tiết triển khai và chỉ cung cấp giao diện cần thiết. |
-
-Ví dụ với một `Motor`:
-
-```text
-Đóng gói:
-speed là private
-→ Không cho bên ngoài sửa trực tiếp.
-
-Trừu tượng hóa:
-motor.start()
-→ Người dùng không cần biết bên trong phải cấu hình GPIO,
-  PWM hoặc thanh ghi phần cứng như thế nào.
 ```
 
 <a id="muc-10-05"></a>
@@ -1744,10 +1423,8 @@ ValueHolder<float> b(2.5f);
 ### 12.1. `std::array`
 
 - `std::array<T, N>` là mảng có kích thước cố định.
-- Kích thước `N` được xác định tại lúc biên dịch và không thay đổi trong thời gian chạy.
 - Dữ liệu được chứa trực tiếp trong đối tượng.
-- Không tự cấp phát động cho các phần tử.
-- Phù hợp với hệ thống nhúng khi số lượng phần tử đã biết trước.
+- Không tự cấp phát động cho phần tử.
 
 **Ví dụ:**
 
@@ -1759,56 +1436,13 @@ std::array<int, 4> values = {1, 2, 3, 4};
 int first = values[0];
 ```
 
-#### Các hàm thường dùng với `std::array`
-
-| Hàm | Ý nghĩa |
-|---|---|
-| `size()` | Trả về số lượng phần tử của mảng. |
-| `empty()` | Kiểm tra mảng có rỗng hay không. Với `std::array<T, N>`, chỉ trả về `true` khi `N == 0`. |
-| `at(index)` | Truy cập phần tử theo chỉ số và có kiểm tra phạm vi. |
-| `operator[]` | Truy cập phần tử theo chỉ số nhưng không kiểm tra phạm vi. |
-| `front()` | Trả về phần tử đầu tiên. |
-| `back()` | Trả về phần tử cuối cùng. |
-| `data()` | Trả về con trỏ tới phần tử đầu tiên của vùng dữ liệu liên tiếp. |
-| `fill(value)` | Gán cùng một giá trị cho toàn bộ phần tử. |
-| `begin()` | Trả về bộ lặp trỏ tới phần tử đầu tiên. |
-| `end()` | Trả về bộ lặp trỏ tới vị trí ngay sau phần tử cuối cùng. |
-
-**Ví dụ:**
-
-```cpp
-#include <array>
-#include <iostream>
-
-int main()
-{
-    std::array<int, 4> values = {10, 20, 30, 40};
-
-    std::cout << values.size() << "\n";   // 4
-    std::cout << values.front() << "\n";  // 10
-    std::cout << values.back() << "\n";   // 40
-
-    values.at(1) = 25;                    // Phần tử thứ 2 thành 25
-    values.fill(5);                       // Toàn bộ phần tử thành 5
-
-    int *ptr = values.data();             // Trỏ tới phần tử đầu tiên
-
-    return 0;
-}
-```
-
-**Lưu ý:**
-
-- `at()` an toàn hơn `operator[]` vì có kiểm tra phạm vi, nhưng có thể phát sinh ngoại lệ `std::out_of_range`.
-- Trong một số dự án nhúng không dùng ngoại lệ, cần hiểu quy ước của dự án trước khi dựa vào `at()`.
+- Rất phù hợp khi kích thước dữ liệu đã biết tại lúc biên dịch.
 
 <a id="muc-12-02"></a>
 ### 12.2. `std::vector`
 
 - `std::vector<T>` là mảng động có thể thay đổi kích thước.
-- Các phần tử được lưu liên tiếp trong bộ nhớ.
-- Thông thường sử dụng vùng nhớ động để lưu dữ liệu.
-- Khi không đủ sức chứa, `vector` có thể cấp phát vùng nhớ mới lớn hơn và chuyển/sao chép dữ liệu sang vùng mới.
+- Thông thường sử dụng vùng nhớ động để lưu phần tử.
 
 **Ví dụ:**
 
@@ -1821,99 +1455,16 @@ values.push_back(10);
 values.push_back(20);
 ```
 
-#### Các hàm thường dùng với `std::vector`
-
-| Hàm | Ý nghĩa |
-|---|---|
-| `size()` | Số phần tử hiện có. |
-| `capacity()` | Số phần tử có thể chứa trước khi cần cấp phát lại. |
-| `empty()` | Kiểm tra `vector` có rỗng hay không. |
-| `push_back(value)` | Thêm một phần tử vào cuối. |
-| `emplace_back(...)` | Tạo trực tiếp phần tử ở cuối từ các đối số truyền vào. |
-| `pop_back()` | Xóa phần tử cuối cùng. |
-| `clear()` | Xóa toàn bộ phần tử nhưng không bắt buộc giải phóng sức chứa đã cấp phát. |
-| `reserve(n)` | Yêu cầu chuẩn bị sức chứa ít nhất `n` phần tử. |
-| `resize(n)` | Thay đổi số lượng phần tử thành `n`. |
-| `at(index)` | Truy cập theo chỉ số có kiểm tra phạm vi. |
-| `operator[]` | Truy cập theo chỉ số không kiểm tra phạm vi. |
-| `front()` | Phần tử đầu tiên. |
-| `back()` | Phần tử cuối cùng. |
-| `data()` | Con trỏ tới vùng dữ liệu liên tiếp. |
-| `insert()` | Chèn phần tử vào vị trí xác định. |
-| `erase()` | Xóa phần tử hoặc một vùng phần tử. |
-| `begin()` / `end()` | Lấy bộ lặp đầu và cuối. |
-
-**Ví dụ:**
-
-```cpp
-#include <vector>
-
-int main()
-{
-    std::vector<int> values;
-
-    values.reserve(5);       // Chuẩn bị sức chứa cho ít nhất 5 phần tử
-
-    values.push_back(10);
-    values.push_back(20);
-    values.push_back(30);
-
-    int first = values.front();
-    int last  = values.back();
-
-    values.pop_back();       // Xóa 30
-
-    values.resize(5);        // Thay đổi số phần tử thành 5
-
-    return 0;
-}
-```
-
-#### Phân biệt `size()` và `capacity()`
-
-```cpp
-std::vector<int> values;
-
-values.reserve(10);
-values.push_back(1);
-values.push_back(2);
-```
-
-Lúc này có thể hiểu:
-
-```text
-size()     = 2
-capacity() >= 10
-```
-
-- `size()` là số phần tử đang tồn tại.
-- `capacity()` là sức chứa hiện tại trước khi cần cấp phát lại.
-
-#### `reserve()` và `resize()` khác nhau
-
-- `reserve(n)`:
-  - Chuẩn bị vùng nhớ để chứa ít nhất `n` phần tử.
-  - Không làm thay đổi số phần tử hiện tại.
-
-- `resize(n)`:
-  - Thay đổi số phần tử thực sự thành `n`.
-  - Có thể tạo thêm hoặc xóa bớt phần tử.
-
 **Trong hệ thống nhúng:**
 
 - Cần cân nhắc khi hệ thống hạn chế RAM hoặc cần thời gian thực thi xác định.
-- Việc `vector` tăng sức chứa có thể dẫn tới cấp phát lại vùng nhớ.
-- Nếu biết trước số phần tử tối đa, `reserve()` có thể giúp giảm số lần cấp phát lại.
-- Nếu kích thước luôn cố định, `std::array` thường dễ kiểm soát tài nguyên hơn.
+- Việc tăng kích thước có thể dẫn tới cấp phát lại vùng nhớ.
 
 <a id="muc-12-03"></a>
 ### 12.3. `std::string`
 
 - `std::string` quản lý chuỗi ký tự tự động.
-- Dễ sử dụng hơn mảng `char`.
-- Có thể liên quan tới cấp phát động tùy độ dài chuỗi và cách triển khai thư viện.
-
-**Ví dụ:**
+- Dễ sử dụng hơn mảng `char`, nhưng có thể liên quan tới cấp phát động tùy nội dung và cách triển khai.
 
 ```cpp
 #include <string>
@@ -1922,71 +1473,14 @@ std::string name = "Sensor";
 name += "_1";
 ```
 
-#### Các hàm thường dùng với `std::string`
-
-| Hàm | Ý nghĩa |
-|---|---|
-| `size()` / `length()` | Trả về số ký tự trong chuỗi. |
-| `empty()` | Kiểm tra chuỗi có rỗng hay không. |
-| `clear()` | Xóa toàn bộ nội dung chuỗi. |
-| `push_back(ch)` | Thêm một ký tự vào cuối. |
-| `pop_back()` | Xóa ký tự cuối. |
-| `append(str)` | Nối thêm chuỗi vào cuối. |
-| `operator+=` | Nối thêm chuỗi hoặc ký tự. |
-| `find(str)` | Tìm vị trí xuất hiện đầu tiên của chuỗi con. |
-| `substr(pos, count)` | Tạo chuỗi con từ vị trí xác định. |
-| `compare(str)` | So sánh nội dung hai chuỗi. |
-| `c_str()` | Trả về con trỏ `const char *` tới chuỗi kết thúc bằng `\0`. |
-| `front()` | Ký tự đầu tiên. |
-| `back()` | Ký tự cuối cùng. |
-
-**Ví dụ:**
-
-```cpp
-#include <string>
-
-int main()
-{
-    std::string name = "Sensor";
-
-    name.append("_1");          // "Sensor_1"
-    name.push_back('A');        // "Sensor_1A"
-
-    std::size_t pos = name.find("Sensor");
-
-    std::string part = name.substr(0, 6);  // "Sensor"
-
-    const char *c_text = name.c_str();
-
-    return 0;
-}
-```
-
-#### `find()` và `std::string::npos`
-
-- Nếu tìm thấy, `find()` trả về vị trí bắt đầu.
-- Nếu không tìm thấy, trả về `std::string::npos`.
-
-```cpp
-std::string text = "UART_OK";
-
-if (text.find("OK") != std::string::npos) {
-    // Tìm thấy chuỗi "OK"
-}
-```
-
 **Trong hệ thống nhúng:**
 
-- Với hệ thống rất hạn chế tài nguyên hoặc yêu cầu tính xác định cao, cần xem xét kỹ trước khi dùng `std::string`.
-- Nếu chỉ cần bộ đệm ký tự cố định, mảng `char` hoặc cấu trúc dữ liệu có kích thước cố định có thể dễ kiểm soát bộ nhớ hơn.
+- Với hệ thống rất hạn chế tài nguyên hoặc yêu cầu tính xác định cao, cần xem xét kỹ trước khi sử dụng.
 
 <a id="muc-12-04"></a>
 ### 12.4. `std::pair`
 
-- `std::pair<T1, T2>` gom hai giá trị vào cùng một đối tượng.
-- Hai giá trị có thể có kiểu dữ liệu khác nhau.
-
-**Ví dụ:**
+- `std::pair` gom hai giá trị vào cùng một đối tượng.
 
 ```cpp
 #include <utility>
@@ -1997,96 +1491,16 @@ int value = result.first;
 bool valid = result.second;
 ```
 
-#### Các thao tác thường dùng
-
-| Thao tác | Ý nghĩa |
-|---|---|
-| `first` | Truy cập giá trị thứ nhất. |
-| `second` | Truy cập giá trị thứ hai. |
-| `std::make_pair(a, b)` | Tạo một `pair` từ hai giá trị. |
-| `swap()` | Hoán đổi nội dung với một `pair` khác. |
-
-**Ví dụ:**
-
-```cpp
-#include <utility>
-
-int main()
-{
-    std::pair<int, bool> result = std::make_pair(25, true);
-
-    int value = result.first;
-    bool valid = result.second;
-
-    std::pair<int, bool> other = {30, false};
-
-    result.swap(other);
-
-    return 0;
-}
-```
-
-**Ứng dụng thường gặp:**
-
-- Trả về hai giá trị từ một hàm.
-
-```cpp
-std::pair<int, bool> readSensor()
-{
-    int value = 25;
-    bool valid = true;
-
-    return {value, valid};
-}
-```
-
 <a id="muc-12-05"></a>
 ### 12.5. Bộ lặp và vòng lặp phạm vi
 
-- Bộ lặp là đối tượng dùng để duyệt các phần tử của kiểu chứa.
-- Có thể hình dung bộ lặp có cách sử dụng gần giống con trỏ tới phần tử.
-
-#### `begin()` và `end()`
-
-```cpp
-std::array<int, 4> values = {1, 2, 3, 4};
-
-for (auto it = values.begin(); it != values.end(); ++it) {
-    int value = *it;
-}
-```
-
-- `begin()` trỏ tới phần tử đầu tiên.
-- `end()` trỏ tới vị trí ngay sau phần tử cuối cùng.
-- Không được giải tham chiếu `end()`.
-
-#### `cbegin()` và `cend()`
-
-- Trả về bộ lặp chỉ đọc.
-
-```cpp
-for (auto it = values.cbegin(); it != values.cend(); ++it) {
-    // *it chỉ được đọc
-}
-```
-
-#### `rbegin()` và `rend()`
-
-- Dùng để duyệt ngược từ cuối về đầu.
-
-```cpp
-for (auto it = values.rbegin(); it != values.rend(); ++it) {
-    // Duyệt ngược
-}
-```
-
-#### Vòng lặp phạm vi
+**Vòng lặp phạm vi:**
 
 ```cpp
 std::array<int, 4> values = {1, 2, 3, 4};
 
 for (int value : values) {
-    // value là bản sao của từng phần tử
+    // sử dụng value
 }
 ```
 
@@ -2111,39 +1525,14 @@ for (const auto &value : values) {
 <a id="muc-12-06"></a>
 ### 12.6. `std::algorithm`
 
-- `<algorithm>` cung cấp nhiều thuật toán có thể làm việc với vùng dữ liệu thông qua bộ lặp.
+Một số thuật toán cơ bản nên biết:
 
-#### Các thuật toán cơ bản nên biết
+- `std::find`
+- `std::sort`
+- `std::min`
+- `std::max`
 
-| Hàm | Ý nghĩa |
-|---|---|
-| `std::find()` | Tìm một giá trị trong vùng dữ liệu. |
-| `std::count()` | Đếm số phần tử có giá trị xác định. |
-| `std::sort()` | Sắp xếp vùng dữ liệu. |
-| `std::min()` | Trả về giá trị nhỏ hơn trong hai giá trị. |
-| `std::max()` | Trả về giá trị lớn hơn trong hai giá trị. |
-| `std::min_element()` | Tìm phần tử nhỏ nhất trong một vùng. |
-| `std::max_element()` | Tìm phần tử lớn nhất trong một vùng. |
-| `std::reverse()` | Đảo ngược thứ tự phần tử. |
-| `std::fill()` | Gán cùng một giá trị cho một vùng phần tử. |
-| `std::copy()` | Sao chép một vùng phần tử sang vùng khác. |
-
-#### `std::find()`
-
-```cpp
-#include <algorithm>
-#include <array>
-
-std::array<int, 4> values = {10, 20, 30, 40};
-
-auto it = std::find(values.begin(), values.end(), 30);
-
-if (it != values.end()) {
-    // Đã tìm thấy 30
-}
-```
-
-#### `std::sort()`
+**Ví dụ:**
 
 ```cpp
 #include <algorithm>
@@ -2153,64 +1542,6 @@ std::array<int, 4> values = {4, 1, 3, 2};
 
 std::sort(values.begin(), values.end());
 ```
-
-Kết quả:
-
-```text
-1 2 3 4
-```
-
-#### `std::min_element()` và `std::max_element()`
-
-```cpp
-#include <algorithm>
-#include <array>
-
-std::array<int, 4> values = {4, 1, 8, 2};
-
-auto min_it = std::min_element(values.begin(), values.end());
-auto max_it = std::max_element(values.begin(), values.end());
-
-int min_value = *min_it;  // 1
-int max_value = *max_it;  // 8
-```
-
-#### `std::fill()`
-
-```cpp
-std::array<int, 4> values;
-
-std::fill(values.begin(), values.end(), 0);
-```
-
-Kết quả:
-
-```text
-0 0 0 0
-```
-
-#### `std::reverse()`
-
-```cpp
-std::array<int, 4> values = {1, 2, 3, 4};
-
-std::reverse(values.begin(), values.end());
-```
-
-Kết quả:
-
-```text
-4 3 2 1
-```
-
-#### Ý cần nhớ ở mức Intern
-
-- `std::array`: ưu tiên khi kích thước cố định.
-- `std::vector`: kích thước thay đổi, thường có cấp phát động.
-- `std::string`: thuận tiện cho chuỗi nhưng cần để ý bộ nhớ động.
-- `std::pair`: gom hai giá trị thành một đối tượng.
-- `begin()` và `end()`: xác định vùng dữ liệu để duyệt hoặc truyền cho thuật toán.
-- Các thuật toán như `find`, `sort`, `min_element`, `max_element`, `fill`, `reverse` nên biết cách dùng cơ bản.
 
 [↑ Về mục lục](#muc-luc)
 
