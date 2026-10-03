@@ -15,6 +15,7 @@
    - [2.2. Biên dịch](#muc-02-02)
    - [2.3. Hợp dịch](#muc-02-03)
    - [2.4. Liên kết](#muc-02-04)
+   - [2.5. Thư viện tĩnh và thư viện động](#muc-02-05)
 3. [Kiến thức C cơ bản](#chuong-03)
    - [3.1. Ký tự đặc biệt trong C](#muc-03-01)
    - [3.2. Chú thích trong C](#muc-03-02)
@@ -294,6 +295,98 @@ int add(int a, int b);
 ```
 
 Nhưng phần mã của **add()** nằm trong **add.c**. Đến bước liên kết, trình liên kết sẽ nối lời gọi **add()** trong **main.c** với phần định nghĩa **add()** trong **add.c**. Nếu không tìm thấy phần định nghĩa của **add()**, quá trình liên kết sẽ bị lỗi.
+
+<a id="muc-02-05"></a>
+### 2.5. Thư viện tĩnh và thư viện động
+
+#### Thư viện tĩnh — Static Library
+
+- Thư viện tĩnh là tập hợp nhiều tệp đối tượng `.o` được đóng gói lại thành một thư viện.
+- Với GCC, thư viện tĩnh thường có đuôi `.a`.
+
+**Ví dụ:**
+
+```text
+add.o
+sub.o
+mul.o
+   ↓
+libmath.a
+```
+
+- Khi liên kết chương trình, trình liên kết lấy các phần cần thiết từ thư viện tĩnh và đưa chúng vào chương trình cuối cùng.
+
+```text
+main.o + libmath.a
+        ↓
+      Linker
+        ↓
+    firmware.elf
+```
+
+**Ưu điểm:**
+
+- Chương trình sau khi liên kết không cần thư viện bên ngoài để chạy.
+- Phù hợp với hệ thống nhúng Bare-metal.
+- Việc triển khai đơn giản.
+
+**Nhược điểm:**
+
+- Mã của thư viện được đưa vào chương trình nên có thể làm tăng kích thước tệp thực thi.
+- Nếu thư viện thay đổi thì chương trình thường phải liên kết lại.
+
+**Ví dụ tạo Static Library bằng GCC:**
+
+```bash
+arm-none-eabi-ar rcs libdriver.a gpio.o uart.o
+```
+
+Sau đó có thể liên kết thư viện này với các tệp `.o` khác để tạo firmware.
+
+#### Thư viện động — Dynamic Library / Shared Library
+
+- Thư viện động không được sao chép toàn bộ vào chương trình tại thời điểm liên kết.
+- Chương trình lưu thông tin để sử dụng thư viện đó khi được nạp hoặc trong lúc chạy.
+- Trên Linux thường có đuôi `.so`.
+- Trên Windows thường có đuôi `.dll`.
+
+**Ví dụ:**
+
+```text
+application
+    |
+    └── sử dụng libmath.so khi chương trình chạy
+```
+
+**Ưu điểm:**
+
+- Giảm kích thước của từng chương trình.
+- Nhiều chương trình có thể dùng chung một thư viện.
+- Có thể cập nhật thư viện mà không cần nhúng toàn bộ mã thư viện vào từng chương trình.
+
+**Nhược điểm:**
+
+- Chương trình phụ thuộc vào thư viện bên ngoài.
+- Nếu thiếu thư viện hoặc sai phiên bản, chương trình có thể không chạy được.
+- Cơ chế nạp và quản lý phức tạp hơn thư viện tĩnh.
+
+#### So sánh
+
+| Tiêu chí | Static Library | Dynamic Library |
+|---|---|---|
+| Thời điểm chính | Liên kết vào chương trình khi Linking | Được nạp/liên kết khi chương trình được nạp hoặc chạy |
+| Đuôi thường gặp | `.a` | `.so`, `.dll` |
+| Mã thư viện nằm trong chương trình | Có | Không toàn bộ |
+| Phụ thuộc thư viện bên ngoài khi chạy | Không | Có |
+| Kích thước chương trình | Thường lớn hơn | Thường nhỏ hơn |
+| Bare-metal Embedded | Rất phổ biến | Hầu như không dùng |
+| Embedded Linux | Có thể dùng | Có thể dùng |
+
+#### Trong Embedded
+
+- Với vi điều khiển như STM32 chạy Bare-metal hoặc RTOS, **Static Library phổ biến hơn nhiều**.
+- Firmware thường được liên kết hoàn chỉnh thành một tệp `.elf`, sau đó có thể chuyển thành `.bin` hoặc `.hex`.
+- Dynamic Library thường gặp hơn trên các hệ thống có hệ điều hành như Embedded Linux.
 
 [↑ Về mục lục](#muc-luc)
 
