@@ -2810,16 +2810,6 @@ Khi dùng C, cần đặc biệt chú ý:
 - Cách dùng `realloc()` an toàn với con trỏ tạm.
 - Sự khác nhau giữa `memcpy()` và `memmove()`.
 
-#### Chưa cần học sâu ở mức Intern
-
-- Chi tiết ABI.
-- Tối ưu hóa trình biên dịch ở mức chuyên sâu.
-- Bộ cấp phát bộ nhớ tùy chỉnh.
-- Kỹ thuật macro phức tạp.
-- Chi tiết nội bộ của trình liên kết và định dạng tệp đối tượng.
-- Tối ưu hóa Assembly chuyên sâu.
-- Các kỹ thuật quản lý bộ nhớ thời gian thực nâng cao nếu vị trí không yêu cầu.
-
 ### Câu hỏi phỏng vấn tự kiểm tra
 
 1. Quá trình từ tệp `.c` đến tệp thực thi gồm những giai đoạn nào?
