@@ -748,7 +748,7 @@ private:
 
 - Hàm hủy được gọi khi đối tượng kết thúc vòng đời.
 - Tên hàm hủy là tên lớp có thêm `~` ở phía trước.
-- Hàm hủy không nhận tham số và không có kiểu trả về (một lớp chỉ có thể tồn tại duy nhất một hàm hủy).
+- Hàm hủy không nhận tham số và không có kiểu trả về (một lớp `chỉ có thể tồn tại duy nhất một hàm hủy`).
 
 **Ví dụ:**
 
