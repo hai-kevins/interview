@@ -2272,36 +2272,141 @@ values = nullptr;
 <a id="muc-13-03"></a>
 ### 13.3. `std::unique_ptr`
 
-- `std::unique_ptr` biểu diễn quyền sở hữu duy nhất đối với một đối tượng động.
-- Khi `unique_ptr` hết vòng đời, đối tượng được giải phóng tự động.
-- Không sao chép được, nhưng có thể chuyển quyền sở hữu bằng cơ chế di chuyển.
+- `std::unique_ptr` là con trỏ thông minh có **một chủ sở hữu duy nhất** đối với một đối tượng động.
+- Khi `unique_ptr` hết vòng đời, đối tượng mà nó sở hữu sẽ được giải phóng tự động.
+- Không thể sao chép `unique_ptr`, nhưng có thể **chuyển quyền sở hữu** bằng `std::move()`.
 
-**Ví dụ:**
+**Ví dụ dễ hiểu:**
 
 ```cpp
 #include <memory>
 
-auto motor = std::make_unique<Motor>();
+class Motor
+{
+};
+
+int main()
+{
+    auto motor = std::make_unique<Motor>();
+
+    // motor là chủ sở hữu duy nhất của đối tượng Motor.
+    // Không cần tự gọi delete.
+
+    return 0;
+} // motor hết vòng đời -> Motor được giải phóng tự động
 ```
 
-Hoặc:
+Nếu muốn chuyển quyền sở hữu:
 
 ```cpp
-std::unique_ptr<Motor> motor = std::make_unique<Motor>();
+#include <memory>
+#include <utility>
+
+auto p1 = std::make_unique<Motor>();
+
+// auto p2 = p1;          // Lỗi: unique_ptr không sao chép được
+
+auto p2 = std::move(p1);  // Quyền sở hữu chuyển từ p1 sang p2
+```
+
+Có thể hình dung:
+
+```text
+Trước std::move:
+
+p1 ─────> Motor
+
+
+Sau std::move:
+
+p1        không còn sở hữu
+p2 ─────> Motor
 ```
 
 **Lợi ích:**
 
 - Giảm nguy cơ quên `delete`.
-- Thể hiện rõ ai đang sở hữu tài nguyên.
-- Phù hợp với tư tưởng RAII.
+- Thể hiện rõ đối tượng nào đang sở hữu tài nguyên.
+- Phù hợp với RAII.
+- Khi chỉ cần một chủ sở hữu, `unique_ptr` thường đơn giản và nhẹ hơn `shared_ptr`.
+
+**Ý cần nhớ:**
+
+> `unique_ptr` = **một chủ sở hữu duy nhất**, tự giải phóng tài nguyên khi hết vòng đời.
 
 <a id="muc-13-04"></a>
 ### 13.4. `std::shared_ptr`
 
-- `std::shared_ptr` cho phép nhiều con trỏ thông minh cùng chia sẻ quyền sở hữu một đối tượng.
-- Đối tượng được giải phóng khi không còn `shared_ptr` nào sở hữu nó.
-- Thường cần cơ chế đếm số lượng tham chiếu nên có chi phí quản lý lớn hơn `unique_ptr`.
+- `std::shared_ptr` là con trỏ thông minh cho phép **nhiều con trỏ cùng chia sẻ quyền sở hữu một đối tượng**.
+- C++ theo dõi số lượng `shared_ptr` đang sở hữu đối tượng.
+- Đối tượng chỉ được giải phóng khi không còn `shared_ptr` nào sở hữu nó.
+
+**Ví dụ dễ hiểu:**
+
+```cpp
+#include <memory>
+
+class Motor
+{
+};
+
+int main()
+{
+    auto p1 = std::make_shared<Motor>();
+
+    {
+        auto p2 = p1;  // p1 và p2 cùng sở hữu Motor
+
+        // Motor vẫn tồn tại vì có cả p1 và p2 sở hữu.
+    } // p2 hết vòng đời, nhưng p1 vẫn còn sở hữu Motor
+
+    // Motor vẫn tồn tại ở đây.
+
+    return 0;
+} // p1 hết vòng đời -> không còn chủ sở hữu -> Motor được giải phóng
+```
+
+Có thể hình dung:
+
+```text
+p1 ───┐
+      ├────> Motor
+p2 ───┘
+```
+
+Khi `p2` hết vòng đời:
+
+```text
+p1 ─────────> Motor
+p2            đã hết
+```
+
+Khi `p1` cũng hết vòng đời:
+
+```text
+Không còn shared_ptr sở hữu
+        ↓
+Motor được giải phóng
+```
+
+**Lưu ý:**
+
+- `shared_ptr` cần quản lý số lượng chủ sở hữu nên có chi phí quản lý lớn hơn `unique_ptr`.
+- Chỉ nên dùng khi thực sự cần nhiều nơi cùng sở hữu một đối tượng.
+
+**Ý cần nhớ:**
+
+> `shared_ptr` = **nhiều chủ sở hữu cùng chia sẻ một đối tượng**, đối tượng được giải phóng khi chủ sở hữu cuối cùng biến mất.
+
+#### So sánh nhanh
+
+| | `std::unique_ptr` | `std::shared_ptr` |
+|---|---|---|
+| Số chủ sở hữu | Một | Nhiều |
+| Sao chép | Không | Có |
+| Chuyển quyền sở hữu | Có, dùng `std::move()` | Có thể chia sẻ bằng cách sao chép |
+| Tự giải phóng tài nguyên | Có | Có |
+| Chi phí quản lý | Thấp hơn | Cao hơn |
 
 [↑ Về mục lục](#muc-luc)
 
