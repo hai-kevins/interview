@@ -1208,7 +1208,7 @@ Buffer &operator=(Buffer &&other)
 <a id="muc-10-01"></a>
 ### 10.1. Kế thừa
 
-- Kế thừa cho phép lớp dẫn xuất sử dụng hoặc mở rộng hành vi của lớp cơ sở.
+- Kế thừa cho phép lớp dẫn xuất (lớp con) sử dụng hoặc mở rộng hành vi của lớp cơ sở (lớp cha).
 
 **Ví dụ:**
 
