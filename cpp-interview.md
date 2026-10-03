@@ -2226,15 +2226,6 @@ Kết quả:
 4 3 2 1
 ```
 
-#### Ý cần nhớ ở mức Intern
-
-- `std::array`: ưu tiên khi kích thước cố định.
-- `std::vector`: kích thước thay đổi, thường có cấp phát động.
-- `std::string`: thuận tiện cho chuỗi nhưng cần để ý bộ nhớ động.
-- `std::pair`: gom hai giá trị thành một đối tượng.
-- `begin()` và `end()`: xác định vùng dữ liệu để duyệt hoặc truyền cho thuật toán.
-- Các thuật toán như `find`, `sort`, `min_element`, `max_element`, `fill`, `reverse` nên biết cách dùng cơ bản.
-
 [↑ Về mục lục](#muc-luc)
 
 ---
