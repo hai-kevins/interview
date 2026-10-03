@@ -2848,5 +2848,24 @@ Khi dùng C, cần đặc biệt chú ý:
 24. Tại sao cấp phát động cần được cân nhắc trong hệ thống nhúng?
 25. Khi viết Embedded C, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?
 
+#### Memory Management
+
+1. Tại sao cần chia bộ nhớ thành nhiều vùng?
+2. Biến toàn cục không khởi tạo nằm ở đâu?
+3. Hai biến global có cùng giá trị khởi tạo `0` và `10` — tại sao chúng không nằm trong cùng một vùng nhớ?
+4. Khi chương trình gọi một hàm lồng nhau nhiều lần (đệ quy), vùng nhớ nào bị ảnh hưởng nhiều nhất?
+5. Tại sao biến `const` thường được đặt trong vùng `.rodata` thay vì `.data`?
+6. Nếu bạn muốn dữ liệu tồn tại suốt vòng đời chương trình, bạn nên đặt nó ở vùng nhớ nào?
+7. Tại sao vùng `.bss` không chiếm nhiều dung lượng trong file `.bin`, nhưng lại chiếm RAM khi chạy?
+8. Điều gì xảy ra với Stack khi hàm kết thúc, nhưng biến `static` trong hàm đó vẫn được giữ giá trị?
+9. Lỗi Memory Leak xảy ra khi nào? Tại sao? Cách debug.
+10. Lỗi Stack Overflow xảy ra khi nào? Tại sao? Cách debug.
+11. Lỗi Segmentation Fault xảy ra khi nào? Tại sao? Cách debug.
+12. Lỗi Stack Smashing là gì? Cách compiler phát hiện bằng cơ chế Canary.
+13. Lỗi Heap Corruption là gì? Cách phát hiện bằng AddressSanitizer.
+14. Lỗi Dangling Pointer là gì? Tại sao nguy hiểm? Cách khắc phục.
+15. Khi nào nên dùng AddressSanitizer thay vì Valgrind để debug lỗi bộ nhớ?
+16. Lỗi Wild Pointer là gì?
+
 [↑ Về mục lục](#muc-luc)
 
