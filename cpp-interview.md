@@ -2656,18 +2656,6 @@ Khi dùng C++, cần chú ý:
 - `dynamic_cast`.
 - Ngoại lệ và RTTI ở mức khái niệm.
 
-#### Chưa cần học sâu ở mức Intern
-
-- Siêu lập trình bằng khuôn mẫu.
-- Chuyển tiếp hoàn hảo.
-- SFINAE.
-- `concept` của C++ ở mức nâng cao.
-- Đồng trình (`coroutine`).
-- Bộ cấp phát tùy chỉnh nâng cao.
-- Đa kế thừa phức tạp.
-- Ngoại lệ internals.
-- ABI C++ chuyên sâu.
-
 ### Câu hỏi phỏng vấn tự kiểm tra
 
 1. Tham chiếu khác con trỏ như thế nào?
