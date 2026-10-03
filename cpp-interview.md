@@ -1,12 +1,12 @@
 # Ghi chú phỏng vấn C++
 
 > **Mục tiêu:** Ôn phần C++ cần thiết cho phỏng vấn.  
-> **Tiền đề:** Đã nắm phần C cơ bản và C cho Embedded. Tài liệu này tập trung vào những phần C++ khác C hoặc thường được hỏi khi dùng C++ trong firmware.  
+> **Tiền đề:** Đã nắm phần C cơ bản và C cho hệ thống nhúng. Tài liệu này tập trung vào những phần C++ khác C hoặc thường được hỏi khi dùng C++ trong phần mềm nhúng.  
 
 <a id="muc-luc"></a>
 ## Mục lục
 
-1. [Tổng quan C++ trong Embedded](#chuong-01)
+1. [Tổng quan C++ trong hệ thống nhúng](#chuong-01)
    - [1.1. C++ khác C ở điểm nào?](#muc-01-01)
    - [1.2. `bool`](#muc-01-02)
    - [1.3. `nullptr`](#muc-01-03)
@@ -21,16 +21,16 @@
    - [3.3. Truyền tham số](#muc-03-03)
    - [3.4. Hàm `inline`](#muc-03-04)
 4. [Lớp và đối tượng](#chuong-04)
-   - [4.1. `class` và object](#muc-04-01)
+   - [4.1. `class` và đối tượng](#muc-04-01)
    - [4.2. `class` và `struct`](#muc-04-02)
    - [4.3. `public`, `private`, `protected`](#muc-04-03)
    - [4.4. Hàm thành viên](#muc-04-04)
    - [4.5. Con trỏ `this`](#muc-04-05)
    - [4.6. Thành viên `static`](#muc-04-06)
-5. [Constructor, Destructor và vòng đời đối tượng](#chuong-05)
-   - [5.1. Constructor](#muc-05-01)
+5. [Hàm dựng, Hàm hủy và vòng đời đối tượng](#chuong-05)
+   - [5.1. Hàm dựng (constructor)](#muc-05-01)
    - [5.2. Danh sách khởi tạo](#muc-05-02)
-   - [5.3. Destructor](#muc-05-03)
+   - [5.3. Hàm hủy (destructor)](#muc-05-03)
    - [5.4. Vòng đời đối tượng](#muc-05-04)
 6. [`const` trong C++](#chuong-06)
    - [6.1. Đối tượng `const`](#muc-06-01)
@@ -40,28 +40,28 @@
    - [7.1. Khái niệm RAII](#muc-07-01)
    - [7.2. Ví dụ RAII](#muc-07-02)
 8. [Sao chép đối tượng](#chuong-08)
-   - [8.1. Copy constructor](#muc-08-01)
-   - [8.2. Copy assignment](#muc-08-02)
-   - [8.3. Shallow copy và deep copy](#muc-08-03)
-9. [Move semantics](#chuong-09)
-   - [9.1. Ý tưởng của move](#muc-09-01)
+   - [8.1. Hàm dựng sao chép](#muc-08-01)
+   - [8.2. Phép gán sao chép](#muc-08-02)
+   - [8.3. Sao chép nông và sao chép sâu](#muc-08-03)
+9. [Ngữ nghĩa di chuyển](#chuong-09)
+   - [9.1. Ý tưởng của di chuyển tài nguyên](#muc-09-01)
    - [9.2. `std::move`](#muc-09-02)
-   - [9.3. Move constructor và move assignment](#muc-09-03)
+   - [9.3. Hàm dựng di chuyển và phép gán di chuyển](#muc-09-03)
 10. [Kế thừa và đa hình](#chuong-10)
     - [10.1. Kế thừa](#muc-10-01)
     - [10.2. Hàm `virtual`](#muc-10-02)
     - [10.3. `override`](#muc-10-03)
     - [10.4. Hàm thuần ảo và lớp trừu tượng](#muc-10-04)
-    - [10.5. Virtual destructor](#muc-10-05)
-11. [Template](#chuong-11)
-    - [11.1. Function template](#muc-11-01)
-    - [11.2. Class template](#muc-11-02)
-12. [STL cơ bản cho Embedded](#chuong-12)
+    - [10.5. Hàm hủy ảo](#muc-10-05)
+11. [Khuôn mẫu](#chuong-11)
+    - [11.1. Khuôn mẫu hàm](#muc-11-01)
+    - [11.2. Khuôn mẫu lớp](#muc-11-02)
+12. [STL cơ bản cho hệ thống nhúng](#chuong-12)
     - [12.1. `std::array`](#muc-12-01)
     - [12.2. `std::vector`](#muc-12-02)
     - [12.3. `std::string`](#muc-12-03)
     - [12.4. `std::pair`](#muc-12-04)
-    - [12.5. Iterator và vòng lặp phạm vi](#muc-12-05)
+    - [12.5. Bộ lặp và vòng lặp phạm vi](#muc-12-05)
     - [12.6. `std::algorithm`](#muc-12-06)
 13. [Quản lý bộ nhớ trong C++](#chuong-13)
     - [13.1. `new` và `delete`](#muc-13-01)
@@ -78,12 +78,12 @@
     - [15.2. `constexpr`](#muc-15-02)
     - [15.3. `static constexpr`](#muc-15-03)
 16. [Tương tác giữa C và C++](#chuong-16)
-    - [16.1. Name mangling](#muc-16-01)
+    - [16.1. Mã hóa tên ký hiệu](#muc-16-01)
     - [16.2. `extern "C"`](#muc-16-02)
-17. [Exception và RTTI](#chuong-17)
-    - [17.1. Exception](#muc-17-01)
+17. [Ngoại lệ và RTTI](#chuong-17)
+    - [17.1. Ngoại lệ](#muc-17-01)
     - [17.2. RTTI](#muc-17-02)
-18. [C++ trong Embedded Firmware](#chuong-18)
+18. [C++ trong phần mềm nhúng](#chuong-18)
     - [18.1. Cấp phát động](#muc-18-01)
     - [18.2. Chi phí của `virtual`](#muc-18-02)
     - [18.3. Tính xác định](#muc-18-03)
@@ -92,17 +92,17 @@
 ---
 
 <a id="chuong-01"></a>
-## 1. Tổng quan C++ trong Embedded
+## 1. Tổng quan C++ trong hệ thống nhúng
 
 <a id="muc-01-01"></a>
 ### 1.1. C++ khác C ở điểm nào?
 
 - C++ phát triển từ C nhưng bổ sung nhiều cơ chế giúp tổ chức chương trình lớn tốt hơn.
-- Trong Embedded Firmware, C++ thường được dùng để:
-  - Đóng gói driver và trạng thái phần cứng trong `class`.
-  - Quản lý tài nguyên bằng constructor/destructor và RAII.
+- Trong phần mềm nhúng, C++ thường được dùng để:
+  - Đóng gói trình điều khiển và trạng thái phần cứng trong `class`.
+  - Quản lý tài nguyên bằng hàm dựng/hàm hủy và RAII.
   - Tạo giao diện chung bằng kế thừa và hàm `virtual`.
-  - Viết mã tổng quát bằng template.
+  - Viết mã tổng quát bằng khuôn mẫu.
   - Tận dụng kiểm tra kiểu mạnh hơn và các tiện ích của thư viện chuẩn.
   
 <a id="muc-01-02"></a>
@@ -142,52 +142,52 @@ if (ptr == nullptr) {
 <a id="muc-01-04"></a>
 ### 1.4. `namespace`
 
-- `namespace` là một phạm vi đặt tên dùng để phân chia mã nguồn thành các nhóm riêng biệt, giúp tránh xung đột tên khi có nhiều hàm, biến hoặc lớp trùng tên. `std` là một namespace lớn nhất trong thư viện chuẩn C++ chứa: cout, cin, vector, string, ...
+- `namespace` là một phạm vi đặt tên dùng để nhóm các thành phần liên quan và tránh xung đột tên. `std` là namespace của thư viện chuẩn C++, chứa nhiều thành phần như `cout`, `cin`, `vector`, `string`, ...
 
 **Ví dụ:**
 
 ```cpp
 #include <iostream>
 
-// Group all functions and variables related to Sensors
+// Nhóm các hàm và biến liên quan đến cảm biến
 namespace Sensor {
     int readValue = 0;
 
     void init() {
-        std::cout << " Sensors initialized.\n";
+        std::cout << " Cảm biến đã được khởi tạo.\n";
     }
 
     int readData() {
-        readValue = 42; // Simulate reading data from hardware
+        readValue = 42; // Mô phỏng việc đọc dữ liệu từ phần cứng
         return readValue;
     }
 }
 
-// Group all functions and variables related to Motors
+// Nhóm các hàm và biến liên quan đến động cơ
 namespace Motor {
     int currentSpeed = 0;
 
     void init() {
-        std::cout << " Motors initialized.\n";
+        std::cout << " Động cơ đã được khởi tạo.\n";
     }
 
     void spin(int speed) {
         currentSpeed = speed;
-        std::cout << " Motor is spinning at speed: " << speed << " RPM.\n";
+        std::cout << " Động cơ đang quay với tốc độ: " << speed << " vòng/phút.\n";
     }
 
     void stop() {
         currentSpeed = 0;
-        std::cout << " Motor stopped.\n";
+        std::cout << " Động cơ đã dừng.\n";
     }
 }
 
 int main() {
-    // Thanks to namespaces, you can call two init() functions with the same name without any error
+    // Nhờ namespace, có thể gọi hai hàm init() cùng tên mà không bị xung đột
     Sensor::init();
     Motor::init();
 
-    // Use separate functionalities
+    // Sử dụng các chức năng thuộc từng namespace
     int data = Sensor::readData();
     if (data > 40) {
         Motor::spin(1000);
@@ -212,7 +212,7 @@ int main() {
 <a id="muc-02-01"></a>
 ### 2.1. Khái niệm tham chiếu
 
-- Tham chiếu (reference) là một tên khác dùng để tham chiếu tới một đối tượng đã tồn tại.
+- Tham chiếu là một tên khác dùng để tham chiếu tới một đối tượng đã tồn tại.
 - Tham chiếu phải được khởi tạo khi khai báo.
 - Sau khi đã tham chiếu tới một đối tượng, tham chiếu không thể chuyển sang tham chiếu tới đối tượng khác.
 
@@ -276,7 +276,7 @@ struct SensorData
 
 void printData(const SensorData &data)
 {
-    // Được đọc data
+    // Có thể đọc data
     // Không được sửa data.temperature tại đây
 }
 ```
@@ -292,7 +292,7 @@ void printData(const SensorData &data)
 ### 3.1. Nạp chồng hàm
 
 - C++ cho phép nhiều hàm có cùng tên nếu danh sách tham số khác nhau.
-- Cơ chế này gọi là **nạp chồng hàm (function overloading)**.
+- Cơ chế này gọi là **nạp chồng hàm (nạp chồng hàm)**.
 
 **Ví dụ:**
 
@@ -326,8 +326,8 @@ void setSpeed(int speed = 50)
 
 int main()
 {
-    setSpeed();      // speed = 50
-    setSpeed(80);    // speed = 80
+    setSpeed();      // tốc độ = 50
+    setSpeed(80);    // tốc độ = 80
 }
 ```
 
@@ -400,7 +400,7 @@ inline int square(int x)
 }
 ```
 
-- Trong Embedded, các hàm rất nhỏ có thể được viết dưới dạng `inline` hoặc `static inline`.
+- Trong hệ thống nhúng, các hàm rất nhỏ có thể được viết dưới dạng `inline` hoặc `static inline`.
 
 [↑ Về mục lục](#muc-luc)
 
@@ -410,10 +410,10 @@ inline int square(int x)
 ## 4. Lớp và đối tượng
 
 <a id="muc-04-01"></a>
-### 4.1. `class` và object
+### 4.1. `class` và đối tượng
 
 - `class` mô tả dữ liệu và hành vi của một loại đối tượng.
-- Object là một thực thể được tạo từ `class`.
+- Đối tượng là một thực thể được tạo từ `class`.
 
 **Ví dụ:**
 
@@ -524,7 +524,7 @@ private:
 ### 4.5. Con trỏ `this`
 
 - Trong hàm thành viên không phải `static`, `this` trỏ tới đối tượng đang gọi hàm.
-- `this->member` dùng để truy cập thành viên của chính đối tượng đó.
+- `this->thanh_vien` biểu diễn cách truy cập một thành viên của chính đối tượng đó.
 
 **Ví dụ:**
 
@@ -574,13 +574,13 @@ int Device::count = 0;
 ---
 
 <a id="chuong-05"></a>
-## 5. Constructor, Destructor và vòng đời đối tượng
+## 5. Hàm dựng, hàm hủy và vòng đời đối tượng
 
 <a id="muc-05-01"></a>
-### 5.1. Constructor
+### 5.1. Hàm dựng (constructor)
 
-- Constructor là hàm đặc biệt được gọi khi đối tượng được tạo.
-- Constructor có cùng tên với lớp và không có kiểu trả về.
+- Hàm dựng là hàm đặc biệt được gọi khi đối tượng được tạo.
+- Hàm dựng có cùng tên với lớp và không có kiểu trả về.
 - Dùng để đưa đối tượng vào trạng thái hợp lệ ban đầu.
 
 **Ví dụ:**
@@ -599,7 +599,7 @@ private:
 };
 ```
 
-#### Constructor có tham số
+#### Hàm dựng có tham số
 
 ```cpp
 class Motor
@@ -620,7 +620,7 @@ Motor motor(50);
 <a id="muc-05-02"></a>
 ### 5.2. Danh sách khởi tạo
 
-- Nên dùng **danh sách khởi tạo (member initializer list)** để khởi tạo thành viên.
+- Nên dùng **danh sách khởi tạo (danh sách khởi tạo thành viên)** để khởi tạo thành viên.
 - Một số thành viên như tham chiếu hoặc thành viên `const` bắt buộc phải được khởi tạo theo cách này.
 
 **Ví dụ:**
@@ -640,11 +640,11 @@ private:
 ```
 
 <a id="muc-05-03"></a>
-### 5.3. Destructor
+### 5.3. Hàm hủy (destructor)
 
-- Destructor được gọi khi đối tượng kết thúc vòng đời.
-- Tên destructor là tên lớp có thêm `~` ở phía trước.
-- Destructor không có tham số và không có kiểu trả về.
+- Hàm hủy được gọi khi đối tượng kết thúc vòng đời.
+- Tên hàm hủy là tên lớp có thêm `~` ở phía trước.
+- Hàm hủy không có tham số và không có kiểu trả về.
 
 **Ví dụ:**
 
@@ -674,12 +674,12 @@ void run()
 {
     Motor motor(50);
 
-    // motor tồn tại trong phạm vi hàm
+    // đối tượng motor tồn tại trong phạm vi hàm
 }
 ```
 
-- Constructor chạy khi `motor` được tạo.
-- Destructor chạy khi `motor` hết vòng đời khi rời khỏi phạm vi.
+- Hàm dựng chạy khi `motor` được tạo.
+- Hàm hủy chạy khi `motor` hết vòng đời khi rời khỏi phạm vi.
 - Các đối tượng cục bộ trong cùng phạm vi thường bị hủy theo thứ tự ngược với thứ tự được tạo.
 
 **Ví dụ:**
@@ -690,9 +690,9 @@ void test()
     Device a;
     Device b;
 
-    // Khi rời hàm:
-    // b bị hủy trước
-    // a bị hủy sau
+    // Khi rời khỏi hàm:
+    // b được hủy trước
+    // a được hủy sau
 }
 ```
 
@@ -741,7 +741,7 @@ private:
 };
 ```
 
-- Getter thường nên là hàm `const` nếu không sửa đối tượng.
+- Hàm đọc thường nên là hàm `const` nếu không sửa đối tượng.
 
 <a id="muc-06-03"></a>
 ### 6.3. `const` với tham số
@@ -761,7 +761,7 @@ void process(const SensorData &data)
 void process(const SensorData *data)
 {
     if (data != nullptr) {
-        // Chỉ đọc qua data
+        // Chỉ đọc thông qua data
     }
 }
 ```
@@ -776,13 +776,13 @@ void process(const SensorData *data)
 <a id="muc-07-01"></a>
 ### 7.1. Khái niệm RAII
 
-RAII là viết tắt của **Resource Acquisition Is Initialization**.
+RAII là viết tắt của **Resource Acquisition Is Initialization** — có thể hiểu là **gắn việc quản lý tài nguyên với quá trình khởi tạo và vòng đời đối tượng**.
 
 Ý tưởng chính:
 
 - Tài nguyên được gắn với vòng đời của một đối tượng.
-- Constructor thiết lập hoặc nhận quyền sở hữu tài nguyên.
-- Destructor giải phóng tài nguyên.
+- Hàm dựng thiết lập hoặc nhận quyền sở hữu tài nguyên.
+- Hàm hủy giải phóng tài nguyên.
 - Khi đối tượng ra khỏi phạm vi, việc dọn dẹp diễn ra tự động.
 
 Tài nguyên có thể là:
@@ -791,7 +791,7 @@ Tài nguyên có thể là:
 - Khóa đồng bộ.
 - Tệp.
 - Kết nối.
-- Tài nguyên phần cứng hoặc handle của driver.
+- Tài nguyên phần cứng hoặc định danh tài nguyên của trình điều khiển.
 
 **Lợi ích:**
 
@@ -840,8 +840,8 @@ void run()
 }
 ```
 
-- Khi `guard` được tạo, constructor chạy.
-- Khi hàm kết thúc, destructor tự chạy.
+- Khi `guard` được tạo, hàm dựng chạy.
+- Khi hàm kết thúc, hàm hủy tự chạy.
 - Người dùng lớp không cần nhớ gọi hàm dọn dẹp thủ công.
 
 > Trong C++ hiện đại, RAII là một trong những nguyên tắc quan trọng nhất cần hiểu.
@@ -854,9 +854,9 @@ void run()
 ## 8. Sao chép đối tượng
 
 <a id="muc-08-01"></a>
-### 8.1. Copy constructor
+### 8.1. Hàm dựng sao chép
 
-- Copy constructor tạo một đối tượng mới từ một đối tượng đã tồn tại.
+- Hàm dựng sao chép tạo một đối tượng mới từ một đối tượng đã tồn tại.
 
 **Dạng thường gặp:**
 
@@ -882,9 +882,9 @@ Data b = a;
 ```
 
 <a id="muc-08-02"></a>
-### 8.2. Copy assignment
+### 8.2. Phép gán sao chép
 
-- Copy assignment gán nội dung từ một đối tượng đã có sang một đối tượng khác đã tồn tại.
+- Phép gán sao chép gán nội dung từ một đối tượng đã có sang một đối tượng khác đã tồn tại.
 
 **Dạng thường gặp:**
 
@@ -916,9 +916,9 @@ b = a;
 ```
 
 <a id="muc-08-03"></a>
-### 8.3. Shallow copy và deep copy
+### 8.3. Sao chép nông và sao chép sâu
 
-#### Shallow copy
+#### Sao chép nông
 
 - Chỉ sao chép trực tiếp giá trị các thành viên.
 - Nếu thành viên là con trỏ sở hữu vùng nhớ, hai đối tượng có thể cùng giữ một địa chỉ.
@@ -934,41 +934,41 @@ public:
 };
 ```
 
-Nếu chỉ sao chép `data`, cả hai object có thể giữ cùng một địa chỉ.
+Nếu chỉ sao chép `data`, cả hai đối tượng có thể giữ cùng một địa chỉ.
 
-#### Deep copy
+#### Sao chép sâu
 
 - Tạo vùng tài nguyên mới cho đối tượng đích.
 - Sao chép nội dung tài nguyên thay vì chỉ sao chép địa chỉ.
 
 **Ý cần nhớ khi phỏng vấn:**
 
-- Với lớp chỉ chứa kiểu dữ liệu thông thường, copy mặc định thường có thể đủ.
+- Với lớp chỉ chứa kiểu dữ liệu thông thường, cơ chế sao chép mặc định thường có thể đủ.
 - Với lớp **sở hữu tài nguyên**, phải suy nghĩ rõ cách sao chép và giải phóng tài nguyên.
-- Đây là lý do copy constructor và copy assignment quan trọng.
+- Đây là lý do hàm dựng sao chép và phép gán sao chép quan trọng.
 
 [↑ Về mục lục](#muc-luc)
 
 ---
 
 <a id="chuong-09"></a>
-## 9. Move semantics
+## 9. Ngữ nghĩa di chuyển
 
 <a id="muc-09-01"></a>
-### 9.1. Ý tưởng của move
+### 9.1. Ý tưởng của di chuyển tài nguyên
 
-- Copy tạo bản sao tài nguyên.
-- Move chuyển quyền sở hữu tài nguyên từ đối tượng này sang đối tượng khác.
-- Move có thể tránh việc sao chép dữ liệu lớn không cần thiết.
+- Sao chép tạo bản sao tài nguyên.
+- Di chuyển chuyển quyền sở hữu tài nguyên từ đối tượng này sang đối tượng khác.
+- Cơ chế di chuyển có thể tránh việc sao chép dữ liệu lớn không cần thiết.
 
 Ví dụ ý tưởng:
 
 ```text
-Copy:
+Sao chép:
 A ---- dữ liệu
 B ---- bản sao dữ liệu
 
-Move:
+Di chuyển:
 A ---- không còn sở hữu dữ liệu
 B ---- nhận tài nguyên cũ của A
 ```
@@ -977,7 +977,7 @@ B ---- nhận tài nguyên cũ của A
 ### 9.2. `std::move`
 
 - `std::move()` không tự di chuyển dữ liệu.
-- Nó chuyển biểu thức sang dạng cho phép cơ chế move được lựa chọn nếu kiểu dữ liệu hỗ trợ.
+- Nó chuyển biểu thức sang dạng cho phép hàm dựng di chuyển hoặc phép gán di chuyển được lựa chọn nếu kiểu dữ liệu hỗ trợ.
 
 ```cpp
 #include <utility>
@@ -985,13 +985,13 @@ B ---- nhận tài nguyên cũ của A
 Buffer b = std::move(a);
 ```
 
-- Sau khi move, đối tượng nguồn vẫn phải ở trạng thái hợp lệ để bị hủy hoặc gán lại.
+- Sau khi di chuyển, đối tượng nguồn vẫn phải ở trạng thái hợp lệ để bị hủy hoặc gán lại.
 - Không nên giả định dữ liệu cũ của đối tượng nguồn vẫn giữ nguyên.
 
 <a id="muc-09-03"></a>
-### 9.3. Move constructor và move assignment
+### 9.3. Hàm dựng di chuyển và phép gán di chuyển
 
-**Dạng move constructor:**
+**Dạng hàm dựng di chuyển:**
 
 ```cpp
 class Buffer
@@ -1008,7 +1008,7 @@ private:
 };
 ```
 
-**Dạng move assignment:**
+**Dạng phép gán di chuyển:**
 
 ```cpp
 Buffer &operator=(Buffer &&other)
@@ -1026,10 +1026,10 @@ Buffer &operator=(Buffer &&other)
 
 Ở mức Intern cần hiểu:
 
-- Tại sao move tồn tại.
+- Tại sao cơ chế di chuyển tồn tại.
 - `std::move()` dùng để làm gì.
-- Move thường chuyển quyền sở hữu tài nguyên.
-- Sau move, đối tượng nguồn vẫn hợp lệ nhưng trạng thái cụ thể có thể thay đổi.
+- Di chuyển thường chuyển quyền sở hữu tài nguyên.
+- Sau khi di chuyển, đối tượng nguồn vẫn hợp lệ nhưng trạng thái cụ thể có thể thay đổi.
 
 [↑ Về mục lục](#muc-luc)
 
@@ -1133,10 +1133,10 @@ virtual int read() = 0;
 ```
 
 - Lớp có ít nhất một hàm thuần ảo là lớp trừu tượng.
-- Không thể tạo trực tiếp object của lớp trừu tượng.
+- Không thể tạo trực tiếp đối tượng của lớp trừu tượng.
 - Thường dùng để định nghĩa một giao diện chung.
 
-**Ví dụ giao diện driver:**
+**Ví dụ giao diện trình điều khiển:**
 
 ```cpp
 class Sensor
@@ -1161,9 +1161,9 @@ public:
 ```
 
 <a id="muc-10-05"></a>
-### 10.5. Virtual destructor
+### 10.5. Hàm hủy ảo
 
-- Nếu một lớp được dùng làm lớp cơ sở đa hình và có thể bị hủy thông qua con trỏ lớp cơ sở, destructor thường cần là `virtual`.
+- Nếu một lớp được dùng làm lớp cơ sở đa hình và có thể bị hủy thông qua con trỏ lớp cơ sở, hàm hủy thường cần là `virtual`.
 
 **Ví dụ:**
 
@@ -1175,20 +1175,20 @@ public:
 };
 ```
 
-Điều này giúp destructor của lớp dẫn xuất được gọi đúng khi hủy đối tượng thông qua con trỏ lớp cơ sở.
+Điều này giúp hàm hủy của lớp dẫn xuất được gọi đúng khi hủy đối tượng thông qua con trỏ lớp cơ sở.
 
 [↑ Về mục lục](#muc-luc)
 
 ---
 
 <a id="chuong-11"></a>
-## 11. Template
+## 11. Khuôn mẫu (template)
 
 <a id="muc-11-01"></a>
-### 11.1. Function template
+### 11.1. Khuôn mẫu hàm
 
-- Template cho phép viết một khuôn mã dùng được với nhiều kiểu dữ liệu.
-- Trình biên dịch tạo phiên bản phù hợp khi template được sử dụng.
+- Khuôn mẫu cho phép viết một khuôn mã dùng được với nhiều kiểu dữ liệu.
+- Trình biên dịch tạo phiên bản phù hợp khi khuôn mẫu được sử dụng.
 
 **Ví dụ:**
 
@@ -1208,7 +1208,7 @@ float b = maxValue(1.5f, 2.5f);
 ```
 
 <a id="muc-11-02"></a>
-### 11.2. Class template
+### 11.2. Khuôn mẫu lớp
 
 ```cpp
 template <typename T>
@@ -1237,26 +1237,26 @@ ValueHolder<int> a(10);
 ValueHolder<float> b(2.5f);
 ```
 
-**Trong Embedded:**
+**Trong hệ thống nhúng:**
 
-- Template có thể tạo mã tổng quát mà không cần đa hình lúc chạy.
+- Khuôn mẫu có thể tạo mã tổng quát mà không cần đa hình lúc chạy.
 - Nhiều quyết định có thể được xử lý trong lúc biên dịch.
-- Tuy nhiên dùng quá nhiều template có thể làm tăng kích thước mã hoặc khiến lỗi biên dịch khó đọc hơn.
+- Tuy nhiên dùng quá nhiều khuôn mẫu có thể làm tăng kích thước mã hoặc khiến lỗi biên dịch khó đọc hơn.
 
 [↑ Về mục lục](#muc-luc)
 
 ---
 
 <a id="chuong-12"></a>
-## 12. STL cơ bản cho Embedded
+## 12. STL cơ bản cho hệ thống nhúng
 
-> Không phải dự án Embedded nào cũng sử dụng toàn bộ STL. Cần hiểu đặc tính tài nguyên của từng container trước khi dùng.
+> Không phải dự án nhúng nào cũng sử dụng toàn bộ STL. Cần hiểu đặc tính tài nguyên của từng kiểu chứa trước khi dùng.
 
 <a id="muc-12-01"></a>
 ### 12.1. `std::array`
 
 - `std::array<T, N>` là mảng có kích thước cố định.
-- Dữ liệu được chứa trực tiếp trong object.
+- Dữ liệu được chứa trực tiếp trong đối tượng.
 - Không tự cấp phát động cho phần tử.
 
 **Ví dụ:**
@@ -1288,7 +1288,7 @@ values.push_back(10);
 values.push_back(20);
 ```
 
-**Trong Embedded:**
+**Trong hệ thống nhúng:**
 
 - Cần cân nhắc khi hệ thống hạn chế RAM hoặc cần thời gian thực thi xác định.
 - Việc tăng kích thước có thể dẫn tới cấp phát lại vùng nhớ.
@@ -1306,14 +1306,14 @@ std::string name = "Sensor";
 name += "_1";
 ```
 
-**Trong Embedded:**
+**Trong hệ thống nhúng:**
 
 - Với hệ thống rất hạn chế tài nguyên hoặc yêu cầu tính xác định cao, cần xem xét kỹ trước khi sử dụng.
 
 <a id="muc-12-04"></a>
 ### 12.4. `std::pair`
 
-- `std::pair` gom hai giá trị vào cùng một object.
+- `std::pair` gom hai giá trị vào cùng một đối tượng.
 
 ```cpp
 #include <utility>
@@ -1325,7 +1325,7 @@ bool valid = result.second;
 ```
 
 <a id="muc-12-05"></a>
-### 12.5. Iterator và vòng lặp phạm vi
+### 12.5. Bộ lặp và vòng lặp phạm vi
 
 **Vòng lặp phạm vi:**
 
@@ -1345,11 +1345,11 @@ for (int &value : values) {
 }
 ```
 
-Nếu chỉ đọc và muốn tránh sao chép object lớn:
+Nếu chỉ đọc và muốn tránh sao chép đối tượng lớn:
 
 ```cpp
 for (const auto &value : values) {
-    // chỉ đọc
+    // Chỉ đọc
 }
 ```
 
@@ -1400,8 +1400,8 @@ motor = nullptr;
 
 Khác biệt quan trọng so với `malloc/free`:
 
-- `new` gọi constructor.
-- `delete` gọi destructor.
+- `new` gọi hàm dựng.
+- `delete` gọi hàm hủy.
 - `new` trả về con trỏ đúng kiểu, không cần ép kiểu.
 - Không được trộn cặp:
   - `new` với `free()`
@@ -1424,7 +1424,7 @@ values = nullptr;
 
 - `std::unique_ptr` biểu diễn quyền sở hữu duy nhất đối với một đối tượng động.
 - Khi `unique_ptr` hết vòng đời, đối tượng được giải phóng tự động.
-- Không sao chép được, nhưng có thể move.
+- Không sao chép được, nhưng có thể chuyển quyền sở hữu bằng cơ chế di chuyển.
 
 **Ví dụ:**
 
@@ -1449,11 +1449,11 @@ std::unique_ptr<Motor> motor = std::make_unique<Motor>();
 <a id="muc-13-04"></a>
 ### 13.4. `std::shared_ptr`
 
-- `std::shared_ptr` cho phép nhiều smart pointer cùng chia sẻ quyền sở hữu một đối tượng.
+- `std::shared_ptr` cho phép nhiều con trỏ thông minh cùng chia sẻ quyền sở hữu một đối tượng.
 - Đối tượng được giải phóng khi không còn `shared_ptr` nào sở hữu nó.
 - Thường cần cơ chế đếm số lượng tham chiếu nên có chi phí quản lý lớn hơn `unique_ptr`.
 
-Ở mức Intern Embedded:
+Ở mức Intern Embedded Firmware:
 
 - Biết mục đích của `shared_ptr`.
 - Biết nó có chi phí quản lý.
@@ -1490,7 +1490,7 @@ integer = 3
 - Dùng cho chuyển đổi mức thấp giữa các kiểu con trỏ hoặc giữa địa chỉ số và con trỏ trong các trường hợp phù hợp với nền tảng.
 - Cần dùng rất cẩn thận.
 
-**Ví dụ Embedded:**
+**Ví dụ trong hệ thống nhúng:**
 
 ```cpp
 #include <cstdint>
@@ -1505,7 +1505,7 @@ volatile std::uint32_t *reg =
 ### 14.3. `const_cast`
 
 - Dùng để thêm hoặc loại bỏ thuộc tính `const`/`volatile` trong một số trường hợp.
-- Không nên dùng để cố sửa một object thực sự được định nghĩa là `const`.
+- Không nên dùng để cố sửa một đối tượng thực sự được định nghĩa là `const`.
 
 **Ví dụ:**
 
@@ -1522,7 +1522,7 @@ const int *ptr = &value;
 
 - Dùng với hệ thống kiểu đa hình để kiểm tra/chuyển đổi kiểu tại lúc chạy.
 - Thường liên quan tới RTTI.
-- Một số dự án Embedded tắt RTTI nên `dynamic_cast` có thể không được sử dụng.
+- Một số dự án nhúng tắt RTTI nên `dynamic_cast` có thể không được sử dụng.
 
 Ở mức Intern:
 
@@ -1607,10 +1607,10 @@ int baudrate = Uart::DEFAULT_BAUDRATE;
 ## 16. Tương tác giữa C và C++
 
 <a id="muc-16-01"></a>
-### 16.1. Name mangling
+### 16.1. Mã hóa tên ký hiệu
 
 - C++ hỗ trợ nạp chồng hàm nên trình biên dịch thường mã hóa thêm thông tin kiểu vào tên ký hiệu của hàm.
-- Cơ chế này thường được gọi là **name mangling**.
+- Cơ chế này thường được gọi là **mã hóa tên ký hiệu**.
 - C không có cơ chế nạp chồng hàm tương tự, nên quy ước tên ký hiệu khác C++.
 
 Ví dụ C++:
@@ -1649,22 +1649,22 @@ void driver_init(void);
 
 - `__cplusplus` được định nghĩa khi mã đang được biên dịch bằng trình biên dịch C++.
 
-**Trong Embedded:**
+**Trong hệ thống nhúng:**
 
 - Rất thường gặp khi:
-  - C++ gọi thư viện hoặc driver viết bằng C.
-  - Dự án dùng HAL viết bằng C nhưng phần ứng dụng viết bằng C++.
-  - ISR hoặc API hệ thống yêu cầu giao diện C.
+  - C++ gọi thư viện hoặc trình điều khiển được viết bằng C.
+  - Dự án dùng HAL được viết bằng C nhưng phần ứng dụng được viết bằng C++.
+  - ISR hoặc giao diện lập trình ứng dụng (API) của hệ thống yêu cầu giao diện C.
 
 [↑ Về mục lục](#muc-luc)
 
 ---
 
 <a id="chuong-17"></a>
-## 17. Exception và RTTI
+## 17. Ngoại lệ và RTTI
 
 <a id="muc-17-01"></a>
-### 17.1. Exception
+### 17.1. Ngoại lệ
 
 C++ có cơ chế xử lý ngoại lệ:
 
@@ -1683,28 +1683,28 @@ Các từ khóa chính:
 - `throw`
 - `catch`
 
-**Trong Embedded:**
+**Trong hệ thống nhúng:**
 
-- Một số dự án không sử dụng exception để giảm kích thước mã, giảm phụ thuộc runtime hoặc giữ hành vi dễ dự đoán hơn.
-- Có dự án vẫn sử dụng exception nếu nền tảng và yêu cầu cho phép.
+- Một số dự án không sử dụng ngoại lệ để giảm kích thước mã, giảm phụ thuộc thời gian chạy hoặc giữ hành vi dễ dự đoán hơn.
+- Có dự án vẫn sử dụng ngoại lệ nếu nền tảng và yêu cầu cho phép.
 
 Ở mức Intern:
 
-- Biết exception dùng để làm gì.
-- Biết một số dự án Embedded có thể tắt exception.
+- Biết ngoại lệ dùng để làm gì.
+- Biết một số dự án nhúng có thể tắt ngoại lệ.
 - Không cần học sâu cơ chế unwinding.
 
 <a id="muc-17-02"></a>
 ### 17.2. RTTI
 
-RTTI là viết tắt của **Run-Time Type Information**.
+RTTI là viết tắt của **Run-Time Type Information** — **thông tin kiểu tại thời gian chạy**.
 
 - Cho phép chương trình nhận biết một số thông tin kiểu trong lúc chạy.
 - Các cơ chế thường liên quan:
   - `dynamic_cast`
   - `typeid`
 
-**Trong Embedded:**
+**Trong hệ thống nhúng:**
 
 - RTTI có thể bị tắt trong một số dự án để giảm chi phí tài nguyên.
 - Nếu RTTI bị tắt, không thể dựa vào các tính năng cần RTTI.
@@ -1714,7 +1714,7 @@ RTTI là viết tắt của **Run-Time Type Information**.
 ---
 
 <a id="chuong-18"></a>
-## 18. C++ trong Embedded Firmware
+## 18. C++ trong phần mềm nhúng
 
 <a id="muc-18-01"></a>
 ### 18.1. Cấp phát động
@@ -1724,7 +1724,7 @@ Các thành phần có thể sử dụng cấp phát động:
 - `new`
 - `std::vector`
 - `std::string`
-- Một số smart pointer và container khác.
+- Một số con trỏ thông minh và kiểu chứa khác.
 
 Trong hệ thống nhúng:
 
@@ -1747,7 +1747,7 @@ Không có nghĩa là cấp phát động luôn bị cấm; cần tuân theo yê
 
 - Hàm `virtual` thường được triển khai bằng cơ chế bảng hàm ảo và lời gọi gián tiếp.
 - Điều này có thể tạo thêm:
-  - Một lượng dữ liệu quản lý cho object/lớp.
+  - Một lượng dữ liệu quản lý cho đối tượng/lớp.
   - Một mức chi phí nhỏ cho lời gọi hàm.
   - Phụ thuộc vào trình biên dịch và kiến trúc.
 
@@ -1755,53 +1755,53 @@ Không có nghĩa là cấp phát động luôn bị cấm; cần tuân theo yê
 
 - Không cần tránh `virtual` một cách tuyệt đối.
 - Dùng khi lợi ích thiết kế đáng giá và tài nguyên cho phép.
-- Với firmware tài nguyên rất hạn chế, cần biết chi phí trước khi sử dụng.
+- Với phần mềm nhúng có tài nguyên rất hạn chế, cần biết chi phí trước khi sử dụng.
 
 <a id="muc-18-03"></a>
 ### 18.3. Tính xác định
 
-Firmware thường quan tâm tới:
+Phần mềm nhúng thường quan tâm tới:
 
 - Thời gian thực thi có thể dự đoán.
 - Sử dụng RAM/Flash có thể kiểm soát.
 - Không rò rỉ tài nguyên.
-- Không tạo cấp phát bất ngờ ở đường xử lý quan trọng.
+- Không tạo cấp phát bất ngờ ở luồng xử lý quan trọng.
 
 Khi dùng C++, cần chú ý:
 
-- Dynamic allocation.
-- Container có thể tự cấp phát.
-- Exception nếu dự án cho phép.
-- Virtual dispatch.
-- Constructor/destructor có thể chạy tự động theo vòng đời object.
+- Cấp phát động.
+- Kiểu chứa có thể tự cấp phát.
+- Ngoại lệ nếu dự án cho phép.
+- Điều phối hàm ảo.
+- Hàm dựng/hàm hủy có thể chạy tự động theo vòng đời đối tượng.
 
 <a id="muc-18-04"></a>
 ### 18.4. Những gì cần nhớ khi phỏng vấn
 
 #### Nhóm bắt buộc
 
-- Reference và khác biệt với pointer.
+- Tham chiếu và khác biệt với con trỏ.
 - `nullptr`.
-- Function overloading.
-- `class`, object.
+- Nạp chồng hàm.
+- `class` và đối tượng.
 - `public`, `private`, `protected`.
 - `class` khác `struct`.
-- Constructor/destructor.
-- Member initializer list.
-- Object lifetime.
-- `const` member function.
+- Hàm dựng và hàm hủy.
+- Danh sách khởi tạo thành viên.
+- Đối tượng lifetime.
+- Hàm thành viên `const`.
 - RAII.
-- Copy constructor.
-- Copy assignment.
-- Shallow copy và deep copy.
+- Hàm dựng sao chép.
+- Phép gán sao chép.
+- Sao chép nông và sao chép sâu.
 - Kế thừa.
 - `virtual`, `override`.
-- Pure virtual function.
-- Abstract class.
-- Virtual destructor.
-- Template cơ bản.
+- Hàm thuần ảo.
+- Lớp trừu tượng.
+- Hàm hủy ảo.
+- Khuôn mẫu cơ bản.
 - `std::array`.
-- Hiểu `vector`/`string` có thể dùng dynamic allocation.
+- Hiểu `std::vector`/`std::string` có thể dùng cấp phát động.
 - `new/delete`.
 - `std::unique_ptr`.
 - `static_cast`, `reinterpret_cast`.
@@ -1811,55 +1811,55 @@ Khi dùng C++, cần chú ý:
 
 #### Nhóm nên biết
 
-- Move semantics.
+- Ngữ nghĩa di chuyển.
 - `std::move`.
-- Move constructor/move assignment.
+- Hàm dựng di chuyển và phép gán di chuyển.
 - `std::pair`.
-- Iterator.
+- Bộ lặp.
 - `std::algorithm`.
 - `std::shared_ptr`.
 - `const_cast`.
 - `dynamic_cast`.
-- Exception và RTTI ở mức khái niệm.
+- Ngoại lệ và RTTI ở mức khái niệm.
 
 #### Chưa cần học sâu ở mức Intern
 
-- Template metaprogramming.
-- Perfect forwarding.
+- Siêu lập trình bằng khuôn mẫu.
+- Chuyển tiếp hoàn hảo.
 - SFINAE.
-- Concepts.
-- Coroutine.
-- Custom allocator nâng cao.
-- Multiple inheritance phức tạp.
-- Exception internals.
+- `concept` của C++ ở mức nâng cao.
+- Đồng trình (`coroutine`).
+- Bộ cấp phát tùy chỉnh nâng cao.
+- Đa kế thừa phức tạp.
+- Ngoại lệ internals.
 - ABI C++ chuyên sâu.
 
 ### Câu hỏi phỏng vấn tự kiểm tra
 
-1. Reference khác pointer như thế nào?
+1. Tham chiếu khác con trỏ như thế nào?
 2. Tại sao nên dùng `nullptr` thay cho `NULL`?
 3. `class` khác `struct` trong C++ ở điểm nào?
-4. Constructor và destructor chạy khi nào?
-5. Tại sao dùng member initializer list?
+4. Hàm dựng và hàm hủy chạy khi nào?
+5. Tại sao dùng danh sách khởi tạo thành viên?
 6. Hàm thành viên `const` nghĩa là gì?
 7. RAII giải quyết vấn đề gì?
-8. Copy constructor khác copy assignment như thế nào?
-9. Shallow copy có thể gây lỗi gì với object sở hữu con trỏ?
-10. Move khác copy như thế nào?
+8. Hàm dựng sao chép khác phép gán sao chép như thế nào?
+9. Sao chép nông có thể gây lỗi gì với đối tượng sở hữu con trỏ?
+10. Di chuyển khác sao chép như thế nào?
 11. `std::move()` có tự di chuyển dữ liệu không?
 12. `virtual` dùng để làm gì?
-13. Khi nào destructor của base class cần là `virtual`?
-14. Pure virtual function là gì?
-15. Template khác `virtual` về thời điểm xử lý như thế nào?
-16. Tại sao `std::array` thường phù hợp với Embedded hơn `std::vector` khi kích thước cố định?
+13. Khi nào hàm hủy của lớp cơ sở cần là `virtual`?
+14. Hàm thuần ảo là gì?
+15. Khuôn mẫu khác `virtual` về thời điểm xử lý như thế nào?
+16. Tại sao `std::array` thường phù hợp với hệ thống nhúng hơn `std::vector` khi kích thước cố định?
 17. `new/delete` khác `malloc/free` ở điểm quan trọng nào?
 18. `unique_ptr` giải quyết vấn đề gì?
 19. `static_cast` khác `reinterpret_cast` như thế nào?
 20. `enum class` tốt hơn `enum` truyền thống ở điểm nào?
 21. `constexpr` dùng để làm gì?
 22. Tại sao cần `extern "C"` khi C++ gọi mã C?
-23. Tại sao một số dự án Embedded không dùng exception hoặc RTTI?
+23. Tại sao một số dự án nhúng không dùng ngoại lệ hoặc RTTI?
 24. Những tính năng C++ nào có thể gây cấp phát động?
-25. Khi dùng C++ trong firmware, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?
+25. Khi dùng C++ trong phần mềm nhúng, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?
 
 [↑ Về mục lục](#muc-luc)
