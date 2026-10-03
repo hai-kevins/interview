@@ -83,6 +83,11 @@
    - [16.6. Bảo vệ tệp tiêu đề](#muc-16-06)
    - [16.7. Hàm `static inline`](#muc-16-07)
    - [16.8. Các hàm thao tác bộ nhớ](#muc-16-08)
+17. [C trong phần mềm nhúng](#chuong-17)
+   - [17.1. Cấp phát động](#muc-17-01)
+   - [17.2. `volatile`, thanh ghi và ISR](#muc-17-02)
+   - [17.3. Tính xác định](#muc-17-03)
+   - [17.4. Những gì cần nhớ khi phỏng vấn](#muc-17-04)
 
 ---
 
@@ -1183,8 +1188,8 @@ Có thể mở rộng tại chỗ:
 Không thể mở rộng tại chỗ:
 vùng cũ                     vùng mới
 [ dữ liệu cũ ]   --->   [ dữ liệu cũ ][ phần mới chưa khởi tạo ]
-                         ^
-                    địa chỉ trả về
+                              ^
+                         địa chỉ trả về
 
 realloc() thất bại:
 → trả về NULL
@@ -2476,3 +2481,162 @@ int memcmp(const void *s1, const void *s2, size_t n);
 - `< 0`: tại byte khác đầu tiên, byte của `s1` nhỏ hơn byte của `s2`.
 
 [↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-17"></a>
+## 17. C trong phần mềm nhúng
+
+<a id="muc-17-01"></a>
+### 17.1. Cấp phát động
+
+Các hàm cấp phát động thường gặp:
+
+- `malloc()`
+- `calloc()`
+- `realloc()`
+- `free()`
+
+Trong hệ thống nhúng:
+
+- RAM thường hạn chế.
+- Cấp phát/giải phóng nhiều lần có thể gây phân mảnh Heap.
+- Thời gian cấp phát có thể khó dự đoán hơn bộ nhớ tĩnh hoặc vùng nhớ có kích thước cố định.
+- Hệ thống chạy lâu cần đặc biệt cẩn thận với rò rỉ bộ nhớ.
+- Nếu `realloc()` làm thay đổi địa chỉ vùng nhớ, các con trỏ cũ trỏ vào vùng đã được thay thế không còn được dùng nữa.
+
+**Ưu tiên khi phù hợp:**
+
+- Biến cục bộ có kích thước cố định.
+- Biến `static`.
+- Mảng có kích thước xác định trước.
+- Bộ đệm được cấp phát cố định từ đầu.
+
+Không có nghĩa là cấp phát động luôn bị cấm; cần tuân theo yêu cầu tài nguyên và quy ước của dự án.
+
+<a id="muc-17-02"></a>
+### 17.2. `volatile`, thanh ghi và ISR
+
+Trong Embedded C, `volatile` thường gặp khi một giá trị có thể thay đổi ngoài luồng thực thi thông thường của đoạn mã hiện tại, ví dụ:
+
+- Thanh ghi ngoại vi.
+- Biến được thay đổi trong ISR.
+- Dữ liệu có thể được phần cứng cập nhật.
+
+**Ví dụ truy cập thanh ghi ánh xạ bộ nhớ:**
+
+```c
+#include <stdint.h>
+
+volatile uint32_t *reg =
+    (volatile uint32_t *)0x40000000u;
+
+*reg |= (1U << 5);
+```
+
+`volatile` giúp trình biên dịch giữ lại các lần đọc/ghi cần thiết đối với đối tượng đó.
+
+**Lưu ý quan trọng:**
+
+- `volatile` không làm thao tác trở thành nguyên tử.
+- `volatile` không tự giải quyết vấn đề tranh chấp dữ liệu giữa nhiều luồng hoặc giữa mã chính và ISR.
+- Khi chia sẻ dữ liệu với ISR, ngoài `volatile` còn phải xét kích thước dữ liệu, tính nguyên tử của thao tác và cơ chế đồng bộ phù hợp với nền tảng.
+
+<a id="muc-17-03"></a>
+### 17.3. Tính xác định
+
+Phần mềm nhúng thường quan tâm tới:
+
+- Thời gian thực thi có thể dự đoán.
+- Sử dụng RAM/Flash có thể kiểm soát.
+- Không rò rỉ tài nguyên.
+- Không tạo cấp phát bất ngờ trong luồng xử lý quan trọng.
+- Tránh hành vi không xác định do con trỏ sai, vượt phạm vi mảng hoặc truy cập vùng nhớ không hợp lệ.
+
+Khi dùng C, cần đặc biệt chú ý:
+
+- Kích thước và vòng đời của bộ đệm.
+- Con trỏ và con trỏ treo.
+- `malloc()`, `calloc()`, `realloc()` và `free()`.
+- Tràn số và chuyển đổi kiểu.
+- Truy cập thanh ghi bằng `volatile`.
+- Thao tác bit.
+- Kích thước `struct`, phần đệm và căn chỉnh dữ liệu.
+- Các hàm xử lý chuỗi và bộ nhớ như `strcpy()`, `memcpy()`, `memmove()` phải dùng với kích thước vùng đích phù hợp.
+
+<a id="muc-17-04"></a>
+### 17.4. Những gì cần nhớ khi phỏng vấn
+
+#### Nhóm bắt buộc
+
+- Quá trình tiền xử lý, biên dịch, hợp dịch và liên kết.
+- Kiểu dữ liệu cơ bản và `sizeof`.
+- Phạm vi biến và thời gian tồn tại.
+- `static`, `extern`, `const`, `volatile`.
+- Truyền tham số trong C là truyền theo giá trị.
+- Con trỏ và phép toán con trỏ.
+- Mảng và mối liên hệ giữa mảng với con trỏ.
+- Chuỗi ký tự và ký tự `\0`.
+- `struct`, `union`, `enum`.
+- Căn chỉnh và phần đệm của `struct`.
+- Hàm con trỏ và callback.
+- `malloc()`, `calloc()`, `realloc()`, `free()`.
+- Rò rỉ bộ nhớ và con trỏ treo.
+- Thao tác bit: bật, xóa, đảo và kiểm tra bit.
+- Big Endian và Little Endian.
+- Liên kết nội bộ và liên kết ngoài.
+- Bảo vệ tệp tiêu đề.
+- `memcpy()`, `memmove()`, `memset()`, `memcmp()`.
+
+#### Nhóm nên biết
+
+- Thư viện tĩnh và thư viện động.
+- Hàm có số lượng đối số thay đổi.
+- Trường bit.
+- `static inline`.
+- Tràn số.
+- Con trỏ `void *`.
+- Các trường hợp con trỏ treo thường gặp.
+- Cách dùng `realloc()` an toàn với con trỏ tạm.
+- Sự khác nhau giữa `memcpy()` và `memmove()`.
+
+#### Chưa cần học sâu ở mức Intern
+
+- Chi tiết ABI.
+- Tối ưu hóa trình biên dịch ở mức chuyên sâu.
+- Bộ cấp phát bộ nhớ tùy chỉnh.
+- Kỹ thuật macro phức tạp.
+- Chi tiết nội bộ của trình liên kết và định dạng tệp đối tượng.
+- Tối ưu hóa Assembly chuyên sâu.
+- Các kỹ thuật quản lý bộ nhớ thời gian thực nâng cao nếu vị trí không yêu cầu.
+
+### Câu hỏi phỏng vấn tự kiểm tra
+
+1. Quá trình từ tệp `.c` đến tệp thực thi gồm những giai đoạn nào?
+2. `static` với biến cục bộ khác gì `static` ở phạm vi tệp?
+3. `extern` dùng để làm gì?
+4. Tại sao trong C mọi đối số đều được xem là truyền theo giá trị?
+5. Mảng khác con trỏ như thế nào?
+6. Tại sao `ptr[i]` tương đương về ý nghĩa với `*(ptr + i)`?
+7. Chuỗi C kết thúc bằng ký tự gì?
+8. `struct` và `union` khác nhau như thế nào?
+9. Tại sao `sizeof(struct)` có thể lớn hơn tổng kích thước các thành viên?
+10. Con trỏ hàm dùng để làm gì?
+11. Callback là gì?
+12. `malloc()` khác `calloc()` ở điểm nào?
+13. Khi `malloc()` hoặc `calloc()` thất bại, chúng trả về gì?
+14. `realloc()` có thể làm thay đổi địa chỉ vùng nhớ không?
+15. Nếu `realloc()` thất bại, vùng nhớ cũ có còn tồn tại không?
+16. Tại sao nên dùng con trỏ tạm khi gọi `realloc()`?
+17. Rò rỉ bộ nhớ là gì?
+18. Con trỏ treo là gì?
+19. `volatile` thường được dùng trong những trường hợp nào trong Embedded?
+20. `volatile` có đảm bảo thao tác nguyên tử hay an toàn đa luồng không?
+21. Công thức bật, xóa, đảo và kiểm tra một bit là gì?
+22. Big Endian và Little Endian khác nhau như thế nào?
+23. `memcpy()` và `memmove()` khác nhau ở điểm nào?
+24. Tại sao cấp phát động cần được cân nhắc trong hệ thống nhúng?
+25. Khi viết Embedded C, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?
+
+[↑ Về mục lục](#muc-luc)
+
