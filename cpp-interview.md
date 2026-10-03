@@ -535,7 +535,7 @@ class Point
 
 - `public`: có thể truy cập từ bên ngoài lớp.
 - `private`: chỉ lớp và các thành phần được phép mới truy cập trực tiếp.
-- `protected`: lớp dẫn xuất có thể truy cập, nhưng mã bên ngoài lớp không truy cập trực tiếp.
+- `protected`: lớp dẫn xuất (lớp con) có thể truy cập, nhưng mã bên ngoài lớp không truy cập trực tiếp.
 
 **Ví dụ:**
 
