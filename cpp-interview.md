@@ -553,6 +553,75 @@ private:
 };
 ```
 
+
+#### Ví dụ kinh điển về đóng gói
+
+- **Đóng gói** là việc gom dữ liệu và các hàm thao tác với dữ liệu đó vào cùng một lớp.
+- Dữ liệu bên trong thường được đặt `private` để mã bên ngoài không thể sửa trực tiếp.
+- Việc đọc hoặc thay đổi dữ liệu được thực hiện thông qua các hàm `public` do lớp cung cấp.
+- Mục đích là bảo vệ trạng thái của đối tượng và kiểm soát cách dữ liệu được thay đổi.
+
+**Ví dụ:**
+
+```cpp
+#include <iostream>
+
+class BankAccount
+{
+private:
+    int balance = 0;  // Dữ liệu được đóng gói và bảo vệ
+
+public:
+    void deposit(int amount)
+    {
+        if (amount > 0) {
+            balance += amount;
+        }
+    }
+
+    bool withdraw(int amount)
+    {
+        if (amount > 0 && amount <= balance) {
+            balance -= amount;
+            return true;
+        }
+
+        return false;
+    }
+
+    int getBalance() const
+    {
+        return balance;
+    }
+};
+
+int main()
+{
+    BankAccount account;
+
+    account.deposit(1000);
+    account.withdraw(300);
+
+    std::cout << account.getBalance() << "\n";
+
+    // account.balance = 100000;
+    // Lỗi: balance là private nên mã bên ngoài không được sửa trực tiếp.
+
+    return 0;
+}
+```
+
+**Giải thích:**
+
+- `balance` được đặt `private`, nên bên ngoài lớp không thể gán tùy ý.
+- Muốn tăng số dư phải đi qua `deposit()`.
+- Muốn giảm số dư phải đi qua `withdraw()`, nên lớp có thể kiểm tra điều kiện trước khi thay đổi.
+- `getBalance()` chỉ đọc dữ liệu nên được khai báo `const`.
+
+**Ý cần nhớ:**
+
+> Đóng gói không chỉ là “giấu biến bằng `private`”, mà là **kiểm soát cách trạng thái của đối tượng được truy cập và thay đổi**.
+
 <a id="muc-04-04"></a>
 ### 4.4. Hàm thành viên
 
@@ -1232,6 +1301,64 @@ public:
 };
 ```
 
+
+#### Ví dụ kinh điển về kế thừa
+
+- **Kế thừa** cho phép lớp con sử dụng lại các thành phần của lớp cha và bổ sung hành vi riêng.
+- Quan hệ thường được hiểu theo kiểu **“là một”**.
+
+Ví dụ:
+
+```text
+Car là một Vehicle
+Motorcycle là một Vehicle
+```
+
+**Ví dụ C++:**
+
+```cpp
+#include <iostream>
+
+class Vehicle
+{
+public:
+    void start()
+    {
+        std::cout << "Phuong tien khoi dong\n";
+    }
+};
+
+class Car : public Vehicle
+{
+public:
+    void openTrunk()
+    {
+        std::cout << "Mo cop xe\n";
+    }
+};
+
+int main()
+{
+    Car car;
+
+    car.start();      // Kế thừa từ Vehicle
+    car.openTrunk();  // Hàm riêng của Car
+
+    return 0;
+}
+```
+
+**Giải thích:**
+
+- `Car : public Vehicle` nghĩa là `Car` kế thừa công khai từ `Vehicle`.
+- `Car` nhận được hàm `start()` từ lớp cha.
+- `Car` có thể bổ sung thêm hành vi riêng như `openTrunk()`.
+- Nhờ kế thừa, phần chức năng chung không cần viết lại trong từng lớp con.
+
+**Ý cần nhớ:**
+
+> Kế thừa chủ yếu dùng để **tái sử dụng và mở rộng hành vi của lớp cơ sở** khi giữa hai lớp có quan hệ “là một”.
+
 <a id="muc-10-02"></a>
 ### 10.2. Hàm `virtual`
 
@@ -1274,6 +1401,94 @@ int value = sensor.read();
 ```text
 value = 25
 ```
+
+
+#### Ví dụ kinh điển về đa hình
+
+- **Đa hình** cho phép cùng một lời gọi hàm nhưng hành vi thực tế khác nhau tùy đối tượng.
+- Trong C++, đa hình lúc chạy thường được thực hiện bằng:
+  - Kế thừa.
+  - Hàm `virtual`.
+  - Con trỏ hoặc tham chiếu tới lớp cơ sở.
+
+**Ví dụ:**
+
+```cpp
+#include <iostream>
+
+class Animal
+{
+public:
+    virtual void sound() const
+    {
+        std::cout << "Am thanh cua dong vat\n";
+    }
+
+    virtual ~Animal() = default;
+};
+
+class Dog : public Animal
+{
+public:
+    void sound() const override
+    {
+        std::cout << "Cho sua\n";
+    }
+};
+
+class Cat : public Animal
+{
+public:
+    void sound() const override
+    {
+        std::cout << "Meo keu\n";
+    }
+};
+
+void makeSound(const Animal &animal)
+{
+    animal.sound();
+}
+
+int main()
+{
+    Dog dog;
+    Cat cat;
+
+    makeSound(dog);
+    makeSound(cat);
+
+    return 0;
+}
+```
+
+**Kết quả:**
+
+```text
+Cho sua
+Meo keu
+```
+
+**Giải thích:**
+
+- `makeSound()` chỉ nhận một tham chiếu `const Animal&`.
+- Khi truyền `Dog`, lời gọi `animal.sound()` chạy `Dog::sound()`.
+- Khi truyền `Cat`, lời gọi giống hệt nhưng chạy `Cat::sound()`.
+- `virtual` làm cho hàm được lựa chọn theo **kiểu thực tế của đối tượng** tại thời gian chạy.
+
+Có thể hình dung:
+
+```text
+Cùng một lời gọi:
+animal.sound()
+
+Dog -> Dog::sound()
+Cat -> Cat::sound()
+```
+
+**Ý cần nhớ:**
+
+> Đa hình cho phép mã phía trên làm việc thông qua một **giao diện chung**, còn mỗi lớp con tự quyết định cách thực hiện hành vi đó.
 
 <a id="muc-10-03"></a>
 ### 10.3. `override`
@@ -1325,6 +1540,112 @@ public:
         return 25;
     }
 };
+```
+
+
+#### Ví dụ kinh điển về trừu tượng hóa
+
+- **Trừu tượng hóa** là chỉ cung cấp cho bên sử dụng những gì cần thiết và che giấu chi tiết triển khai bên trong.
+- Người dùng chỉ cần biết **đối tượng làm được gì**, không cần biết toàn bộ **nó làm như thế nào**.
+- Trong C++, có thể tạo trừu tượng hóa bằng:
+  - Lớp.
+  - Hàm `public` che giấu dữ liệu và xử lý bên trong.
+  - Lớp trừu tượng và hàm thuần ảo.
+
+**Ví dụ gần với Embedded:**
+
+```cpp
+#include <iostream>
+
+class Sensor
+{
+public:
+    virtual int read() = 0;
+    virtual ~Sensor() = default;
+};
+
+class TemperatureSensor : public Sensor
+{
+public:
+    int read() override
+    {
+        // Chi tiết thật có thể gồm:
+        // 1. Đọc thanh ghi ADC.
+        // 2. Chuyển đổi giá trị ADC.
+        // 3. Tính ra nhiệt độ.
+        return 25;
+    }
+};
+
+void printSensorValue(Sensor &sensor)
+{
+    std::cout << sensor.read() << "\n";
+}
+
+int main()
+{
+    TemperatureSensor sensor;
+
+    printSensorValue(sensor);
+
+    return 0;
+}
+```
+
+**Giải thích:**
+
+Phần chương trình sử dụng cảm biến chỉ cần biết:
+
+```cpp
+sensor.read();
+```
+
+Nó không cần biết bên trong `TemperatureSensor::read()` thực hiện:
+
+```text
+Đọc ADC
+    ↓
+Xử lý dữ liệu
+    ↓
+Chuyển đổi sang nhiệt độ
+    ↓
+Trả về kết quả
+```
+
+Lớp `Sensor` chỉ định nghĩa **giao diện chung**:
+
+```cpp
+virtual int read() = 0;
+```
+
+Còn lớp cụ thể quyết định cách thực hiện:
+
+```cpp
+class TemperatureSensor : public Sensor
+```
+
+**Ý cần nhớ:**
+
+> Trừu tượng hóa là **ẩn chi tiết triển khai và chỉ đưa ra giao diện cần thiết cho người sử dụng**.
+
+#### Phân biệt nhanh đóng gói và trừu tượng hóa
+
+| Khái niệm | Ý chính |
+|---|---|
+| Đóng gói | Bảo vệ và kiểm soát dữ liệu/trạng thái bên trong đối tượng. |
+| Trừu tượng hóa | Ẩn chi tiết triển khai và chỉ cung cấp giao diện cần thiết. |
+
+Ví dụ với một `Motor`:
+
+```text
+Đóng gói:
+speed là private
+→ Không cho bên ngoài sửa trực tiếp.
+
+Trừu tượng hóa:
+motor.start()
+→ Người dùng không cần biết bên trong phải cấu hình GPIO,
+  PWM hoặc thanh ghi phần cứng như thế nào.
 ```
 
 <a id="muc-10-05"></a>
