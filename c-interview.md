@@ -1164,6 +1164,33 @@ b -> toàn bộ byte trong vùng nhớ được đặt về 0
   - Trả về `NULL`.
   - Vùng nhớ cũ vẫn còn được cấp phát và con trỏ cũ vẫn còn hợp lệ.
 
+**Khi tăng kích thước vùng nhớ:**
+
+- Nếu vùng nhớ cũ **có thể mở rộng tại chỗ**, `realloc()` có thể giữ nguyên địa chỉ và mở rộng vùng hiện tại.
+- Nếu vùng nhớ cũ **không thể mở rộng tại chỗ**, `realloc()` có thể chuyển dữ liệu sang một vùng nhớ mới đủ lớn; khi thành công, vùng nhớ cũ được giải phóng và con trỏ trả về trỏ tới vùng nhớ mới.
+- Dữ liệu cũ được giữ lại trong phần kích thước tương ứng.
+- Phần vùng nhớ mới được thêm vào **không được khởi tạo**, nên có giá trị không xác định.
+- Nếu `realloc()` thất bại, vùng nhớ cũ **không bị giải phóng**.
+
+Có thể hình dung:
+
+```text
+Có thể mở rộng tại chỗ:
+[ dữ liệu cũ ][ phần mới chưa khởi tạo ]
+^
+địa chỉ có thể giữ nguyên
+
+Không thể mở rộng tại chỗ:
+vùng cũ                     vùng mới
+[ dữ liệu cũ ]   --->   [ dữ liệu cũ ][ phần mới chưa khởi tạo ]
+                         ^
+                    địa chỉ trả về
+
+realloc() thất bại:
+→ trả về NULL
+→ vùng cũ vẫn còn nguyên
+```
+
 **Ví dụ:**
 
 ```c
