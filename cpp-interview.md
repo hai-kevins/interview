@@ -1,4 +1,4 @@
-# Ghi chú phỏng vấn C++ — Intern Embedded Firmware
+# Ghi chú phỏng vấn C++
 
 > **Mục tiêu:** Ôn phần C++ cần thiết cho phỏng vấn.  
 > **Tiền đề:** Đã nắm phần C cơ bản và C cho Embedded. Tài liệu này tập trung vào những phần C++ khác C hoặc thường được hỏi khi dùng C++ trong firmware.  
