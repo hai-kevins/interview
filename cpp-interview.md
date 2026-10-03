@@ -1357,7 +1357,7 @@ int main()
 
 **Ý cần nhớ:**
 
-> Kế thừa chủ yếu dùng để **tái sử dụng và mở rộng hành vi của lớp cơ sở** khi giữa hai lớp có quan hệ “là một”.
+> Kế thừa chủ yếu dùng để **tái sử dụng và mở rộng phương thức, hành vi của lớp cơ sở** khi giữa hai lớp có quan hệ “là một”.
 
 <a id="muc-10-02"></a>
 ### 10.2. Hàm `virtual`
