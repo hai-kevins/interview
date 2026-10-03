@@ -1362,7 +1362,7 @@ int main()
 <a id="muc-10-02"></a>
 ### 10.2. Hàm `virtual`
 
-- Hàm `virtual` cho phép lời gọi hàm được chọn theo kiểu đối tượng thực tế khi truy cập thông qua con trỏ hoặc tham chiếu tới lớp cơ sở (lớp cha).
+- Hàm `virtual` dùng để hỗ trợ đa hình lúc chạy, giúp chọn hàm ghi đè của lớp dẫn xuất (lớp con) dựa trên đối tượng thực tế, dù thao tác thông qua lớp cơ sở (lớp cha).
 - Đây là cơ sở của **đa hình lúc chạy**.
 
 **Ví dụ:**
@@ -1393,7 +1393,7 @@ Sử dụng:
 TemperatureSensor temperature_sensor;
 Sensor &sensor = temperature_sensor;
 
-int value = sensor.read();
+int value = sensor.read(); // chọn hàm ghi đè của lớp dẫn xuất (lớp con) thay vì lớp cơ sở (lớp cha).
 ```
 
 **Kết quả:**
