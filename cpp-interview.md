@@ -576,7 +576,7 @@ private:
 <a id="muc-04-05"></a>
 ### 4.5. Con trỏ `this`
 
-- Trong hàm thành viên không phải `static`, `this` trỏ tới đối tượng đang gọi hàm.
+- Trong hàm thành viên không phải `static`, `this` là con trỏ trỏ tới đối tượng đang gọi hàm thành viên hiện tại.
 - `this->thanh_vien` biểu diễn cách truy cập một thành viên của chính đối tượng đó.
 
 **Ví dụ:**
