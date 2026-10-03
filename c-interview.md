@@ -83,6 +83,7 @@
    - [16.6. Bảo vệ tệp tiêu đề](#muc-16-06)
    - [16.7. Hàm `static inline`](#muc-16-07)
    - [16.8. Các hàm thao tác bộ nhớ](#muc-16-08)
+   - [16.9. Các lỗi phổ biến trong C và cách gỡ lỗi](#muc-16-09)
 17. [C trong phần mềm nhúng](#chuong-17)
    - [17.1. Cấp phát động](#muc-17-01)
    - [17.2. `volatile`, thanh ghi và ISR](#muc-17-02)
@@ -1188,8 +1189,8 @@ Có thể mở rộng tại chỗ:
 Không thể mở rộng tại chỗ:
 vùng cũ                     vùng mới
 [ dữ liệu cũ ]   --->   [ dữ liệu cũ ][ phần mới chưa khởi tạo ]
-                              ^
-                         địa chỉ trả về
+                        ^
+                    địa chỉ trả về
 
 realloc() thất bại:
 → trả về NULL
@@ -2484,6 +2485,215 @@ int memcmp(const void *s1, const void *s2, size_t n);
 
 ---
 
+<a id="muc-16-09"></a>
+### 16.9. Các lỗi phổ biến trong C và cách gỡ lỗi
+
+Có thể chia lỗi trong C thành 5 nhóm chính:
+
+```text
+Compile-time
+→ lỗi/cảnh báo khi biên dịch
+
+Link-time
+→ lỗi khi liên kết các tệp đối tượng và thư viện
+
+Run-time / Memory
+→ chương trình đã biên dịch nhưng gặp lỗi khi chạy hoặc quản lý bộ nhớ sai
+
+Logic
+→ chương trình chạy nhưng cho kết quả sai
+
+Embedded-specific
+→ lỗi liên quan tới phần cứng, ISR, thanh ghi và tính nguyên tử
+```
+
+> **Lưu ý:** Nhiều lỗi bộ nhớ trong C dẫn tới **undefined behavior** — hành vi không xác định. Chương trình có thể bị dừng, cho kết quả sai hoặc thậm chí có vẻ chạy bình thường. Vì vậy không nên dựa vào việc “chạy không lỗi” để kết luận mã nguồn là đúng.
+
+#### 1. Compile-time — lỗi khi biên dịch
+
+| Lỗi | Xảy ra khi nào? | Tại sao? | Cách gỡ lỗi |
+|---|---|---|---|
+| Sai cú pháp | Thiếu `;`, ngoặc `{}` không cân xứng, viết sai từ khóa... | Mã nguồn không tuân theo cú pháp của C. | Đọc vị trí lỗi compiler báo; kiểm tra cả dòng ngay trước đó vì lỗi cú pháp có thể được phát hiện muộn hơn vị trí gây lỗi. |
+| Chưa khai báo | Dùng biến, hàm hoặc kiểu dữ liệu trước khi có khai báo phù hợp. | Compiler chưa biết tên hoặc kiểu của thành phần đang được sử dụng. | Kiểm tra khai báo, prototype và tệp tiêu đề cần `#include`. |
+| Sai hoặc không tương thích kiểu | Truyền sai kiểu tham số, gán giữa các kiểu không phù hợp, chuyển đổi có nguy cơ mất dữ liệu. | Kiểu dữ liệu của biểu thức không phù hợp với ngữ cảnh sử dụng. | Đọc cảnh báo compiler, kiểm tra prototype và kiểu của biến; chỉ ép kiểu khi thực sự hiểu chuyển đổi đang thực hiện. |
+
+**Ví dụ prototype hợp lệ trước phần định nghĩa:**
+
+```c
+int add(int a, int b);
+
+int main(void)
+{
+    return add(1, 2);
+}
+
+int add(int a, int b)
+{
+    return a + b;
+}
+```
+
+Không bắt buộc hàm phải được định nghĩa trước `main()`, nhưng phải có **khai báo phù hợp** trước khi gọi.
+
+**Khi gỡ lỗi nên bật cảnh báo compiler**, ví dụ với GCC/Clang:
+
+```bash
+-Wall -Wextra -Wpedantic
+```
+
+Có thể dùng thêm các cảnh báo như `-Wconversion` hoặc `-Wshadow` khi dự án phù hợp.
+
+#### 2. Link-time — lỗi khi liên kết
+
+| Lỗi | Xảy ra khi nào? | Tại sao? | Cách gỡ lỗi |
+|---|---|---|---|
+| `undefined reference` | Compiler đã thấy khai báo nhưng linker không tìm thấy phần định nghĩa cần thiết. | Quên biên dịch/liên kết tệp `.c`, thiếu thư viện, sai tên hàm hoặc chỉ khai báo mà không định nghĩa. | Kiểm tra tệp nguồn có được đưa vào quá trình build không; kiểm tra thư viện, prototype và tên symbol. |
+| `multiple definition` | Linker tìm thấy nhiều phần định nghĩa không hợp lệ của cùng một symbol. | Định nghĩa biến/hàm toàn cục ở nhiều tệp, hoặc `#include` trực tiếp tệp `.c`. | Chỉ `#include` tệp `.h`; đặt khai báo `extern` trong header và chỉ có một phần định nghĩa thật trong một tệp `.c`. |
+
+Ví dụ đúng với biến toàn cục:
+
+```c
+// counter.h
+extern int counter;
+```
+
+```c
+// counter.c
+int counter = 0;
+```
+
+```c
+// main.c
+#include "counter.h"
+```
+
+#### 3. Run-time / Memory — lỗi khi chạy và quản lý bộ nhớ
+
+| Lỗi | Xảy ra khi nào? | Tại sao? | Cách gỡ lỗi |
+|---|---|---|---|
+| Biến chưa khởi tạo | Đọc biến cục bộ trước khi gán giá trị. | Giá trị ban đầu của biến tự động không được xác định. | Khởi tạo biến khi khai báo; bật cảnh báo compiler. |
+| Wild pointer — con trỏ hoang | Con trỏ chưa được khởi tạo nhưng đã bị giải tham chiếu. | Con trỏ đang chứa địa chỉ không xác định. | Khởi tạo con trỏ bằng địa chỉ hợp lệ hoặc `NULL`; kiểm tra trước khi dùng. |
+| Null pointer dereference | Giải tham chiếu con trỏ `NULL`. | `NULL` không trỏ tới một đối tượng hợp lệ để truy cập. | Kiểm tra `ptr != NULL` trước khi giải tham chiếu khi con trỏ có thể rỗng. |
+| Dangling pointer — con trỏ treo | Con trỏ vẫn giữ địa chỉ của vùng nhớ đã `free()` hoặc đối tượng đã hết vòng đời. | Đối tượng đích không còn tồn tại nhưng con trỏ vẫn giữ địa chỉ cũ. | Không sử dụng sau `free()`; có thể gán `ptr = NULL`; không trả về địa chỉ biến cục bộ tự động. |
+| Use-after-free | Truy cập vùng nhớ sau khi đã `free()`. | Vùng nhớ không còn thuộc quyền sử dụng của chương trình tại con trỏ đó. | Theo dõi rõ quyền sở hữu vùng nhớ; sau `free()` không đọc/ghi qua con trỏ cũ. |
+| Memory leak — rò rỉ bộ nhớ | Cấp phát bằng `malloc()`/`calloc()`/`realloc()` nhưng mất con trỏ hoặc không `free()` khi không còn dùng. | Vùng nhớ vẫn được giữ trên Heap nhưng chương trình không còn cách hợp lệ để giải phóng. | Ghép rõ mỗi lần cấp phát với nơi giải phóng; kiểm tra các nhánh `return`; dùng công cụ kiểm tra bộ nhớ khi môi trường hỗ trợ. |
+| Out-of-bounds / Buffer overflow | Truy cập vượt giới hạn mảng hoặc bộ đệm. | C không tự kiểm tra biên khi dùng `[]` hoặc con trỏ. | Kiểm tra chỉ số và kích thước trước khi đọc/ghi; truyền kích thước bộ đệm cùng với con trỏ. |
+| Double free | Gọi `free()` hai lần với cùng một vùng nhớ. | Lần `free()` thứ hai tác động lên vùng không còn được cấp phát cho con trỏ đó. | Quy định rõ một chủ thể chịu trách nhiệm giải phóng; sau `free()` có thể đặt con trỏ về `NULL`. |
+| Invalid free | Gọi `free()` với địa chỉ không được trả về bởi hàm cấp phát động hợp lệ. | `free()` chỉ được dùng với vùng nhớ động phù hợp hoặc `NULL`. | Không `free()` biến cục bộ, biến toàn cục hoặc con trỏ đã bị dịch khỏi địa chỉ gốc. |
+| Stack overflow | Stack không còn đủ không gian. | Đệ quy quá sâu, đệ quy vô hạn hoặc khai báo biến/mảng cục bộ quá lớn. | Kiểm tra độ sâu lời gọi; giảm dữ liệu cục bộ lớn; theo dõi mức sử dụng Stack nếu RTOS/toolchain hỗ trợ. |
+| Stack buffer overflow / stack smashing | Ghi vượt bộ đệm cục bộ trên Stack. | Ghi đè sang dữ liệu khác trong stack frame. | Kiểm tra kích thước bộ đệm; dùng API có giới hạn kích thước; stack protector có thể giúp phát hiện nhưng không thay thế việc sửa lỗi. |
+| Heap corruption | Cấu trúc dữ liệu Heap bị phá hỏng. | Ghi vượt vùng cấp phát, double free hoặc thao tác sai con trỏ Heap. | Kiểm tra vị trí cấp phát/giải phóng, kích thước vùng và mọi phép toán con trỏ liên quan. |
+| Truy cập vùng nhớ không hợp lệ | Đọc/ghi địa chỉ không được phép hoặc không tồn tại. | Con trỏ sai, vượt biên, địa chỉ phần cứng sai... | Trên hệ điều hành có thể gặp Segmentation Fault; trên MCU có thể gặp HardFault/BusFault/MemManage Fault tùy kiến trúc. Dùng debugger để xem địa chỉ gây lỗi. |
+| Chia số nguyên cho `0` | Mẫu số của phép chia số nguyên bằng `0`. | Trong C, chia số nguyên cho `0` là **undefined behavior**. | Kiểm tra mẫu số trước phép chia; đặt breakpoint hoặc assertion tại nơi tính mẫu số. |
+
+**Ví dụ con trỏ treo và use-after-free:**
+
+```c
+int *ptr = malloc(sizeof(int));
+
+if (ptr != NULL) {
+    *ptr = 10;
+    free(ptr);
+
+    // *ptr = 20;   // Sai: use-after-free
+    ptr = NULL;
+}
+```
+
+**Ví dụ vượt phạm vi:**
+
+```c
+int arr[5];
+
+arr[0] = 10;   // Hợp lệ
+arr[4] = 50;   // Hợp lệ
+
+// arr[5] = 60;   // Sai: vượt phạm vi
+```
+
+**Công cụ gỡ lỗi hữu ích khi môi trường hỗ trợ:**
+
+- GDB hoặc debugger của IDE.
+- JTAG/SWD trên vi điều khiển.
+- AddressSanitizer (ASan) để phát hiện nhiều lỗi bộ nhớ khi chạy trên môi trường/toolchain hỗ trợ.
+- UndefinedBehaviorSanitizer (UBSan) để phát hiện nhiều dạng hành vi không xác định.
+- Công cụ phân tích tĩnh như `cppcheck` hoặc `clang-tidy`.
+
+#### 4. Logic — chương trình chạy nhưng kết quả sai
+
+| Lỗi | Xảy ra khi nào? | Tại sao? | Cách gỡ lỗi |
+|---|---|---|---|
+| Off-by-one | Vòng lặp chạy thừa hoặc thiếu đúng một phần tử. | Dùng `<=` thay cho `<`, hoặc xác định sai chỉ số đầu/cuối. | Kiểm tra rõ miền chỉ số, đặc biệt với mảng có `N` phần tử thì chỉ số hợp lệ thường là `0` đến `N - 1`. |
+| Nhầm `=` và `==` | Viết phép gán trong điều kiện thay vì phép so sánh. | `=` trả về một giá trị nên biểu thức vẫn có thể hợp lệ về cú pháp. | Bật cảnh báo compiler; kiểm tra các biểu thức điều kiện. |
+| Tràn số | Kết quả vượt phạm vi kiểu dữ liệu. | Kiểu dữ liệu không đủ biểu diễn kết quả. | Chọn kiểu phù hợp; kiểm tra trước khi tính; nhớ rằng unsigned integer có quy tắc modulo còn signed integer overflow là undefined behavior. |
+| Chuyển đổi kiểu sai | Ép kiểu hoặc chuyển kiểu làm mất dữ liệu/đổi ý nghĩa giá trị. | Khác kích thước, signed/unsigned hoặc kiểu số thực/số nguyên. | Đọc cảnh báo chuyển đổi; kiểm tra phạm vi trước khi ép kiểu. |
+| Thao tác bit sai | Dùng sai mặt nạ hoặc nhầm `&`, `|` với `&&`, `||`. | Toán tử bit và toán tử logic có mục đích khác nhau. | In giá trị ở dạng hex/binary; kiểm tra mask từng bước. |
+| Xử lý chuỗi sai | Quên `'\0'`, vùng đích quá nhỏ, nối/sao chép quá nhiều dữ liệu. | Hàm xử lý chuỗi C dựa vào ký tự kết thúc và thường không tự biết kích thước vùng đích. | Theo dõi độ dài và sức chứa; dùng kích thước bộ đệm rõ ràng; kiểm tra `strlen()` khi phù hợp. |
+| Sai định dạng `printf()` | Format specifier không khớp kiểu của đối số. | `printf()` là hàm có số lượng đối số thay đổi; nó dựa vào chuỗi định dạng để diễn giải dữ liệu. | Bật cảnh báo compiler và đối chiếu từng `%...` với kiểu thực tế. |
+
+**Ví dụ off-by-one:**
+
+```c
+int arr[10];
+
+for (int i = 0; i < 10; i++) {
+    arr[i] = 0;
+}
+```
+
+Nếu viết:
+
+```c
+for (int i = 0; i <= 10; i++)
+```
+
+thì lần cuối sẽ truy cập `arr[10]`, vượt phạm vi của mảng.
+
+#### 5. Lỗi thường gặp riêng trong Embedded
+
+| Lỗi | Xảy ra khi nào? | Tại sao? | Cách gỡ lỗi |
+|---|---|---|---|
+| Thiếu `volatile` khi cần | Main/ISR hoặc phần cứng thay đổi một giá trị nhưng compiler không thấy luồng thay đổi thông thường. | Compiler có thể tối ưu việc đọc/ghi theo giả định của chương trình bình thường. | Dùng `volatile` đúng nơi như thanh ghi phần cứng hoặc biến chia sẻ với ISR khi phù hợp. |
+| Hiểu sai `volatile` | Dùng `volatile` và cho rằng truy cập đã nguyên tử hoặc an toàn đồng thời. | `volatile` chỉ ảnh hưởng cách compiler giữ các lần truy cập cần thiết; không cung cấp khóa hay tính nguyên tử. | Kiểm tra kích thước truy cập, kiến trúc CPU và dùng critical section/atomic/cơ chế đồng bộ phù hợp. |
+| Dữ liệu dùng chung với ISR bị cập nhật không nhất quán | Main và ISR cùng đọc/ghi dữ liệu nhiều byte hoặc chuỗi thao tác không nguyên tử. | ISR có thể xen vào giữa quá trình cập nhật. | Bảo vệ vùng tới hạn khi cần; thiết kế giao tiếp main/ISR đơn giản; kiểm tra tài liệu MCU/RTOS. |
+| Truy cập sai thanh ghi | Sai địa chỉ, sai độ rộng, sai mặt nạ bit hoặc dùng thanh ghi không đúng chế độ. | Peripheral được điều khiển trực tiếp qua memory-mapped register. | Đối chiếu datasheet/reference manual; xem thanh ghi bằng debugger; kiểm tra địa chỉ và mask. |
+| Stack quá nhỏ | Task RTOS hoặc chương trình bare-metal dùng nhiều biến cục bộ/lời gọi sâu hơn dự kiến. | Stack có kích thước hữu hạn và thường nhỏ trong MCU. | Theo dõi high-water mark nếu RTOS hỗ trợ; kiểm tra linker map; giảm biến cục bộ lớn. |
+
+#### Quy trình gỡ lỗi ngắn gọn
+
+Khi gặp lỗi, có thể đi theo thứ tự:
+
+```text
+1. Đọc toàn bộ lỗi và cảnh báo của compiler/linker.
+        ↓
+2. Xác định lỗi xảy ra ở Compile-time, Link-time hay Run-time.
+        ↓
+3. Tái hiện lỗi bằng trường hợp nhỏ và ổn định nhất có thể.
+        ↓
+4. Dùng breakpoint và xem giá trị biến/con trỏ.
+        ↓
+5. Với lỗi bộ nhớ:
+   kiểm tra địa chỉ + kích thước + vòng đời + quyền sở hữu.
+        ↓
+6. Với Embedded:
+   xem fault status, thanh ghi CPU/peripheral và Stack.
+        ↓
+7. Sửa nguyên nhân gốc rồi bật lại cảnh báo để kiểm tra.
+```
+
+**Ý cần nhớ khi phỏng vấn:**
+
+- Compile-time: compiler phát hiện vấn đề trong mã nguồn.
+- Link-time: linker không ghép được các symbol thành chương trình hoàn chỉnh.
+- Run-time/Memory: mã đã build nhưng truy cập dữ liệu/bộ nhớ sai khi chạy.
+- Logic: chương trình chạy nhưng thuật toán hoặc kết quả sai.
+- Embedded: ngoài mã C còn phải kiểm tra thanh ghi, ISR, Stack và hành vi phần cứng.
+- Các lỗi như vượt biên, use-after-free, signed integer overflow hoặc chia số nguyên cho `0` có thể dẫn tới **undefined behavior**, không nhất thiết lúc nào cũng làm chương trình dừng ngay.
+
+[↑ Về mục lục](#muc-luc)
+
+---
+
 <a id="chuong-17"></a>
 ## 17. C trong phần mềm nhúng
 
@@ -2599,6 +2809,16 @@ Khi dùng C, cần đặc biệt chú ý:
 - Các trường hợp con trỏ treo thường gặp.
 - Cách dùng `realloc()` an toàn với con trỏ tạm.
 - Sự khác nhau giữa `memcpy()` và `memmove()`.
+
+#### Chưa cần học sâu ở mức Intern
+
+- Chi tiết ABI.
+- Tối ưu hóa trình biên dịch ở mức chuyên sâu.
+- Bộ cấp phát bộ nhớ tùy chỉnh.
+- Kỹ thuật macro phức tạp.
+- Chi tiết nội bộ của trình liên kết và định dạng tệp đối tượng.
+- Tối ưu hóa Assembly chuyên sâu.
+- Các kỹ thuật quản lý bộ nhớ thời gian thực nâng cao nếu vị trí không yêu cầu.
 
 ### Câu hỏi phỏng vấn tự kiểm tra
 
