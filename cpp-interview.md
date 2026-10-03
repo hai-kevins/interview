@@ -2399,7 +2399,7 @@ State state = State::Idle;
 <a id="muc-15-02"></a>
 ### 15.2. `constexpr`
 
-- `constexpr` cho biết một giá trị hoặc hàm có thể tham gia vào tính toán lúc biên dịch khi điều kiện cho phép.
+- `constexpr` cho biết một giá trị hoặc hàm có thể tham gia vào tính toán trong giai đoạn biên dịch (trong quá trình biên dịch) khi điều kiện cho phép.
 - Hữu ích khi giá trị đã biết từ lúc biên dịch.
 
 **Ví dụ:**
@@ -2422,7 +2422,7 @@ constexpr int value = square(5);
 <a id="muc-15-03"></a>
 ### 15.3. `static constexpr`
 
-- Thường dùng cho hằng số thuộc về một lớp.
+- `static constexpr` là một hằng số biết được trong giai đoạn biên dịch (trong quá trình biên dịch), thành viên đó thuộc về lớp, dùng chung, không phải mỗi đối tượng có một bản riêng.
 
 ```cpp
 class Uart
@@ -2431,12 +2431,13 @@ public:
     static constexpr int DEFAULT_BAUDRATE = 115200;
 };
 ```
-
-Sử dụng:
+Ta tạo:
 
 ```cpp
-int baudrate = Uart::DEFAULT_BAUDRATE;
+Uart uart1;
+Uart uart2;
 ```
+Thì `DEFAULT_BAUDRATE` thuộc về cả uart1 và uart2.
 
 [↑ Về mục lục](#muc-luc)
 
