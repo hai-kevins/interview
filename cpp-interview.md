@@ -824,6 +824,57 @@ const Motor motor;
 
 - Chỉ những hàm thành viên được khai báo phù hợp với đối tượng `const` mới có thể được gọi.
 
+**Ví dụ:**
+
+```cpp
+#include <iostream>
+
+class Motor {
+private:
+    int speed = 0;
+
+public:
+    Motor(int initial_speed) {
+        this->speed = initial_speed;
+    }
+
+    // Hàm thành viên thường:
+    // Không có từ khóa const ở cuối nên hàm này
+    // có quyền thay đổi trạng thái của đối tượng.
+    void spin(int new_speed) {
+        this->speed = new_speed;  // Thay đổi tốc độ của động cơ
+    }
+
+    // Hàm thành viên const:
+    // const ở cuối nghĩa là hàm này không được phép
+    // thay đổi trạng thái của đối tượng thông qua this.
+    int get_speed() const {
+        // this->speed = 100;
+        // Lỗi biên dịch vì get_speed() là hàm const.
+
+        return this->speed;  // Chỉ đọc giá trị speed nên hợp lệ
+    }
+};
+
+int main() {
+    const Motor motor(1000);
+
+    // HỢP LỆ:
+    // motor là const và get_speed() cũng là hàm const.
+    std::cout << "Toc do hien tai: "
+              << motor.get_speed()
+              << "\n";
+
+    // KHÔNG HỢP LỆ:
+    // spin() là hàm thành viên thường, có khả năng sửa speed.
+    // Vì motor là đối tượng const nên không được gọi hàm này.
+    // motor.spin(2000);
+
+    return 0;
+}
+
+```
+
 <a id="muc-06-02"></a>
 ### 6.2. Hàm thành viên `const`
 
