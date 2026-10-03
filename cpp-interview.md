@@ -440,7 +440,7 @@ void process(const SensorData &data)
 <a id="muc-03-04"></a>
 ### 3.4. Hàm `inline`
 
-- `inline` cho biết hàm là ứng viên để trình biên dịch chèn mã trực tiếp tại nơi gọi.
+- `inline` cho biết hàm là ứng viên để trình biên dịch chèn mã trực tiếp tại nơi gọi hàm (với hàm thông thường, khi lời gọi hàm được gọi thì CPU sẽ phải tạo Stack Frame).
 - Trình biên dịch vẫn có quyền quyết định có thực hiện chèn hay không.
 - `inline` còn có vai trò liên quan đến quy tắc định nghĩa hàm trong nhiều đơn vị dịch.
 
