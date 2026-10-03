@@ -594,6 +594,19 @@ private:
     int speed = 0;
 };
 ```
+Khi gọi
+```cpp
+Motor motor;
+motor.setSpeed(50);
+```
+thì bên trong setSpeed():
+```cpp
+this
+```
+sẽ trỏ tới chính đối tượng:
+```cpp
+motor
+```
 
 - Ở đây `this->speed` là biến thành viên.
 - `speed` bên phải là tham số hàm.
