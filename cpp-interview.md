@@ -1362,7 +1362,7 @@ int main()
 <a id="muc-10-02"></a>
 ### 10.2. Hàm `virtual`
 
-- Hàm `virtual` cho phép lời gọi hàm được chọn theo kiểu đối tượng thực tế khi truy cập thông qua con trỏ hoặc tham chiếu tới lớp cơ sở.
+- Hàm `virtual` cho phép lời gọi hàm được chọn theo kiểu đối tượng thực tế khi truy cập thông qua con trỏ hoặc tham chiếu tới lớp cơ sở (lớp cha).
 - Đây là cơ sở của **đa hình lúc chạy**.
 
 **Ví dụ:**
