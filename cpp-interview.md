@@ -1079,6 +1079,13 @@ b = a;
 - Nếu thành viên là con trỏ sở hữu vùng nhớ, hai đối tượng có thể cùng giữ một địa chỉ.
 - Điều này có thể dẫn tới sửa chung dữ liệu hoặc giải phóng cùng vùng nhớ nhiều lần.
 
+Nếu chỉ sao chép `data`, cả hai đối tượng có thể giữ cùng một địa chỉ.
+
+#### Sao chép sâu
+
+- Tạo vùng tài nguyên mới cho đối tượng đích.
+- Sao chép nội dung tài nguyên thay vì chỉ sao chép địa chỉ.
+
 **Ví dụ vấn đề:**
 
 ```cpp
@@ -1088,13 +1095,18 @@ public:
     int *data;
 };
 ```
+Nếu sao chép nông:
+```cpp
+obj1.data ──┐
+            ├──> cùng một vùng nhớ
+obj2.data ──┘
+```
+Nếu sao chép sâu:
+```cpp
+obj1.data ─────> vùng nhớ A
 
-Nếu chỉ sao chép `data`, cả hai đối tượng có thể giữ cùng một địa chỉ.
-
-#### Sao chép sâu
-
-- Tạo vùng tài nguyên mới cho đối tượng đích.
-- Sao chép nội dung tài nguyên thay vì chỉ sao chép địa chỉ.
+obj2.data ─────> vùng nhớ B
+```
 
 **Ý cần nhớ khi phỏng vấn:**
 
