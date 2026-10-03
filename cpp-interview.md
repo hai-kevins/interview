@@ -1304,7 +1304,7 @@ public:
 
 #### Ví dụ kinh điển về kế thừa
 
-- **Kế thừa** cho phép lớp con sử dụng lại các thành phần của lớp cha và bổ sung hành vi riêng.
+- **Kế thừa** cho phép lớp con sử dụng lại các thuộc tính, phương thức của lớp cha và bổ sung thuộc tính, phương thức riêng.
 - Quan hệ thường được hiểu theo kiểu **“là một”**.
 
 Ví dụ:
