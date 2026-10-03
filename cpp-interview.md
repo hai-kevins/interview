@@ -261,7 +261,7 @@ int &ref = a;
 <a id="muc-02-03"></a>
 ### 2.3. Tham chiếu `const`
 
-- `const T&` cho phép hàm nhận một đối tượng mà không sao chép toàn bộ đối tượng.
+- `const T&` cho phép hàm nhận một đối tượng mà không sao chép toàn bộ đối tượng (tức là không tạo ra bản sao của đối tượng giống như truyền tham trị).
 - Hàm không được sửa đối tượng thông qua tham chiếu `const`.
 - Đây là cách rất thường dùng khi truyền `struct`, `class` hoặc đối tượng lớn.
 
