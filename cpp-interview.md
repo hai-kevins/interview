@@ -2528,12 +2528,6 @@ Các từ khóa chính:
 - Một số dự án không sử dụng ngoại lệ để giảm kích thước mã, giảm phụ thuộc thời gian chạy hoặc giữ hành vi dễ dự đoán hơn.
 - Có dự án vẫn sử dụng ngoại lệ nếu nền tảng và yêu cầu cho phép.
 
-Ở mức Intern:
-
-- Biết ngoại lệ dùng để làm gì.
-- Biết một số dự án nhúng có thể tắt ngoại lệ.
-- Không cần học sâu cơ chế unwinding.
-
 <a id="muc-17-02"></a>
 ### 17.2. RTTI
 
