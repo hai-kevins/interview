@@ -1064,49 +1064,173 @@ dia_chi(arr[i][j])
 ### 10.3. Mảng động và cấp phát bộ nhớ
 
 - Mảng động là vùng nhớ dùng để lưu nhiều phần tử và được cấp phát trong thời gian chạy.
-- Thường được cấp phát từ Heap bằng `malloc`, `calloc`, `realloc` và giải phóng bằng `free`.
+- Thường được cấp phát từ Heap bằng `malloc()`, `calloc()`, `realloc()` và giải phóng bằng `free()`.
+- Các hàm này được khai báo trong:
+
+```c
+#include <stdlib.h>
+```
+
+#### So sánh `malloc()`, `calloc()` và `realloc()`
+
+| Hàm | Mục đích | Tham số kích thước | Giá trị ban đầu | Thành công trả về | Thất bại trả về |
+|---|---|---|---|---|---|
+| `malloc()` | Cấp phát vùng nhớ mới | Tổng số byte | Chưa được khởi tạo | `void *` trỏ tới vùng nhớ mới | `NULL` |
+| `calloc()` | Cấp phát vùng nhớ mới cho nhiều phần tử | Số phần tử và kích thước mỗi phần tử | Toàn bộ byte được đặt về `0` | `void *` trỏ tới vùng nhớ mới | `NULL` |
+| `realloc()` | Thay đổi kích thước vùng nhớ đã cấp phát | Kích thước mới tổng cộng | Giữ lại dữ liệu cũ trong phần kích thước còn phù hợp | `void *` trỏ tới vùng nhớ sau khi thay đổi kích thước | `NULL` |
+
+> Trong C, `void *` do `malloc()`, `calloc()` và `realloc()` trả về có thể gán trực tiếp cho con trỏ kiểu dữ liệu phù hợp mà không cần ép kiểu.
 
 #### `malloc()`
 
-- Yêu cầu cấp phát một vùng nhớ có kích thước xác định.
-- Thành công: trả về `void *` trỏ tới vùng nhớ mới.
-- Thất bại: trả về `NULL`.
+- `malloc()` yêu cầu cấp phát một vùng nhớ có kích thước xác định theo **tổng số byte**.
 - Vùng nhớ mới **chưa được khởi tạo**.
-- Trong C, không cần ép kiểu kết quả của `malloc()`.
+- Nếu thành công, trả về con trỏ `void *` trỏ tới vùng nhớ mới.
+- Nếu thất bại, trả về `NULL`.
 
 **Ví dụ:**
 
 ```c
 int *ptr = malloc(10 * sizeof(int));
+
+if (ptr == NULL) {
+    // Cấp phát thất bại
+}
+```
+
+Có thể hiểu:
+
+```text
+malloc(10 * sizeof(int))
+        ↓
+cấp phát đủ chỗ cho 10 int
+        ↓
+giá trị ban đầu chưa xác định
 ```
 
 #### `calloc()`
 
-- Cấp phát vùng nhớ cho nhiều phần tử và đặt toàn bộ byte trong vùng nhớ mới về `0`.
+- `calloc()` cấp phát vùng nhớ cho nhiều phần tử.
+- Nhận riêng:
+  - Số lượng phần tử.
+  - Kích thước của mỗi phần tử.
+- Toàn bộ byte trong vùng nhớ mới được đặt về `0`.
+- Nếu thành công, trả về con trỏ `void *` trỏ tới vùng nhớ mới.
+- Nếu thất bại, trả về `NULL`.
 
 **Ví dụ:**
 
 ```c
 int *ptr = calloc(10, sizeof(int));
+
+if (ptr == NULL) {
+    // Cấp phát thất bại
+}
 ```
 
-- Không nên hiểu đơn giản rằng `calloc()` luôn tạo ra giá trị `NULL` cho mọi kiểu con trỏ hoặc `0.0` cho mọi kiểu dấu phẩy động trên mọi hệ thống; điều chắc chắn là các byte được đặt về `0`.
+Có thể hiểu:
+
+```text
+calloc(10, sizeof(int))
+       ↓
+10 phần tử × sizeof(int)
+       ↓
+toàn bộ byte được đặt về 0
+```
+
+So sánh nhanh:
+
+```c
+int *a = malloc(10 * sizeof(int));
+int *b = calloc(10, sizeof(int));
+```
+
+```text
+a -> vùng nhớ chưa được khởi tạo
+b -> toàn bộ byte trong vùng nhớ được đặt về 0
+```
+
+> Không nên hiểu rằng `calloc()` luôn tạo ra giá trị `NULL` cho mọi kiểu con trỏ hoặc `0.0` cho mọi kiểu dấu phẩy động trên mọi hệ thống; điều được đảm bảo là các byte được đặt về `0`.
 
 #### `realloc()`
 
-- Thay đổi kích thước của vùng nhớ đã được cấp phát trước đó.
-- `new_size` là **kích thước mới tổng cộng**.
-- Địa chỉ trả về có thể giống hoặc khác địa chỉ cũ.
+- `realloc()` dùng để thay đổi kích thước của vùng nhớ đã được cấp phát trước đó.
+- Tham số kích thước là **kích thước mới tổng cộng**, tính theo byte.
+- Nếu thành công:
+  - Trả về con trỏ tới vùng nhớ sau khi thay đổi kích thước.
+  - Địa chỉ mới có thể giống hoặc khác địa chỉ cũ.
+  - Dữ liệu cũ được giữ lại trong phần kích thước còn phù hợp.
+- Nếu thất bại:
+  - Trả về `NULL`.
+  - Vùng nhớ cũ vẫn còn được cấp phát và con trỏ cũ vẫn còn hợp lệ.
 
 **Ví dụ:**
+
+```c
+int *ptr = malloc(5 * sizeof(int));
+```
+
+Ban đầu:
+
+```text
+ptr -> [ ][ ][ ][ ][ ]
+```
+
+Muốn tăng lên 10 phần tử:
+
+```c
+int *temp = realloc(ptr, 10 * sizeof(int));
+
+if (temp != NULL) {
+    ptr = temp;
+} else {
+    // realloc thất bại.
+    // ptr vẫn giữ vùng nhớ cũ.
+}
+```
+
+Sau khi `realloc()` thành công, có thể hình dung:
+
+```text
+ptr -> [ ][ ][ ][ ][ ][ ][ ][ ][ ][ ]
+```
+
+Địa chỉ có thể:
+
+```text
+Trường hợp 1:
+Vùng nhớ cũ còn đủ chỗ để mở rộng
+→ địa chỉ có thể giữ nguyên.
+
+Trường hợp 2:
+Không thể mở rộng tại chỗ
+→ hệ thống có thể cấp phát vùng mới
+→ sao chép dữ liệu cũ
+→ trả về địa chỉ mới.
+```
+
+**Không nên viết trực tiếp:**
 
 ```c
 ptr = realloc(ptr, new_size);
 ```
 
+Vì nếu `realloc()` thất bại và trả về `NULL`, ta sẽ làm mất con trỏ đang giữ địa chỉ vùng nhớ cũ.
+
+Nên dùng con trỏ tạm:
+
+```c
+int *temp = realloc(ptr, new_size);
+
+if (temp != NULL) {
+    ptr = temp;
+}
+```
+
 #### `free()`
 
-- Giải phóng vùng nhớ động khi không còn sử dụng.
+- `free()` giải phóng vùng nhớ động khi không còn sử dụng.
+- `free()` không trả về giá trị.
 
 **Ví dụ:**
 
@@ -1115,9 +1239,39 @@ free(ptr);
 ptr = NULL;
 ```
 
-**Lưu ý:**
+- Sau `free()`, không được tiếp tục giải tham chiếu địa chỉ cũ.
+- Gán con trỏ về `NULL` giúp giảm nguy cơ vô tình sử dụng lại con trỏ đã được giải phóng.
+
+#### Ý cần nhớ
+
+```text
+malloc()
+→ cấp phát vùng nhớ
+→ chưa khởi tạo
+→ thành công: trả về con trỏ
+→ thất bại: NULL
+
+calloc()
+→ cấp phát vùng nhớ
+→ đặt toàn bộ byte về 0
+→ thành công: trả về con trỏ
+→ thất bại: NULL
+
+realloc()
+→ thay đổi kích thước vùng đã cấp phát
+→ thành công: trả về con trỏ mới hoặc cùng địa chỉ cũ
+→ thất bại: NULL, vùng nhớ cũ vẫn còn
+
+free()
+→ giải phóng vùng nhớ
+→ không trả về giá trị
+```
+
+**Lưu ý trong hệ thống nhúng:**
 
 - Cấp phát/giải phóng động nhiều lần có thể gây phân mảnh bộ nhớ.
+- Thời gian cấp phát có thể khó dự đoán hơn bộ nhớ tĩnh.
+- Với hệ thống yêu cầu tính xác định cao, cần cân nhắc kỹ trước khi dùng cấp phát động.
 - Mảng cục bộ quá lớn có thể làm tăng nguy cơ tràn ngăn xếp.
 
 [↑ Về mục lục](#muc-luc)
