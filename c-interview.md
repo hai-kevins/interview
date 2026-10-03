@@ -1,50 +1,122 @@
 # C Interview Notes — Intern Embedded Firmware
 
-> Tài liệu được chuẩn hóa từ ghi chú gốc, giữ nguyên phạm vi chủ đề và tập trung vào cách diễn đạt dễ học, dễ nói khi phỏng vấn.
+> **Mục tiêu:** Ôn phần C cho phỏng vấn Intern Embedded Firmware.  
+> **Cách dùng:** Học theo từng chương, dùng mục lục để nhảy nhanh đến chủ đề cần ôn.  
+> **Phạm vi:** Giữ nguyên các chủ đề của bản trước, chỉ chuẩn hóa trình bày và sửa bố cục.
 
+<a id="muc-luc"></a>
 ## Mục lục
 
-1. Tổng quan
-2. Quá trình biên dịch
-3. Kiến thức C cơ bản
-4. Hàm
-5. Scope và Storage Class
-6. Chuyển đổi kiểu và địa chỉ
-7. Điều khiển luồng
-8. Tổ chức bộ nhớ
-9. Vòng lặp
-10. Mảng
-11. Toán tử
-12. Từ khóa quan trọng
-13. Kiểu dữ liệu tự định nghĩa
-14. Chuỗi ký tự
-15. Con trỏ
-16. Các chủ đề C bổ sung
+> Bấm vào tên chủ đề để chuyển nhanh đến phần cần ôn.
+
+1. [Tổng quan](#chuong-01)
+   - [1.1. Hệ thống nhúng là gì?](#muc-01-01)
+2. [Quá trình biên dịch (Compiling)](#chuong-02)
+   - [2.1. Tiền xử lý — Preprocessing](#muc-02-01)
+   - [2.2. Biên dịch — Compilation](#muc-02-02)
+   - [2.3. Hợp dịch — Assembly](#muc-02-03)
+   - [2.4. Liên kết — Linking](#muc-02-04)
+3. [Kiến thức C cơ bản](#chuong-03)
+   - [3.1. Ký tự đặc biệt trong C](#muc-03-01)
+   - [3.2. Comment trong C](#muc-03-02)
+   - [3.3. Các kiểu dữ liệu trong C](#muc-03-03)
+   - [3.4. Phương pháp bù 2](#muc-03-04)
+   - [3.5. Toán tử `sizeof`](#muc-03-05)
+   - [3.6. Biến](#muc-03-06)
+4. [Hàm](#chuong-04)
+   - [4.1. Khái niệm hàm](#muc-04-01)
+   - [4.2. Định nghĩa, khai báo và khởi tạo](#muc-04-02)
+   - [4.3. Đối số (Arguments) và tham số (Parameters)](#muc-04-03)
+   - [4.4. Truyền giá trị và truyền địa chỉ bằng con trỏ](#muc-04-04)
+   - [4.5. Hàm Variadic](#muc-04-05)
+5. [Scope và Storage Class](#chuong-05)
+   - [5.1. Phạm vi của biến (Variable Scope)](#muc-05-01)
+   - [5.2. Lớp lưu trữ (Storage Classes)](#muc-05-02)
+6. [Chuyển đổi kiểu và địa chỉ](#chuong-06)
+   - [6.1. Ép kiểu (Conversion)](#muc-06-01)
+   - [6.2. Địa chỉ của biến](#muc-06-02)
+7. [Điều khiển luồng](#chuong-07)
+   - [7.1. `if-else` và `switch-case`](#muc-07-01)
+8. [Tổ chức bộ nhớ](#chuong-08)
+   - [8.1. Memory layout](#muc-08-01)
+   - [8.2. Các section](#muc-08-02)
+9. [Vòng lặp](#chuong-09)
+   - [9.1. `for`, `while`, `do-while`](#muc-09-01)
+   - [9.2. `continue`](#muc-09-02)
+   - [9.3. `break`](#muc-09-03)
+10. [Mảng](#chuong-10)
+   - [10.1. Mảng một chiều (Array)](#muc-10-01)
+   - [10.2. Mảng hai chiều (2-D Array)](#muc-10-02)
+   - [10.3. Mảng động và cấp phát bộ nhớ](#muc-10-03)
+11. [Toán tử](#chuong-11)
+   - [11.1. Các nhóm toán tử](#muc-11-01)
+   - [11.2. Thao tác bit](#muc-11-02)
+12. [Từ khóa quan trọng](#chuong-12)
+   - [12.1. `volatile`](#muc-12-01)
+   - [12.2. `const`](#muc-12-02)
+13. [Kiểu dữ liệu tự định nghĩa](#chuong-13)
+   - [13.1. `struct`](#muc-13-01)
+   - [13.2. Trường bit (Bit fields)](#muc-13-02)
+   - [13.3. `union`](#muc-13-03)
+14. [Chuỗi ký tự (String)](#chuong-14)
+15. [Con trỏ (Pointer)](#chuong-15)
+   - [15.1. Khái niệm cơ bản](#muc-15-01)
+   - [15.2. Dangling pointer sau `free()`](#muc-15-02)
+   - [15.3. Dangling pointer khi trả về biến cục bộ](#muc-15-03)
+   - [15.4. Dangling pointer khi biến ra khỏi phạm vi](#muc-15-04)
+   - [15.5. `const` với con trỏ](#muc-15-05)
+   - [15.6. Con trỏ với mảng](#muc-15-06)
+   - [15.7. Mảng con trỏ đến chuỗi ký tự](#muc-15-07)
+   - [15.8. Mảng con trỏ `void *`](#muc-15-08)
+   - [15.9. Con trỏ hàm](#muc-15-09)
+   - [15.10. Mảng con trỏ hàm](#muc-15-10)
+   - [15.11. Con trỏ trong hàm](#muc-15-11)
+   - [15.12. Con trỏ hàm làm callback](#muc-15-12)
+   - [15.13. Thay đổi biến thông qua con trỏ](#muc-15-13)
+   - [15.14. Truy cập thành viên struct bằng con trỏ](#muc-15-14)
+   - [15.15. Con trỏ struct trong tham số hàm](#muc-15-15)
+   - [15.16. Con trỏ hàm là member của struct](#muc-15-16)
+16. [Các chủ đề C bổ sung](#chuong-16)
+   - [16.1. `typedef`](#muc-16-01)
+   - [16.2. Big Endian và Little Endian](#muc-16-02)
+   - [16.3. `enum`](#muc-16-03)
+   - [16.4. Overflow](#muc-16-04)
+   - [16.5. Internal Linkage và External Linkage](#muc-16-05)
+   - [16.6. Header guard](#muc-16-06)
+   - [16.7. `static inline` function](#muc-16-07)
+   - [16.8. Memory functions](#muc-16-08)
 
 ---
+
+<a id="chuong-01"></a>
 ## 1. Tổng quan
 
+<a id="muc-01-01"></a>
 ### 1.1. Hệ thống nhúng là gì?
 
 - Hệ thống nhúng là một hệ thống điện tử hoặc máy tính tích hợp cả phần cứng và phần mềm, được thiết kế để thực hiện một chức năng chuyên biệt hoặc một nhóm nhiệm vụ cụ thể trong một hệ thống lớn hơn.
 
-- Đặc tính chung:
+- **Đặc tính chung:**
+  - Kích thước hệ thống nhỏ.
+  - Giá thành rẻ.
+  - Tiêu thụ ít năng lượng.
 
-- Kích thước hệ thống nhỏ
-- Giá thành rẻ
-- Tiêu thị ít năng lượng
+[↑ Về mục lục](#muc-luc)
 
+---
+
+<a id="chuong-02"></a>
 ## 2. Quá trình biên dịch (Compiling)
 
 - Quá trình biên dịch là quá trình chuyển đổi từ ngôn ngữ bậc cao sang ngôn ngữ máy (machine code) để máy tính có thể hiểu và thực thi.
 
 - Quá trình bao gồm 4 giai đoạn chính:
+  1. Tiền xử lý (Preprocessing).
+  2. Biên dịch (Compilation).
+  3. Hợp dịch (Assembly).
+  4. Liên kết (Linking).
 
-- Giai đoạn tiền xử lý (Preprocessing)
-- Giai đoạn biên dịch (Compilation)
-- Giai đoạn hợp dịch (Assembly)
-- Giai đoạn liên kết (Linking)
-
+<a id="muc-02-01"></a>
 ### 2.1. Tiền xử lý — Preprocessing
 
 - **Bộ thực hiện:** Preprocessor.
@@ -91,6 +163,7 @@ int main(void)
 
 Sau preprocessing, nội dung **gpio.h** và giá trị macro **LED_PIN** sẽ được thay thế vào source.
 
+<a id="muc-02-02"></a>
 ### 2.2. Biên dịch — Compilation
 
 - **Bộ thực hiện:** Compiler.
@@ -139,6 +212,7 @@ int add(int a, int b)
 
 có thể được compiler chuyển thành assembly ARM tương ứng.
 
+<a id="muc-02-03"></a>
 ### 2.3. Hợp dịch — Assembly
 
 - **Bộ thực hiện:** Assembler.
@@ -155,15 +229,13 @@ có thể được compiler chuyển thành assembly ARM tương ứng.
 
 Ví dụ:
 
-**main.s**
-
-**↓**
-
-**Assembler**
-
-**↓**
-
-**main.o**
+```text
+main.s
+  ↓
+Assembler
+  ↓
+main.o
+```
 
 File `.o` **chưa phải firmware hoàn chỉnh**. Nó có thể vẫn chứa các symbol chưa được giải quyết.
 
@@ -173,11 +245,12 @@ Ví dụ:
 
 Trong main.o, lời gọi gpio_write() có thể tồn tại dưới dạng một tham chiếu tới symbol chưa được giải quyết. Đến bước Linking, linker sẽ tìm definition của symbol này và xác định địa chỉ phù hợp.
 
+<a id="muc-02-04"></a>
 ### 2.4. Liên kết — Linking
 
 - **Bộ thực hiện:** Linker.
 
-- Đầu vào: Các file object `.o` và các thư viện cần thiết.
+- **Đầu vào:** Các file object `.o` và các thư viện cần thiết.
 
 - **Nhiệm vụ:**
 
@@ -194,7 +267,7 @@ Trong main.o, lời gọi gpio_write() có thể tồn tại dưới dạng mộ
 
 - **Kết quả:** Tạo ra file thực thi/chương trình đã được liên kết hoàn chỉnh, ví dụ .elf.
 
-### Ví dụ
+#### Ví dụ
 
 File **main.c**:
 
@@ -223,8 +296,14 @@ int add(int a, int b);
 
 Nhưng phần code thật của **add()** nằm trong **add.c**. Đến bước Linking, linker sẽ nối lời gọi **add()** trong **main.c** với phần định nghĩa **add()** trong **add.c**. Nếu không tìm thấy phần định nghĩa của **add()**, quá trình linking sẽ bị lỗi.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-03"></a>
 ## 3. Kiến thức C cơ bản
 
+<a id="muc-03-01"></a>
 ### 3.1. Ký tự đặc biệt trong C
 
 - Ký tự đặc biệt hay còn gọi là escape sequence, hoặc là chuỗi thoát trong C, là các chuỗi ký tự bắt đầu bởi dấu gạch chéo ngược như \n hay \a , nhằm biểu diễn các ký tự vốn không thể biểu diễn theo cách thông thường trong C.
@@ -235,12 +314,14 @@ Nhưng phần code thật của **add()** nằm trong **add.c**. Đến bước 
 
 \r di chuyển con trỏ tới đầu dòng theo chiều ngang.
 
+<a id="muc-03-02"></a>
 ### 3.2. Comment trong C
 
 - Cách comment trên một dòng: //
 
 - Cách comment trên nhiều dòng: /\*\*/
 
+<a id="muc-03-03"></a>
 ### 3.3. Các kiểu dữ liệu trong C
 
 - Kiểu dữ liệu là phần xác định khoảng giá trị mà một biến có thể lưu trữ hay giá trị mà một hàm có thể trả về.
@@ -308,6 +389,7 @@ Nhưng phần code thật của **add()** nằm trong **add.c**. Đến bước 
 
 52 bit Fraction.
 
+<a id="muc-03-04"></a>
 ### 3.4. Phương pháp bù 2
 
 - Định nghĩa: Là phương pháp toán học chuẩn và phổ biến nhất dùng để biểu diễn và tính toán số nguyên có dấu.
@@ -327,16 +409,24 @@ Kết quả: Trong biểu diễn bù 2 8-bit, `-5` có mẫu bit `1111 1011`.
 
 - Tại sao dùng? gom phép trừ về phép cộng: thay vì 7 - 5 thì sẽ là 7 + (-5).
 
+<a id="muc-03-05"></a>
 ### 3.5. Toán tử `sizeof`
 
 - Toán tử sizeof cung cấp thông tin về kích thước của các kiểu dữ liệu.
 
+<a id="muc-03-06"></a>
 ### 3.6. Biến
 
 - Biến là vùng nhớ được đặt tên trên bộ nhớ máy tính (RAM) dùng để lưu trữ dữ liệu.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-04"></a>
 ## 4. Hàm
 
+<a id="muc-04-01"></a>
 ### 4.1. Khái niệm hàm
 
 - Hàm là một khối mã lệnh độc lập được đặt tên, dùng để thực hiện một nhóm nhiệm vụ hoặc một chức năng cụ thể nào đó trong chương trình.
@@ -415,6 +505,7 @@ int sum(int a, int b); // Khai báo có tên tham số
 int sum(int, int); // Khai báo không có tên tham số
 ```
 
+<a id="muc-04-02"></a>
 ### 4.2. Định nghĩa, khai báo và khởi tạo
 
 - Định nghĩa là việc yêu cầu hệ thống cấp phát vùng nhớ và xác định đầy đủ nội dung hoặc kiểu dữ liệu của đối tượng đó.
@@ -443,6 +534,7 @@ int sum(int, int); // Khai báo không có tên tham số
 |---------------------------------------------------------------------|
 | int x = 10; (Vừa cấp bộ nhớ cho x, vừa nạp giá trị 10 vào ô nhớ đó) |
 
+<a id="muc-04-03"></a>
 ### 4.3. Đối số (Arguments) và tham số (Parameters)
 
 - Đối số hay còn gọi là tham số thực tế là giá trị thực tế được truyền vào hàm khi lời gọi hàm được thực hiện.
@@ -467,6 +559,7 @@ int main() {
 }
 ```
 
+<a id="muc-04-04"></a>
 ### 4.4. Truyền giá trị và truyền địa chỉ bằng con trỏ
 
 - Trong C, **mọi đối số đều được truyền theo giá trị (pass by value)**. Nghĩa là hàm nhận một bản sao của giá trị được truyền vào.
@@ -509,6 +602,7 @@ So sánh ngắn:
 | Truyền giá trị | Hàm nhận bản sao của dữ liệu | Khi không muốn hàm sửa dữ liệu gốc |
 | Truyền địa chỉ bằng con trỏ | Hàm nhận bản sao của địa chỉ và có thể sửa dữ liệu tại địa chỉ đó | Khi cần sửa biến gốc hoặc tránh sao chép dữ liệu lớn |
 
+<a id="muc-04-05"></a>
 ### 4.5. Hàm Variadic
 
 - Hàm Variadic là hàm cho phép bạn truyền vào số lượng đối số không cố định (muốn truyền bao nhiêu đối số tùy ý) khi gọi hàm. Ví dụ: printf(), scanf(), ...
@@ -551,8 +645,14 @@ int main() {
 }
 ```
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-05"></a>
 ## 5. Scope và Storage Class
 
+<a id="muc-05-01"></a>
 ### 5.1. Phạm vi của biến (Variable Scope)
 
 #### Biến cục bộ (Local Variable)
@@ -605,6 +705,7 @@ int main()
 }
 ```
 
+<a id="muc-05-02"></a>
 ### 5.2. Lớp lưu trữ (Storage Classes)
 
 - Storage class giúp mô tả **phạm vi sử dụng, thời gian tồn tại và linkage** của biến hoặc hàm. Vị trí vật lý thực tế của biến còn phụ thuộc compiler, kiến trúc và mức tối ưu.
@@ -659,8 +760,14 @@ void counter(void)
 extern int global_score;
 ```
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-06"></a>
 ## 6. Chuyển đổi kiểu và địa chỉ
 
+<a id="muc-06-01"></a>
 ### 6.1. Ép kiểu (Conversion)
 
 - Ép kiểu tường minh: là việc lập trình viên chủ động viết mã lệnh để ép hệ thống phải chuyển đổi một kiểu dữ liệu này sang kiểu dữ liệu khác theo ý muốn.
@@ -681,14 +788,21 @@ float c = 4.5f;
 double ketQua = a + c; // a tự động được nâng lên float để cộng với c
 ```
 
+<a id="muc-06-02"></a>
 ### 6.2. Địa chỉ của biến
 
 - Địa chỉ biểu diễn vị trí của một object trong không gian địa chỉ của chương trình.
 
 - Dùng toán tử `&` để lấy địa chỉ của một object khi phép lấy địa chỉ đó hợp lệ.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-07"></a>
 ## 7. Điều khiển luồng
 
+<a id="muc-07-01"></a>
 ### 7.1. `if-else` và `switch-case`
 
 |                 |                                                                                                             |                                                                                                        |
@@ -699,8 +813,14 @@ double ketQua = a + c; // a tự động được nâng lên float để cộng 
 | Số lượng nhánh  | Phù hợp với số nhánh ít. Nếu quá nhiều nhánh sẽ khiến code bị rối.                                          | Rất gọn gàng và dễ đọc kể cả khi có hàng chục nhánh (case).                                            |
 | Tốc độ thực thi | Phụ thuộc vào điều kiện và cách compiler tối ưu. | Cũng phụ thuộc compiler. Compiler có thể tạo chuỗi so sánh hoặc jump table; không thể khẳng định `switch` luôn nhanh hơn `if-else`. |
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-08"></a>
 ## 8. Tổ chức bộ nhớ
 
+<a id="muc-08-01"></a>
 ### 8.1. Memory layout
 
 - Text/Code Segment: Thường chứa mã máy/lệnh thực thi của chương trình.
@@ -732,6 +852,7 @@ double ketQua = a + c; // a tự động được nâng lên float để cộng 
 - Luôn luôn dùng free() tương ứng sau khi cấp phát.
 - Dùng các công cụ kiểm tra tự động như Valgrind, …
 
+<a id="muc-08-02"></a>
 ### 8.2. Các section
 
 .text: chứa mã máy, đây là phần cốt lõi của Text Segment. Section này có thuộc tính chỉ đọc và thực thi.
@@ -746,8 +867,14 @@ Ngoài ra, còn có section:
 
 .symtab: chứa bảng ký hiệu (symbol table) để linker biết và xử lý các tên hàm biến và địa chỉ của chúng.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-09"></a>
 ## 9. Vòng lặp
 
+<a id="muc-09-01"></a>
 ### 9.1. `for`, `while`, `do-while`
 
 |          |                                                                            |
@@ -757,16 +884,24 @@ Ngoài ra, còn có section:
 | while    | Khi chưa biết trước số lần lặp, cần kiểm tra điều kiện trước rồi mới làm.  |
 | do-while | Khi chưa biết trước số lần lặp, nhưng hành động phải chạy ít nhất một lần. |
 
+<a id="muc-09-02"></a>
 ### 9.2. `continue`
 
 - continue được sử dụng bên trong các vòng lặp (for, while, do-while) để bỏ qua tất cả các câu lệnh còn lại trong lần lặp hiện tại và ngay lập tức nhảy sang lần lặp kế tiếp.
 
+<a id="muc-09-03"></a>
 ### 9.3. `break`
 
 - break được sử dụng để chấm dứt và thoát hẳn ra khỏi vòng lặp (for, while, do-while) hoặc khối lệnh switch-case ngay lập tức, bất chấp điều kiện vòng lặp có còn đúng hay không.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-10"></a>
 ## 10. Mảng
 
+<a id="muc-10-01"></a>
 ### 10.1. Mảng một chiều (Array)
 
 - Mảng là các cấu trúc dữ liệu lưu trữ nhiều giá trị cùng kiểu dữ liệu.
@@ -791,6 +926,7 @@ Kích thước mảng = Số phần tử x Kích thước của một phần t�
 - Dùng chỉ số (index): someData\[1\]
 - Dùng con trỏ (pointer): \*(someData+1)
 
+<a id="muc-10-02"></a>
 ### 10.2. Mảng hai chiều (2-D Array)
 
 - Mảng hai chiều cho phép lưu trữ dữ liệu theo dạng bảng, giúp tổ chức thông tin một cách hợp lý qua các hàng và cột.
@@ -819,6 +955,7 @@ Công thức tính địa chỉ nếu một mảng được định nghĩa là a
 
 address(arr\[i\]\[j\]) = (array base address) + (i \* m + j) \* (element size)
 
+<a id="muc-10-03"></a>
 ### 10.3. Mảng động và cấp phát bộ nhớ
 
 - Mảng động là vùng nhớ dùng để lưu nhiều phần tử và được cấp phát trong thời gian chạy.
@@ -867,8 +1004,14 @@ ptr = NULL;
 - Cần chú ý hiện tượng **phân mảnh bộ nhớ** khi cấp phát/giải phóng động nhiều lần.
 - Khi dùng mảng cục bộ có kích thước lớn, cần chú ý nguy cơ **Stack Overflow**.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-11"></a>
 ## 11. Toán tử
 
+<a id="muc-11-01"></a>
 ### 11.1. Các nhóm toán tử
 
 |                  |                   |                                    |                         |
@@ -911,12 +1054,19 @@ Ví dụ: a + b, x % y
 
 Ví dụ: int max = (a \> b) ? a : b;
 
+<a id="muc-11-02"></a>
 ### 11.2. Thao tác bit
 
 set/clear/toggle/check bit, masking
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-12"></a>
 ## 12. Từ khóa quan trọng
 
+<a id="muc-12-01"></a>
 ### 12.1. `volatile`
 
 - `volatile` dùng để báo cho compiler biết rằng giá trị của object có thể thay đổi ngoài luồng thực thi thông thường của đoạn code hiện tại.
@@ -928,14 +1078,21 @@ set/clear/toggle/check bit, masking
   - Biến được thay đổi trong ISR và được đọc ở code chính.
   - Một số trường hợp dữ liệu có thể thay đổi bởi phần cứng hoặc tác nhân bên ngoài luồng thực thi hiện tại.
 
+<a id="muc-12-02"></a>
 ### 12.2. `const`
 
 - Định nghĩa: `const` dùng để khai báo rằng dữ liệu không được phép sửa đổi thông qua tên hoặc con trỏ `const` đó. Nếu cố gán lại trực tiếp cho một object được khai báo `const`, compiler sẽ báo lỗi.
 
 - Dùng khi nào? Bất cứ khi nào không muốn thay đổi giá trị của biến, tham số hàm ở các dòng lệnh tiếp theo.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-13"></a>
 ## 13. Kiểu dữ liệu tự định nghĩa
 
+<a id="muc-13-01"></a>
 ### 13.1. `struct`
 
 - Định nghĩa: Là một cấu trúc dữ liệu do người dùng tự định nghĩa, cho phép kết hợp nhiều thành phần có kiểu dữ liệu khác nhau.
@@ -966,6 +1123,7 @@ __attribute__((packed))
 - `packed` có thể tiết kiệm bộ nhớ nhưng có thể tạo ra truy cập không căn chỉnh, vì vậy cần dùng cẩn thận.
 - Struct thường dùng để mô tả một đối tượng có nhiều thuộc tính hoặc gom nhiều trường dữ liệu liên quan vào cùng một kiểu.
 
+<a id="muc-13-02"></a>
 ### 13.2. Trường bit (Bit fields)
 
 - Định nghĩa: Là một tính năng cho phép chỉ định chính xác số lượng bit mà một thành phần bên trong struct được phép sử dụng.
@@ -985,6 +1143,7 @@ struct HopHoiThoai {
 - Thao tác với các thanh ghi của vi điều khiển.
 - Tiết kiệm RAM/ tối ưu hóa bộ nhớ.
 
+<a id="muc-13-03"></a>
 ### 13.3. `union`
 
 - Định nghĩa: Là kiểu dữ liệu đặc biệt do người dùng tự định nghĩa, cho phép lưu trữ nhiều biến có kiểu dữ liệu khác nhau tại cùng một vùng nhớ trên RAM.
@@ -995,6 +1154,11 @@ struct HopHoiThoai {
 
 - Dùng khi nào? chủ yếu là tiết kiệm bộ nhớ RAM.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-14"></a>
 ## 14. Chuỗi ký tự (String)
 
 - Định nghĩa: Là tập hợp tất cả các ký tự được kết thúc bởi một ký tự rỗng (‘\0’ -null).
@@ -1058,8 +1222,14 @@ Vị trí lưu string literal là do implementation/toolchain quyết định; t
 
 - Đọc chuỗi an toàn hơn bằng `fgets()`. Không nên dùng `gets()` vì hàm này không kiểm soát kích thước buffer và đã bị loại khỏi chuẩn C từ C11.
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-15"></a>
 ## 15. Con trỏ (Pointer)
 
+<a id="muc-15-01"></a>
 ### 15.1. Khái niệm cơ bản
 
 - Định nghĩa: Là một biến đặc biệt dùng để lưu trữ địa chỉ bộ nhớ của biến khác.
@@ -1078,6 +1248,7 @@ Việc địa chỉ này có hợp lệ để truy cập hay không phụ thuộ
 
 Ví dụ:
 
+<a id="muc-15-02"></a>
 ### 15.2. Dangling pointer sau `free()`
 
 ```c
@@ -1095,6 +1266,7 @@ int main() {
 }
 ```
 
+<a id="muc-15-03"></a>
 ### 15.3. Dangling pointer khi trả về biến cục bộ
 
 ```c
@@ -1113,6 +1285,7 @@ int main() {
 }
 ```
 
+<a id="muc-15-04"></a>
 ### 15.4. Dangling pointer khi biến ra khỏi phạm vi
 
 ```c
@@ -1137,6 +1310,7 @@ Cách tránh:
 - Sau `free(ptr)`, có thể gán `ptr = NULL` để tránh vô tình dùng lại con trỏ cũ.
 - Không trả về địa chỉ của biến cục bộ. Nếu thật sự cần dữ liệu tồn tại sau khi hàm kết thúc, dùng cách có lifetime phù hợp như `static` hoặc vùng nhớ động, tùy trường hợp.
 
+<a id="muc-15-05"></a>
 ### 15.5. `const` với con trỏ
 
 Có 3 dạng thường gặp:
@@ -1178,6 +1352,7 @@ Viết hàm cấp phát bộ nhớ động (malloc, calloc)
 
 Viết các hàm đa năng, Ví dụ: swap 2 phần tử, …
 
+<a id="muc-15-06"></a>
 ### 15.6. Con trỏ với mảng
 
 ```c
@@ -1201,6 +1376,7 @@ Kết quả:
 [index 4] Add: 1052769648, Val: 10
 ```
 
+<a id="muc-15-07"></a>
 ### 15.7. Mảng con trỏ đến chuỗi ký tự
 
 ```c
@@ -1220,6 +1396,7 @@ Kết quả:
  Doe
 ```
 
+<a id="muc-15-08"></a>
 ### 15.8. Mảng con trỏ `void *`
 
 ```c
@@ -1246,6 +1423,7 @@ Float value: 20.500000
 Char value: Z
 ```
 
+<a id="muc-15-09"></a>
 ### 15.9. Con trỏ hàm
 
 Cú pháp: \<Kiểu trả về\> (\*\<tên con trỏ\>)(\<danh sách tham số\>)
@@ -1271,6 +1449,7 @@ int main() {
 }
 ```
 
+<a id="muc-15-10"></a>
 ### 15.10. Mảng con trỏ hàm
 
 ```c
@@ -1294,6 +1473,7 @@ int main() {
 }
 ```
 
+<a id="muc-15-11"></a>
 ### 15.11. Con trỏ trong hàm
 
 Khi truyền một con trỏ vào hàm, giá trị địa chỉ của con trỏ được copy vào tham số. Thông qua địa chỉ đó, hàm có thể đọc hoặc thay đổi object gốc.
@@ -1387,6 +1567,7 @@ int main() {
 }
 ```
 
+<a id="muc-15-12"></a>
 ### 15.12. Con trỏ hàm làm callback
 
 Một cách khác để sử dụng con trỏ hàm là chuyển chúng sang các hàm khác làm đối số hàm. Chúng ta cũng gọi các hàm như hàm callback vì hàm nhận gọi chúng trở lại.
@@ -1422,6 +1603,7 @@ Kết quả:
  Cubic sum = 35
 ```
 
+<a id="muc-15-13"></a>
 ### 15.13. Thay đổi biến thông qua con trỏ
 
 ```c
@@ -1442,6 +1624,7 @@ Kết quả:
 |----------|
 | n^2 = 25 |
 
+<a id="muc-15-14"></a>
 ### 15.14. Truy cập thành viên struct bằng con trỏ
 
 Có hai cách để truy cập thành viên của struct mà con trỏ struct trỏ đến:
@@ -1472,6 +1655,7 @@ int main(void)
 }
 ```
 
+<a id="muc-15-15"></a>
 ### 15.15. Con trỏ struct trong tham số hàm
 
 ```c
@@ -1501,6 +1685,7 @@ Kết quả:
 |-----------------------|
 | Speed: 50 - Angle: 90 |
 
+<a id="muc-15-16"></a>
 ### 15.16. Con trỏ hàm là member của struct
 
 ```c
@@ -1531,8 +1716,14 @@ Kết quả:
 |-------------|
 | Area: 15.00 |
 
+[↑ Về mục lục](#muc-luc)
+
+---
+
+<a id="chuong-16"></a>
 ## 16. Các chủ đề C bổ sung
 
+<a id="muc-16-01"></a>
 ### 16.1. `typedef`
 
 - Định nghĩa: Là một từ khóa được sử dụng để đặt một cái tên mới (alias/biệt danh) cho một kiểu dữ liệu đã có sẵn.
@@ -1547,12 +1738,14 @@ typedef struct {
 } SinhVien;
 ```
 
+<a id="muc-16-02"></a>
 ### 16.2. Big Endian và Little Endian
 
 - Big Endian: Byte có trọng số cao nhất (MSB) sẽ được lưu ở địa chỉ bộ nhớ nhỏ nhất (đầu tiên).
 
 - Little Endian: Byte có trọng số thấp nhất (LSB) sẽ được lưu ở địa chỉ bộ nhớ nhỏ nhất (đầu tiên).
 
+<a id="muc-16-03"></a>
 ### 16.3. `enum`
 
 - Định nghĩa: Là một kiểu dữ liệu do người dùng tự định nghĩa trong C, cho phép bạn gộp một nhóm các hằng số số nguyên có liên quan lại với nhau và đặt cho chúng những cái tên gợi nhớ.
@@ -1585,12 +1778,14 @@ Quản lý menu lựa chọn.
 
 Định nghĩa các tập hợp cố định (ngày trong tuần, …).
 
+<a id="muc-16-04"></a>
 ### 16.4. Overflow
 
 - Định nghĩa: Là hiện tượng xảy ra khi kết quả của một phép tính toán hoặc một giá trị dữ liệu vượt quá phạm vi lưu trữ của kiểu dữ liệu cho phép.
 
 Ví dụ: với một kiểu số nguyên chỉ biểu diễn được từ -128 đến 127, giá trị 128 nằm ngoài phạm vi biểu diễn. Trong code thực tế cần tránh dựa vào việc số nguyên có dấu tự động "quay vòng"; cách xử lý khi vượt phạm vi còn phụ thuộc loại phép toán và quy tắc của kiểu dữ liệu.
 
+<a id="muc-16-05"></a>
 ### 16.5. Internal Linkage và External Linkage
 
 - Liên kết nội bộ (Internal Linkage): Định danh chỉ được phép nhìn thấy và sử dụng duy nhất bên trong file .c nơi nó được khai báo. Tất cả các file .c khác trong dự án hoàn toàn không biết đến sự tồn tại của nó.
@@ -1623,6 +1818,7 @@ extern int global_count; // Báo cho compiler biết biến này nằm ở file 
 extern void print_message();
 ```
 
+<a id="muc-16-06"></a>
 ### 16.6. Header guard
 
 Header guard tránh nội dung của cùng một header bị xử lý lặp lại nhiều lần trong một translation unit.
@@ -1633,6 +1829,7 @@ Header guard tránh nội dung của cùng một header bị xử lý lặp lạ
 #endif
 ```
 
+<a id="muc-16-07"></a>
 ### 16.7. `static inline` function
 
 - `inline` là gợi ý cho compiler rằng một hàm là ứng viên phù hợp để thay lời gọi hàm bằng trực tiếp phần code của hàm tại vị trí gọi.
@@ -1654,6 +1851,7 @@ Nếu compiler thực hiện inline, thay vì tạo một lời gọi hàm riên
 - **Nhược điểm có thể có:** nếu inline quá nhiều, kích thước code có thể tăng.
 - **Dùng khi nào:** các hàm nhỏ, được gọi thường xuyên, đặc biệt là helper function trong code embedded.
 
+<a id="muc-16-08"></a>
 ### 16.8. Memory functions
 
 memcpy(): Sao chép một khối bộ nhớ có kích thước n byte từ vùng nhớ nguồn (src) sang vùng nhớ đích (dest).
@@ -1679,3 +1877,5 @@ Giá trị trả về:
 \> 0: Tại byte đầu tiên khác biệt, giá trị của s1 lớn hơn s2.
 
 \< 0: Tại byte đầu tiên khác biệt, giá trị của s1 nhỏ hơn s2.
+
+[↑ Về mục lục](#muc-luc)
