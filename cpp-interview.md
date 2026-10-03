@@ -1493,7 +1493,7 @@ Cat -> Cat::sound()
 <a id="muc-10-03"></a>
 ### 10.3. `override`
 
-- `override` cho trình biên dịch kiểm tra rằng hàm thực sự đang ghi đè một hàm `virtual` ở lớp cơ sở.
+- `override` cho trình biên dịch kiểm tra rằng hàm thực sự đang ghi đè một hàm `virtual` ở lớp cơ sở (lớp cha).
 - Nên dùng `override` khi ghi đè hàm ảo.
 
 ```cpp
