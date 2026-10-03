@@ -614,26 +614,40 @@ motor
 <a id="muc-04-06"></a>
 ### 4.6. Thành viên `static`
 
-- Thành viên dữ liệu `static` thuộc về lớp, không thuộc riêng từng đối tượng.
+- Thành viên dữ liệu `static` thuộc về lớp, dùng chung giữa các đối tượng.
 - Hàm thành viên `static` không có con trỏ `this`.
 
 **Ví dụ:**
 
 ```cpp
-class Device
+class Motor
 {
 public:
-    static int getCount()
-    {
-        return count;
-    }
-
-private:
     static int count;
 };
 
-int Device::count = 0;
+int Motor::count = 0;
 ```
+thì count chỉ có `một bản duy nhất`, dùng chung cho mọi đối tượng Motor.
+```cpp
+Motor m1;
+Motor m2;
+
+m1.count = 5;
+
+std::cout << m2.count;
+```
+Kết quả:
+```cpp
+5
+```
+Vì:
+```cpp
+m1.count
+m2.count
+Motor::count
+```
+đều đang truy cập `cùng một biến` count.
 
 [↑ Về mục lục](#muc-luc)
 
