@@ -1033,7 +1033,7 @@ private:
 
 ```cpp
 Data a;
-Data b = a;
+Data b = a; // tương đương với Data b(a);
 ```
 
 <a id="muc-08-02"></a>
