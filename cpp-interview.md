@@ -822,7 +822,7 @@ Với đối tượng lớp:
 const Motor motor;
 ```
 
-- Chỉ những hàm thành viên được khai báo phù hợp với đối tượng `const` mới có thể được gọi.
+- Đối tượng `const` chỉ được phép gọi các hàm thành viên được khai báo `const`, tức là các hàm cam kết không thay đổi trạng thái của đối tượng thông qua `this`.
 
 **Ví dụ:**
 
