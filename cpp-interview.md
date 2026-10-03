@@ -1651,19 +1651,42 @@ motor.start()
 <a id="muc-10-05"></a>
 ### 10.5. Hàm hủy ảo
 
-- Nếu một lớp được dùng làm lớp cơ sở đa hình và có thể bị hủy thông qua con trỏ lớp cơ sở, hàm hủy thường cần là `virtual`.
+- Hàm virtual cho phép lời gọi hàm được chọn theo kiểu đối tượng thực tế khi truy cập thông qua con trỏ hoặc tham chiếu tới lớp cơ sở (lớp cha).
 
 **Ví dụ:**
 
 ```cpp
+#include <iostream>
+
 class Device
 {
 public:
-    virtual ~Device() = default;
+    virtual ~Device()
+    {
+        std::cout << "Huy Device\n";
+    }
 };
+
+class Motor : public Device
+{
+public:
+    ~Motor()
+    {
+        std::cout << "Huy Motor\n";
+    }
+};
+
+int main()
+{
+    Device *device = new Motor();
+
+    delete device; // hàm hủy ~Motor() -> ~Device(), nếu không có virtual thì sẽ chỉ gọi Device().
+
+    return 0;
+}
 ```
 
-Điều này giúp hàm hủy của lớp dẫn xuất được gọi đúng khi hủy đối tượng thông qua con trỏ lớp cơ sở.
+Điều này giúp hàm hủy của lớp dẫn xuất (lớp con) được gọi đúng khi hủy đối tượng thông qua con trỏ lớp cơ sở (lớp cha).
 
 [↑ Về mục lục](#muc-luc)
 
