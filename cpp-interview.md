@@ -1287,8 +1287,8 @@ Nếu chữ ký không khớp với hàm ở lớp cơ sở, trình biên dịch
 virtual int read() = 0;
 ```
 
-- Lớp có ít nhất một hàm thuần ảo là lớp trừu tượng.
-- Không thể tạo trực tiếp đối tượng của lớp trừu tượng.
+- Lớp có ít nhất một hàm thuần ảo là lớp trừu tượng (abstract).
+- Không thể tạo trực tiếp đối tượng của lớp trừu tượng (abstract).
 - Thường dùng để định nghĩa một giao diện chung.
 
 **Ví dụ giao diện trình điều khiển:**
