@@ -697,6 +697,30 @@ private:
 Motor motor(50);
 ```
 
+### Nạp chồng hàm dựng (Overload)
+
+```cpp
+class Motor {
+private:
+    int speed;
+public:
+    // 1. Hàm dựng mặc định (không tham số)
+    Motor() {
+        speed = 0; 
+    }
+
+    // 2. Hàm dựng có tham số (Nạp chồng)
+    Motor(int initial_speed) {
+        this->speed = initial_speed; 
+    }
+};
+
+int main() {
+    Motor motor1;        // Gọi hàm dựng 1 (speed sẽ bằng 0)
+    Motor motor2(1000);  // Gọi hàm dựng 2 (speed sẽ bằng 1000)
+}
+```
+
 <a id="muc-05-02"></a>
 ### 5.2. Danh sách khởi tạo
 
