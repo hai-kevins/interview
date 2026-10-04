@@ -9,8 +9,8 @@
 
 1. **STM32 architecture / memory map**
    - 1.1. Processor Core vs Processor vs Microcontroller
-   - **1.2. Operation Modes** ← đang triển khai
-   - 1.3. Access Level
+   - 1.2. Operation Modes
+   - **1.3. Access Level** ← đang triển khai
    - 1.4. Core Registers
    - 1.5. Reset Sequence
    - 1.6. Bus Architecture
@@ -866,5 +866,509 @@ Handler / ISR
 **Ý quan trọng nhất:**
 
 > **Thread mode được dùng cho mã ứng dụng, còn Handler mode được dùng để phục vụ exception và interrupt. Khi core gặp system exception hoặc external interrupt, nó chuyển sang Handler mode để thực thi handler tương ứng.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-03"></a>
+## 1.3. Access Level
+
+### 1.3.1. Cortex-M có những mức truy cập nào?
+
+Theo tài liệu, Cortex-M0/M3/M4 cung cấp **2 mức truy cập**:
+
+```text
+Access Levels
+├── Privileged Access Level (PAL)
+└── Non-Privileged Access Level (NPAL)
+```
+
+Có thể dịch ngắn gọn:
+
+```text
+PAL
+→ mức truy cập đặc quyền
+
+NPAL
+→ mức truy cập không đặc quyền
+```
+
+Mục đích chính của hai mức này là phân biệt **mức quyền mà mã đang chạy có đối với tài nguyên của processor**.
+
+---
+
+### 1.3.2. Privileged Access Level — mức truy cập đặc quyền
+
+Theo tài liệu, khi mã chạy ở **Privileged Access Level (PAL)** thì nó có quyền truy cập đầy đủ hơn đối với:
+
+- Tài nguyên đặc thù của processor.
+- Các thanh ghi bị hạn chế truy cập.
+
+Có thể hình dung:
+
+```text
+Privileged
+     ↓
+Có quyền truy cập đầy đủ hơn
+     ↓
+Processor resources
+Restricted registers
+```
+
+Ở mức phỏng vấn, có thể nhớ:
+
+> **Privileged mode/access level cho phép mã truy cập các tài nguyên và thanh ghi hệ thống mà mã không đặc quyền có thể bị hạn chế.**
+
+---
+
+### 1.3.3. Non-Privileged Access Level — mức truy cập không đặc quyền
+
+Theo tài liệu, khi mã chạy ở **Non-Privileged Access Level (NPAL)** thì mã có thể **không được phép truy cập một số thanh ghi bị hạn chế của processor**.
+
+Có thể hình dung:
+
+```text
+Non-Privileged
+      ↓
+Quyền bị hạn chế
+      ↓
+Một số restricted registers
+không được truy cập
+```
+
+Điểm quan trọng:
+
+> **Non-Privileged không có nghĩa là CPU ngừng chạy mã ứng dụng. Nó chỉ có nghĩa là mã đó đang chạy với mức quyền thấp hơn.**
+
+---
+
+### 1.3.4. Mức truy cập mặc định
+
+Theo tài liệu:
+
+> **Mặc định, mã bắt đầu chạy ở Privileged Access Level.**
+
+Có thể ghép với phần Operation Modes trước đó:
+
+```text
+Processor bắt đầu
+      ↓
+Thread mode
+      ↓
+Privileged Access Level
+```
+
+Như vậy, ở trạng thái khởi đầu theo tài liệu:
+
+```text
+Operational mode = Thread mode
+Access level     = Privileged
+```
+
+Đây là hai khái niệm khác nhau:
+
+```text
+Operation Mode
+→ Thread / Handler
+
+Access Level
+→ Privileged / Non-Privileged
+```
+
+---
+
+### 1.3.5. Thread mode có thể chạy ở mức truy cập nào?
+
+Trong **Thread mode**, processor có thể chạy ở:
+
+```text
+Thread mode
+├── Privileged
+└── Non-Privileged
+```
+
+Theo tài liệu, khi đang ở Thread mode và Privileged, chương trình có thể chuyển processor sang Non-Privileged.
+
+Có thể hình dung:
+
+```text
+Thread mode
+Privileged
+    │
+    │ thay đổi CONTROL
+    ↓
+Thread mode
+Non-Privileged
+```
+
+Đây là điểm rất quan trọng vì:
+
+> **Thread mode không đồng nghĩa với Non-Privileged.**
+
+Thread mode có thể là:
+
+```text
+Thread + Privileged
+```
+
+hoặc:
+
+```text
+Thread + Non-Privileged
+```
+
+---
+
+### 1.3.6. Handler mode luôn chạy ở mức nào?
+
+Theo tài liệu:
+
+> **Handler mode luôn chạy ở Privileged Access Level.**
+
+Có thể nhớ:
+
+```text
+Handler mode
+     ↓
+Always Privileged
+```
+
+Do đó:
+
+```text
+Thread mode
+→ có thể Privileged hoặc Non-Privileged
+
+Handler mode
+→ luôn Privileged
+```
+
+Đây là mối liên hệ quan trọng giữa **Operation Mode** và **Access Level**.
+
+---
+
+### 1.3.7. Vai trò của thanh ghi `CONTROL`
+
+Theo tài liệu, processor sử dụng thanh ghi:
+
+```text
+CONTROL
+```
+
+để chuyển đổi mức truy cập khi ở Thread mode.
+
+Hình minh họa sử dụng cách viết rút gọn:
+
+```text
+CONTROL = 0
+→ Privileged
+
+CONTROL = 1
+→ Non-Privileged
+```
+
+Ở phần này chỉ cần hiểu ý tưởng:
+
+```text
+CONTROL
+→ ảnh hưởng tới access level của Thread mode
+```
+
+Chi tiết các bit cụ thể trong thanh ghi `CONTROL` sẽ được học ở phần **Core Registers** để tránh trộn quá nhiều kiến thức vào một mục.
+
+---
+
+### 1.3.8. Tại sao từ Non-Privileged không thể tự quay lại Privileged?
+
+Theo tài liệu, khi Thread mode đã chuyển từ:
+
+```text
+Privileged
+    ↓
+Non-Privileged
+```
+
+thì mã đang chạy ở Non-Privileged **không thể tự chuyển trực tiếp trở lại Privileged**.
+
+Lý do về mặt ý tưởng:
+
+```text
+Nếu mã không đặc quyền
+có thể tự nâng quyền
+        ↓
+cơ chế phân quyền
+sẽ mất ý nghĩa
+```
+
+Do đó, tài liệu mô tả con đường quay lại Privileged thông qua **Handler mode**.
+
+---
+
+### 1.3.9. Từ Non-Privileged quay lại Privileged như thế nào?
+
+Theo tài liệu và hình minh họa:
+
+```text
+Thread mode
+Non-Privileged
+      │
+      │ Interrupt / Exception
+      ↓
+Handler mode
+Privileged
+      │
+      │ thay đổi CONTROL
+      ↓
+Return to Thread mode
+Privileged
+```
+
+Có thể hình dung đầy đủ:
+
+```text
+Thread mode
+Privileged
+    │
+    │ CONTROL = 1
+    ↓
+Thread mode
+Non-Privileged
+    │
+    │ Exception / Interrupt
+    ↓
+Handler mode
+Privileged
+    │
+    │ CONTROL = 0
+    ↓
+Thread mode
+Privileged
+```
+
+Điểm cốt lõi:
+
+> **Handler mode luôn có quyền Privileged, nên handler có thể thực hiện thao tác cần quyền cao rồi đưa Thread mode trở về mức Privileged theo cơ chế mô tả trong tài liệu.**
+
+---
+
+### 1.3.10. Ghép Operation Mode và Access Level
+
+Đây là phần dễ nhầm nhất.
+
+Không nên nghĩ:
+
+```text
+Thread mode  = Non-Privileged
+Handler mode = Privileged
+```
+
+Cách hiểu đúng theo tài liệu:
+
+| Operation Mode | Access Level có thể có |
+|---|---|
+| Thread mode | Privileged hoặc Non-Privileged |
+| Handler mode | Privileged |
+
+Sơ đồ:
+
+```text
+                    Processor
+                        │
+          ┌─────────────┴─────────────┐
+          ↓                           ↓
+     Thread mode                 Handler mode
+          │                           │
+     ┌────┴────┐                      ↓
+     ↓         ↓                  Privileged
+Privileged  Non-Privileged
+```
+
+Vì vậy:
+
+```text
+Operation Mode
+≠
+Access Level
+```
+
+Hai cơ chế này có liên quan nhưng không phải cùng một khái niệm.
+
+---
+
+### 1.3.11. Luồng chuyển trạng thái theo hình tài liệu
+
+Hình nguồn có thể được diễn giải thành chuỗi sau:
+
+```text
+1. Processor bắt đầu:
+   Thread mode + Privileged
+
+2. Thread mode chuyển:
+   Privileged → Non-Privileged
+
+3. Khi có interrupt/exception:
+   Thread mode → Handler mode
+
+4. Handler mode:
+   luôn Privileged
+
+5. Handler có thể thiết lập lại CONTROL theo cơ chế
+   được minh họa trong tài liệu
+
+6. Khi thoát handler:
+   quay lại Thread mode
+```
+
+Sơ đồ tổng hợp:
+
+```text
+Thread / Privileged
+        │
+        │ CONTROL = 1
+        ↓
+Thread / Non-Privileged
+        │
+        │ Exception / Interrupt
+        ↓
+Handler / Privileged
+        │
+        │ CONTROL = 0
+        ↓
+Thread / Privileged
+```
+
+---
+
+### 1.3.12. Tại sao cần Access Level?
+
+Từ nội dung tài liệu có thể rút ra ý nghĩa chính:
+
+```text
+Privileged
+→ truy cập tài nguyên hệ thống đầy đủ hơn
+
+Non-Privileged
+→ hạn chế truy cập một số tài nguyên/thanh ghi
+```
+
+Nhờ vậy, mã ứng dụng có thể được chạy với quyền thấp hơn, trong khi mã xử lý hệ thống/exception vẫn chạy với quyền cao hơn.
+
+Ở mức Intern chỉ cần nắm:
+
+> **Access Level là cơ chế kiểm soát quyền truy cập của mã đang chạy đối với các tài nguyên nhạy cảm của processor.**
+
+---
+
+### 1.3.13. Phân biệt nhanh Operation Mode và Access Level
+
+| Khái niệm | Câu hỏi nó trả lời |
+|---|---|
+| **Operation Mode** | Processor đang chạy mã ứng dụng hay đang xử lý exception/interrupt? |
+| **Access Level** | Mã hiện tại có mức quyền truy cập cao hay bị hạn chế? |
+
+Ví dụ:
+
+```text
+Thread mode + Privileged
+→ mã ứng dụng đang chạy với quyền cao
+
+Thread mode + Non-Privileged
+→ mã ứng dụng đang chạy với quyền bị hạn chế
+
+Handler mode + Privileged
+→ processor đang xử lý exception/interrupt với quyền cao
+```
+
+---
+
+### 1.3.14. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Cortex-M có những access level nào?”**, có thể trả lời:
+
+> **Có hai mức truy cập: Privileged và Non-Privileged. Privileged có quyền truy cập đầy đủ hơn vào tài nguyên và các thanh ghi bị hạn chế của processor, còn Non-Privileged bị giới hạn một số quyền truy cập.**
+
+Nếu hỏi **“Thread mode có luôn là Non-Privileged không?”**:
+
+> **Không. Thread mode có thể chạy ở Privileged hoặc Non-Privileged.**
+
+Nếu hỏi **“Handler mode chạy ở access level nào?”**:
+
+> **Handler mode luôn chạy ở Privileged Access Level theo tài liệu.**
+
+Nếu hỏi **“Tại sao mã Non-Privileged không thể tự nâng quyền trở lại?”**:
+
+> **Vì nếu mã không đặc quyền có thể tự chuyển thành đặc quyền thì cơ chế giới hạn quyền sẽ không còn ý nghĩa. Theo tài liệu, muốn quay lại Privileged cần đi qua Handler mode.**
+
+Nếu hỏi **“Thanh ghi nào liên quan tới việc chuyển access level?”**:
+
+> **Thanh ghi `CONTROL`. Tài liệu minh họa `CONTROL = 0` cho Privileged và `CONTROL = 1` cho Non-Privileged; chi tiết từng bit sẽ học ở phần Core Registers.**
+
+---
+
+### 1.3.15. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Cortex-M0/M3/M4 có bao nhiêu access level theo tài liệu?
+2. Hai access level đó là gì?
+3. Privileged Access Level cho phép truy cập những gì?
+4. Non-Privileged Access Level bị hạn chế điều gì?
+5. Access level mặc định là gì?
+6. Thread mode có thể chạy ở những access level nào?
+7. Handler mode chạy ở access level nào?
+8. Operation Mode và Access Level có phải cùng một khái niệm không?
+9. Thanh ghi nào được tài liệu sử dụng để chuyển access level?
+10. Từ Thread/Privileged có thể chuyển sang Thread/Non-Privileged như thế nào ở mức khái niệm?
+11. Vì sao Thread/Non-Privileged không thể tự chuyển trực tiếp về Privileged?
+12. Exception/interrupt có vai trò gì trong quá trình quay lại Privileged theo tài liệu?
+13. Sau khi vào Handler mode, access level là gì?
+14. Hãy phân biệt `Thread + Privileged`, `Thread + Non-Privileged` và `Handler + Privileged`.
+
+---
+
+### 1.3.16. Tóm tắt
+
+```text
+Access Levels
+│
+├── Privileged
+│   └── quyền truy cập đầy đủ hơn
+│
+└── Non-Privileged
+    └── bị hạn chế một số quyền truy cập
+```
+
+Kết hợp với Operation Modes:
+
+```text
+Thread mode
+├── Privileged
+└── Non-Privileged
+
+Handler mode
+└── Privileged
+```
+
+Luồng quan trọng:
+
+```text
+Thread / Privileged
+        ↓
+   CONTROL = 1
+        ↓
+Thread / Non-Privileged
+        ↓
+Exception / Interrupt
+        ↓
+Handler / Privileged
+        ↓
+   CONTROL = 0
+        ↓
+Thread / Privileged
+```
+
+**Ý quan trọng nhất:**
+
+> **Operation Mode cho biết processor đang chạy luồng ứng dụng hay handler; Access Level cho biết mức quyền truy cập của mã đang chạy. Thread mode có thể Privileged hoặc Non-Privileged, còn Handler mode luôn Privileged theo tài liệu.**
 
 [↑ Về mục lục](#muc-luc)
