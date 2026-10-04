@@ -18,7 +18,7 @@
    - 1.8. Flash và SRAM
    - 1.9. Stack cơ bản trên Cortex-M
    - 1.10. Startup Code
-   - **1.11. Linker Script và các section** ← đang triển khai
+   - 1.11. Linker Script và các section
 2. **RCC + Clock**
 3. **GPIO**
 4. **Interrupt + NVIC + EXTI**
@@ -33,6 +33,8 @@
 
 <a id="chuong-01"></a>
 # 1. STM32 architecture / memory map
+
+> **Trạng thái rà soát:** Chương 1 đã được bổ sung các hiệu chỉnh kỹ thuật quan trọng về thuật ngữ Cortex-M, Thread/Privilege, `CONTROL`, T-bit, boot alias/remap, bit-band, SRAM khi reset, AAPCS, Startup Code và Linker Script. Các mục “Bổ sung kỹ thuật” được thêm để sửa những chỗ slide nguồn diễn đạt quá rút gọn hoặc chưa bao phủ đủ cho phỏng vấn Intern Embedded Firmware.
 
 <a id="muc-01-01"></a>
 ## 1.1. Processor Core vs Processor vs Microcontroller
@@ -163,9 +165,14 @@ Cách hiểu đúng hơn:
 STM32
 = một vi điều khiển hoàn chỉnh
 
-Cortex-M
-= kiến trúc/lõi xử lý được tích hợp bên trong vi điều khiển đó
+Cortex-M3 / Cortex-M4 / Cortex-M7 / ...
+= các processor core thuộc họ Cortex-M của Arm
+
+Armv6-M / Armv7-M / Armv8-M / ...
+= kiến trúc mà các core tương ứng triển khai
 ```
+
+> **Hiệu chỉnh thuật ngữ:** không nên dùng `Cortex-M` như tên của một *kiến trúc* cụ thể. Trong phỏng vấn, cách nói an toàn hơn là: **STM32 là MCU; bên trong nó tích hợp một Cortex-M processor core; core đó triển khai một kiến trúc Arm-M tương ứng.**
 
 ### 1.1.2. Quan hệ giữa Core và STM32
 
@@ -611,10 +618,11 @@ int main(void)
 
 Trong trạng thái chương trình đang thực thi luồng mã ứng dụng bình thường, tài liệu xếp việc thực thi đó vào **Thread mode**.
 
-Tài liệu cũng gọi Thread mode là **"User Mode"**.
+Tài liệu nguồn cũng gọi Thread mode là **"User Mode"**. Tuy nhiên, cách gọi này dễ gây nhầm với **Unprivileged**.
 
-> **Phạm vi của mục này:** ở đây chỉ ghi nhận cách gọi trong tài liệu nguồn.  
-> Phần **Access Level** sẽ được học riêng ở mục 1.3, nên chưa trộn khái niệm quyền truy cập vào Operation Modes.
+> **Hiệu chỉnh kỹ thuật:** trong Cortex-M, **Thread mode không đồng nghĩa với Unprivileged/User**. Thread mode có thể chạy ở **Privileged** hoặc **Unprivileged**, còn Handler mode luôn Privileged. Trong tài liệu này nên ưu tiên thuật ngữ **Thread mode** thay vì dùng “User Mode”.
+
+Phần **Access Level** ở mục 1.3 sẽ tách riêng khái niệm quyền truy cập khỏi Operation Mode.
 
 ---
 
@@ -1058,24 +1066,23 @@ CONTROL
 
 để chuyển đổi mức truy cập khi ở Thread mode.
 
-Hình minh họa sử dụng cách viết rút gọn:
+Hình minh họa nguồn sử dụng cách viết rút gọn `CONTROL = 0/1`. Cách viết này **không nên học thuộc theo nghĩa toàn bộ thanh ghi `CONTROL` chỉ biểu diễn quyền truy cập**, vì `CONTROL` còn chứa các bit điều khiển khác.
+
+Cách hiểu chính xác hơn ở mức phỏng vấn:
 
 ```text
-CONTROL = 0
-→ Privileged
+CONTROL.nPRIV — bit 0
+0 → Thread mode Privileged
+1 → Thread mode Unprivileged
 
-CONTROL = 1
-→ Non-Privileged
+CONTROL.SPSEL — bit 1
+0 → Thread mode dùng MSP
+1 → Thread mode dùng PSP
 ```
 
-Ở phần này chỉ cần hiểu ý tưởng:
+> Một số tài liệu Cortex-M cũ có thể dùng tên trường khác như `TPL`/`ASPSEL`; ý nghĩa cốt lõi vẫn là **bit quyền của Thread mode** và **bit chọn Stack Pointer**.
 
-```text
-CONTROL
-→ ảnh hưởng tới access level của Thread mode
-```
-
-Chi tiết các bit cụ thể trong thanh ghi `CONTROL` sẽ được học ở phần **Core Registers** để tránh trộn quá nhiều kiến thức vào một mục.
+Trong Handler mode, processor luôn Privileged và luôn sử dụng MSP.
 
 ---
 
@@ -1130,7 +1137,7 @@ Có thể hình dung đầy đủ:
 Thread mode
 Privileged
     │
-    │ CONTROL = 1
+    │ CONTROL.nPRIV = 1
     ↓
 Thread mode
 Non-Privileged
@@ -1140,7 +1147,7 @@ Non-Privileged
 Handler mode
 Privileged
     │
-    │ CONTROL = 0
+    │ CONTROL.nPRIV = 0
     ↓
 Thread mode
 Privileged
@@ -1225,7 +1232,7 @@ Sơ đồ tổng hợp:
 ```text
 Thread / Privileged
         │
-        │ CONTROL = 1
+        │ CONTROL.nPRIV = 1
         ↓
 Thread / Non-Privileged
         │
@@ -1233,7 +1240,7 @@ Thread / Non-Privileged
         ↓
 Handler / Privileged
         │
-        │ CONTROL = 0
+        │ CONTROL.nPRIV = 0
         ↓
 Thread / Privileged
 ```
@@ -1302,7 +1309,7 @@ Nếu hỏi **“Tại sao mã Non-Privileged không thể tự nâng quyền tr
 
 Nếu hỏi **“Thanh ghi nào liên quan tới việc chuyển access level?”**:
 
-> **Thanh ghi `CONTROL`. Tài liệu minh họa `CONTROL = 0` cho Privileged và `CONTROL = 1` cho Non-Privileged; chi tiết từng bit sẽ học ở phần Core Registers.**
+> **Thanh ghi `CONTROL`. Tài liệu minh họa `CONTROL.nPRIV = 0` cho Privileged và `CONTROL.nPRIV = 1` cho Non-Privileged; chi tiết từng bit sẽ học ở phần Core Registers.**
 
 ---
 
@@ -1353,7 +1360,7 @@ Luồng quan trọng:
 ```text
 Thread / Privileged
         ↓
-   CONTROL = 1
+   CONTROL.nPRIV = 1
         ↓
 Thread / Non-Privileged
         ↓
@@ -1361,7 +1368,7 @@ Exception / Interrupt
         ↓
 Handler / Privileged
         ↓
-   CONTROL = 0
+   CONTROL.nPRIV = 0
         ↓
 Thread / Privileged
 ```
@@ -1689,7 +1696,48 @@ Trong phạm vi hình nguồn hiện tại, tài liệu chưa giải thích chi 
 
 > **PSR là thanh ghi trạng thái chương trình của processor.**
 
-Chi tiết cấu trúc PSR sẽ chỉ nên bổ sung khi có tài liệu nguồn tương ứng.
+Phần **Bổ sung kỹ thuật** ngay sau đây làm rõ thêm `xPSR`, `APSR`, `IPSR`, `EPSR` và T-bit dựa trên tài liệu T-bit/Programming Manual đi kèm.
+
+
+---
+
+### Bổ sung kỹ thuật — `xPSR`, `APSR`, `IPSR`, `EPSR` và T-bit
+
+Ở Cortex-M, `xPSR` là cách nhìn tổng hợp của các nhóm trạng thái:
+
+```text
+xPSR
+├── APSR → trạng thái kết quả phép toán, ví dụ N/Z/C/V
+├── IPSR → exception number hiện tại
+└── EPSR → trạng thái thực thi
+```
+
+Trong `EPSR` có **T-bit** liên quan tới Thumb state.
+
+Điểm cần nhớ:
+
+```text
+Cortex-M
+→ chỉ thực thi Thumb/Thumb-2 theo core tương ứng
+→ không có ARM state cổ điển
+→ T-bit phải ở trạng thái hợp lệ (= 1)
+```
+
+Khi một địa chỉ handler được nạp vào `PC`, **bit 0 của giá trị địa chỉ được dùng để biểu thị Thumb state**. Vì vậy các entry trong Vector Table thường có bit 0 bằng `1`.
+
+Ví dụ khái niệm:
+
+```text
+Reset_Handler thực thi từ vùng quanh 0x08000100
+Vector entry có thể chứa      0x08000101
+                                      ↑
+                                  bit 0 = 1
+                                  Thumb state
+```
+
+Không nên hiểu `0x08000101` là CPU thực thi instruction ở một byte lẻ theo nghĩa thông thường; bit thấp nhất mang thông tin trạng thái thực thi.
+
+Nếu T-bit không hợp lệ trên Cortex-M, processor có thể phát sinh **UsageFault** trên các core hỗ trợ fault tương ứng.
 
 ---
 
@@ -2160,6 +2208,59 @@ Memory Address        Nội dung
 ```
 
 Đây là phần đầu của **vector table** mà processor sử dụng khi reset.
+
+
+---
+
+### Bổ sung kỹ thuật — vì sao Vector Table ở `0x00000000` nhưng Main Flash thường ở `0x08000000`?
+
+Đây là điểm rất dễ gây nhầm khi ghép **Memory Map** với **Reset Sequence**.
+
+Ở góc nhìn của Cortex-M khi reset:
+
+```text
+0x00000000
+→ initial MSP
+
+0x00000004
+→ Reset vector
+```
+
+Trong nhiều STM32, **Main Flash có địa chỉ vật lý bắt đầu tại `0x08000000`**. Để core vẫn có thể lấy vector ở `0x00000000`, STM32 sử dụng cơ chế **boot mapping / alias / remap**.
+
+Khi boot từ Main Flash, có thể hình dung:
+
+```text
+Địa chỉ vật lý Main Flash
+0x08000000
+      │
+      │ được ánh xạ/alias vào boot space
+      ↓
+0x00000000
+      │
+      ├── initial MSP
+      └── Reset vector
+```
+
+Vì vậy hai phát biểu sau **không mâu thuẫn**:
+
+```text
+Cortex-M đọc vector tại 0x00000000 khi reset
+
+STM32 Main Flash thường bắt đầu tại 0x08000000
+```
+
+Tùy dòng STM32 và cấu hình boot, boot space tại `0x00000000` có thể ánh xạ tới:
+
+```text
+Main Flash
+System Memory / bootloader
+SRAM
+```
+
+Sau khi hệ thống đã chạy, Vector Table còn có thể được **relocate** bằng thanh ghi `VTOR` trên các core hỗ trợ tính năng này.
+
+> **Ý phỏng vấn:** `0x00000000` là **reset/boot view mà core nhìn thấy**, còn `0x08000000` là địa chỉ Main Flash điển hình của STM32. Cơ chế alias/remap nối hai phần này lại với nhau.
 
 ---
 
@@ -3151,6 +3252,36 @@ PPB
 → Data access tới PPB region
 ```
 
+
+---
+
+### Bổ sung kỹ thuật — bus của Cortex-M và bus cụ thể của STM32
+
+Cần tách hai lớp kiến thức:
+
+```text
+Cortex-M processor side
+→ I-CODE / D-CODE / System bus
+→ mô hình truy cập của core
+
+STM32 chip interconnect
+→ AHB / APB1 / APB2 / bus matrix ...
+→ cách ST kết nối bộ nhớ và peripheral trong từng dòng MCU
+```
+
+Do đó không nên suy ra rằng mọi STM32 có cấu trúc bus giống hệt nhau chỉ vì chúng cùng dùng Cortex-M.
+
+Ở phần **RCC + Clock**, các bus như AHB/APB sẽ còn liên quan tới:
+
+```text
+clock source
+prescaler
+peripheral clock
+bus clock
+```
+
+> **Cách nhớ:** phần hiện tại giải thích **đường truy cập dữ liệu/lệnh**; phần RCC sau này giải thích **các bus/peripheral được cấp clock như thế nào** trên STM32 cụ thể.
+
 ---
 
 ### 1.6.13. Quan hệ giữa Bus Architecture và Memory Map
@@ -3739,7 +3870,64 @@ Peripheral region
 0x44000000
 ```
 
-Chi tiết công thức bit-band sẽ để sang phần riêng nếu sau này cần học.
+Phần **Bổ sung kỹ thuật** ngay sau đây giải thích cơ chế và công thức ánh xạ bit-band ở mức cần cho phỏng vấn.
+
+
+---
+
+### Bổ sung kỹ thuật — Bit-band thực sự hoạt động như thế nào?
+
+Bit-band cho phép phần mềm thao tác **một bit** trong một vùng nhớ gốc thông qua một **word riêng trong alias region**.
+
+Không dùng bit-band, việc sửa một bit thường có dạng:
+
+```text
+READ cả byte/word
+    ↓
+MODIFY bit cần đổi
+    ↓
+WRITE cả byte/word trở lại
+```
+
+Đây là chuỗi **read-modify-write**. Nếu một tác nhân khác thay đổi các bit khác giữa lúc đọc và ghi, phần mềm có nguy cơ ghi đè trạng thái mới đó.
+
+Với bit-band:
+
+```text
+1 bit trong bit-band region
+        ↕ ánh xạ
+1 word trong alias region
+```
+
+Ghi vào alias word:
+
+```text
+0 → clear bit tương ứng
+1 → set bit tương ứng
+```
+
+Công thức ánh xạ khái niệm:
+
+```text
+alias_address
+= alias_base
++ byte_offset × 32
++ bit_number × 4
+```
+
+Ví dụ ý tưởng:
+
+```text
+bit thứ n của một byte trong SRAM bit-band region
+        ↓
+được ánh xạ thành một word 32-bit riêng trong alias region
+        ↓
+CPU đọc/ghi alias word để đọc/đổi bit đó
+```
+
+Điểm quan trọng là phần mềm **không phải tự viết chuỗi read-modify-write** để đổi một bit.
+
+> **Lưu ý:** không được mặc định mọi Cortex-M hoặc mọi dòng STM32 đều hỗ trợ bit-band. Chỉ sử dụng khi programming manual/reference manual của core/MCU cụ thể xác nhận có vùng bit-band.
 
 ---
 
@@ -4278,7 +4466,9 @@ SRAM
   - biến cục bộ trên Stack;
   - Heap;
   - context của task.
-- Khi mất nguồn hoặc reset, nội dung SRAM không được giữ lại theo tài liệu.
+- Tài liệu nguồn ghi “mất nguồn hoặc reset”. Tuy nhiên cần tách hai trường hợp:
+  - **Mất nguồn:** SRAM là volatile nên không được kỳ vọng giữ dữ liệu.
+  - **Reset:** không nên kết luận rằng toàn bộ SRAM luôn bị phần cứng xóa sạch. Sau reset, startup code thường **khởi tạo lại `.data` và `.bss`**, còn nội dung những vùng RAM khác phụ thuộc loại reset, dòng MCU và thiết kế hệ thống.
 
 Có thể hình dung:
 
@@ -4287,9 +4477,15 @@ Chương trình đang chạy
         ↓
 SRAM thay đổi liên tục
 
-Mất nguồn / reset
+Mất nguồn
         ↓
-dữ liệu SRAM không được giữ lại
+không giữ dữ liệu
+
+Reset
+        ↓
+startup code tái khởi tạo .data / .bss
+        ↓
+không nên dựa vào dữ liệu RAM cũ nếu tài liệu MCU không bảo đảm
 ```
 
 ---
@@ -4613,7 +4809,7 @@ SRAM
 +-----------------------------+
 ```
 
-Theo hình:
+Theo hình nguồn:
 
 ```text
 .bss
@@ -4621,12 +4817,19 @@ Theo hình:
 → uninitialized static variables
 ```
 
+Hiệu chỉnh theo cách hiểu C/linker chính xác hơn:
+
+> **`.bss` thường chứa các đối tượng có static storage duration được zero-initialize.** Điều này bao gồm biến global/static không ghi initializer; compiler/linker cũng thường có thể đặt các biến khởi tạo bằng `0` vào `.bss`.
+
 Ví dụ:
 
 ```c
-int counter;
-static int status;
+int counter;          // zero-initialized
+static int status;    // zero-initialized
+static int error = 0; // thường cũng có thể nằm trong .bss
 ```
+
+Trước khi vào `main()`, startup code phải bảo đảm vùng `.bss` được điền `0`.
 
 Mục **Reset Sequence** trước đó đã cho thấy Reset Handler có bước:
 
@@ -5854,6 +6057,39 @@ R4-R11
 → callee-saved
 ```
 
+
+---
+
+### Bổ sung kỹ thuật — nuance AAPCS và căn chỉnh Stack
+
+Phần slide dùng cách nhớ đơn giản:
+
+```text
+R0-R3, R12, LR
+→ caller-saved
+
+R4-R11
+→ callee-saved
+```
+
+Khi đối chiếu AAPCS32 chính thức, cần thêm hai lưu ý:
+
+1. **`r9` có vai trò phụ thuộc nền tảng.** AAPCS32 yêu cầu callee bảo toàn `r4-r8`, `r10`, `r11` và `SP`; `r9` được bảo toàn trong các PCS variant coi `r9` là một biến callee-saved. Vì vậy câu “R4-R11 luôn callee-saved” chỉ nên dùng như cách nhớ đơn giản.
+2. **Stack phải được căn chỉnh.** AAPCS yêu cầu `SP` luôn ít nhất word-aligned; tại public interface, Stack phải **8-byte aligned** (`SP mod 8 = 0`).
+
+Cách trả lời an toàn khi phỏng vấn Intern:
+
+> **R0-R3 và R12 là các scratch/argument register nên caller không được kỳ vọng chúng được giữ nguyên qua một lời gọi hàm. R4-R11 thường được dùng làm callee-saved, nhưng r9 có thể có vai trò platform-specific; Stack phải tuân thủ alignment của ABI.**
+
+Với `LR`:
+
+```text
+BL / lời gọi hàm
+→ ghi return address vào LR
+```
+
+nên một hàm **không phải leaf function** thường phải bảo toàn `LR` trước khi gọi tiếp hàm khác nếu còn cần địa chỉ quay về cũ.
+
 ---
 
 ### 1.9.25. Giá trị trả về theo tài liệu AAPCS
@@ -6386,7 +6622,7 @@ Do đó:
 Vector Table không thể phụ thuộc vào .data trong RAM
 ```
 
-Các phần như weak handler, toàn bộ danh sách vector, cú pháp Assembly của startup file hoặc implementation cụ thể của vendor chưa có trong tài liệu nguồn này nên chưa được triển khai ở đây.
+Các phần như weak handler, toàn bộ danh sách vector, cú pháp Assembly của startup file hoặc implementation cụ thể của vendor **không có trong `Startup_Code.docx` gốc**. Phần **Bổ sung kỹ thuật** ở cuối mục sẽ mở rộng những khái niệm cần thiết ở mức Intern và ghi rõ đó là phần bổ sung ngoài phạm vi file nguồn này.
 
 ---
 
@@ -6915,6 +7151,163 @@ không có SP / Reset_Handler
 
 > **Vector Table phải tồn tại và truy cập được ngay khi reset, vì CPU cần nó để lấy initial Stack Pointer và địa chỉ Reset_Handler. `.data` trong SRAM chỉ được tạo sau đó bởi Reset_Handler, nên Vector Table không thể phụ thuộc vào `.data`.**
 
+
+---
+
+### Bổ sung kỹ thuật — Startup Code hoàn chỉnh ở mức Intern
+
+> **Phần dưới đây là bổ sung để hoàn thiện lộ trình. `Startup_Code.docx` gốc chỉ tập trung vào quan hệ Vector Table ↔ `.data`; các ý dưới đây nối nó với Reset Sequence, Flash/SRAM và Linker Script đã học.**
+
+Một startup file STM32 điển hình thường có các thành phần khái niệm sau:
+
+```text
+Startup file
+├── Vector Table
+├── Reset_Handler
+├── Default_Handler
+└── các handler yếu (weak) / alias mặc định
+```
+
+#### Vector Table
+
+Vector Table chứa:
+
+```text
+Entry 0 → Initial MSP
+Entry 1 → Reset_Handler
+Entry 2... → exception / interrupt handlers
+```
+
+Linker thường giữ Vector Table trong một section riêng như:
+
+```text
+.isr_vector
+```
+
+và đặt section này ở đầu vùng boot/Flash thích hợp.
+
+#### `Reset_Handler`
+
+Sau khi phần cứng đã lấy initial MSP và Reset vector, `Reset_Handler` thực hiện phần **khởi tạo phần mềm**.
+
+Luồng điển hình:
+
+```text
+RESET
+  ↓
+Hardware lấy MSP + Reset vector
+  ↓
+Reset_Handler
+  ↓
+copy .data: Flash → SRAM
+  ↓
+zero .bss
+  ↓
+SystemInit() / khởi tạo hệ thống cần thiết
+  ↓
+khởi tạo C/C++ runtime nếu toolchain yêu cầu
+  ↓
+main()
+```
+
+> Thứ tự chính xác của `SystemInit()` so với một số bước runtime có thể khác giữa startup file/toolchain/vendor. Điều cần nắm là **`.data` phải có giá trị runtime đúng, `.bss` phải được zero-initialize và môi trường cần thiết phải sẵn sàng trước khi mã ứng dụng phụ thuộc vào chúng**.
+
+Pseudocode khái niệm:
+
+```c
+extern unsigned int _sidata;
+extern unsigned int _sdata;
+extern unsigned int _edata;
+extern unsigned int _sbss;
+extern unsigned int _ebss;
+
+void Reset_Handler(void)
+{
+    // 1. Copy .data từ Flash sang SRAM
+    unsigned int *src = &_sidata;
+    unsigned int *dst = &_sdata;
+    while (dst < &_edata) {
+        *dst++ = *src++;
+    }
+
+    // 2. Zero .bss
+    for (dst = &_sbss; dst < &_ebss; ++dst) {
+        *dst = 0;
+    }
+
+    // 3. Các bước khởi tạo hệ thống/runtime tùy project
+    SystemInit();
+    __libc_init_array();
+
+    // 4. Vào ứng dụng
+    main();
+
+    while (1) {
+        // main() thường không được kỳ vọng return trong bare-metal firmware
+    }
+}
+```
+
+Đây chỉ là pseudocode để hiểu luồng; tên symbol và thứ tự cụ thể phụ thuộc linker script/startup file thật của project.
+
+#### `Default_Handler` và weak handler
+
+Startup file của vendor thường cung cấp handler mặc định:
+
+```text
+IRQ_Handler cụ thể chưa được user định nghĩa
+        ↓
+weak alias
+        ↓
+Default_Handler
+        ↓
+thường lặp vô hạn để debugger có thể dừng lại
+```
+
+Khi người dùng định nghĩa một handler cùng tên mạnh hơn, linker sẽ chọn implementation của người dùng thay cho weak default.
+
+Cách hiểu này giúp giải thích tại sao bạn chỉ cần viết, ví dụ:
+
+```c
+void USART2_IRQHandler(void)
+{
+    // xử lý ngắt
+}
+```
+
+mà không phải sửa trực tiếp startup file trong nhiều project.
+
+#### Startup Code phụ thuộc Linker Script như thế nào?
+
+Startup code không tự biết `.data` và `.bss` nằm ở đâu. Nó sử dụng các symbol do linker/linker script tạo ra:
+
+```text
+_sidata → nguồn initial values của .data trong Flash
+_sdata  → đầu .data trong SRAM
+_edata  → cuối .data trong SRAM
+_sbss   → đầu .bss
+_ebss   → cuối .bss
+_estack → initial Stack boundary / top of stack theo project
+```
+
+Do đó:
+
+```text
+Linker Script
+→ tạo layout + boundary symbols
+        ↓
+Startup Code
+→ dùng symbols để khởi tạo RAM
+        ↓
+main()
+```
+
+### Câu trả lời phỏng vấn nên nhớ
+
+Nếu hỏi **“Startup code làm gì trước `main()`?”**:
+
+> **Sau khi hardware lấy MSP và Reset vector, `Reset_Handler` chuẩn bị môi trường runtime: copy `.data` từ Flash sang RAM, zero `.bss`, thực hiện các bước system/C runtime initialization cần thiết rồi gọi `main()`. Startup file cũng thường chứa Vector Table và các handler mặc định.**
+
 [↑ Về mục lục](#muc-luc)
 
 
@@ -7147,7 +7540,7 @@ yêu cầu một số code/data
 User-defined section
 ```
 
-Trong phạm vi nguồn hiện tại, tài liệu chưa chỉ ra cú pháp cụ thể để khai báo section tự định nghĩa, nên chưa triển khai thêm.
+Trong phạm vi nguồn hiện tại, tài liệu chưa chỉ ra cú pháp cụ thể để khai báo section tự định nghĩa. Phần bổ sung cuối mục tập trung vào cú pháp linker script tối thiểu; user-defined section nâng cao vẫn chưa cần học sâu.
 
 ---
 
@@ -7604,7 +7997,7 @@ Linker Script
 → từ đó linker có thể tạo các boundary/symbol liên quan
 ```
 
-Nguồn hình hiện tại chưa mô tả cú pháp cụ thể để khai báo `_sdata`, `_edata`, nên chưa đi sâu hơn.
+Nguồn hình hiện tại chưa mô tả cú pháp cụ thể để khai báo `_sdata`, `_edata`. Phần **Bổ sung kỹ thuật** cuối mục sẽ đưa một linker script rút gọn để thấy các symbol này được tạo và được startup code sử dụng như thế nào.
 
 ---
 
@@ -7756,5 +8149,215 @@ Linker Script
 **Ý quan trọng nhất:**
 
 > **Mỗi object file có các section riêng như `.text`, `.data`, `.bss`, `.rodata`. Linker ghép các section tương ứng và resolve symbol; locator dùng linker script để gán địa chỉ cho các section, từ đó tạo ra file ELF cuối cùng có bố cục bộ nhớ xác định.**
+
+
+---
+
+### Bổ sung kỹ thuật — Linker Script tối thiểu cần đọc được
+
+> **Phần dưới đây mở rộng từ ba hình linker/section để biến mục 1.11 thành kiến thức Linker Script thực sự ở mức Intern. Không cần học thuộc cú pháp; mục tiêu là nhìn một file `.ld` và hiểu nó đang đặt cái gì vào Flash/RAM.**
+
+Một ví dụ rút gọn:
+
+```ld
+MEMORY
+{
+    FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 1024K
+    RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 128K
+}
+
+_estack = ORIGIN(RAM) + LENGTH(RAM);
+
+SECTIONS
+{
+    .isr_vector :
+    {
+        KEEP(*(.isr_vector))
+    } > FLASH
+
+    .text :
+    {
+        *(.text*)
+        *(.rodata*)
+    } > FLASH
+
+    _sidata = LOADADDR(.data);
+
+    .data :
+    {
+        _sdata = .;
+        *(.data*)
+        _edata = .;
+    } > RAM AT > FLASH
+
+    .bss (NOLOAD) :
+    {
+        _sbss = .;
+        *(.bss*)
+        *(COMMON)
+        _ebss = .;
+    } > RAM
+}
+```
+
+> `1024K` Flash và `128K` RAM ở trên chỉ là **ví dụ**. Dung lượng thật phải lấy từ datasheet/linker script của MCU cụ thể.
+
+#### `MEMORY`
+
+```text
+MEMORY
+→ khai báo các vùng bộ nhớ mà linker được phép sử dụng
+```
+
+Ví dụ:
+
+```text
+FLASH
+→ bắt đầu 0x08000000
+
+RAM
+→ bắt đầu 0x20000000
+```
+
+`ORIGIN` là địa chỉ đầu, `LENGTH` là kích thước vùng.
+
+#### `SECTIONS`
+
+```text
+SECTIONS
+→ mô tả input sections từ các .o
+→ được gom thành output section nào
+→ output section được đặt vào MEMORY region nào
+```
+
+Ví dụ:
+
+```text
+*(.text*)
+*(.rodata*)
+      ↓
+.text output section
+      ↓
+FLASH
+```
+
+#### `KEEP(*(.isr_vector))`
+
+Khi linker bật loại bỏ section không được tham chiếu, Vector Table có thể không được gọi như một hàm thông thường.
+
+```text
+KEEP(...)
+→ yêu cầu linker không loại section quan trọng này
+```
+
+Vì vậy startup/linker script STM32 thường có dạng tương tự:
+
+```ld
+KEEP(*(.isr_vector))
+```
+
+#### VMA và LMA — chìa khóa để hiểu `.data`
+
+`.data` có hai địa chỉ cần phân biệt:
+
+```text
+VMA — Virtual/Runtime Memory Address
+→ nơi code sử dụng .data khi chương trình chạy
+→ SRAM
+
+LMA — Load Memory Address
+→ nơi initial values của .data được lưu trong firmware image
+→ Flash
+```
+
+Có thể hình dung:
+
+```text
+FLASH                            SRAM
+LMA                              VMA
+.data initial values  ───────→   .data runtime
+                         startup copy
+```
+
+Trong linker script:
+
+```ld
+.data : { ... } > RAM AT > FLASH
+```
+
+có ý nghĩa khái niệm:
+
+```text
+.data chạy ở RAM
+nhưng dữ liệu khởi tạo của nó được load/lưu trong Flash
+```
+
+`LOADADDR(.data)` giúp lấy địa chỉ load của `.data` để tạo symbol như `_sidata` cho startup code.
+
+#### Boundary symbols
+
+Các dòng:
+
+```ld
+_sdata = .;
+_edata = .;
+_sbss  = .;
+_ebss  = .;
+```
+
+không tạo biến C thông thường. Chúng tạo **linker symbols** đánh dấu địa chỉ.
+
+Startup code có thể tham chiếu chúng để biết:
+
+```text
+copy từ đâu
+copy tới đâu
+zero vùng nào
+```
+
+Kết nối toàn bộ kiến thức:
+
+```text
+Linker Script
+  ↓ tạo
+_sidata / _sdata / _edata / _sbss / _ebss / _estack
+  ↓ được dùng bởi
+Startup Code
+  ↓ chuẩn bị
+.data / .bss / Stack
+  ↓
+main()
+```
+
+#### ELF, BIN và HEX khác nhau ở mức nào?
+
+Sau khi link:
+
+```text
+final.elf
+→ chứa code/data + section table + symbol + có thể có debug information
+```
+
+Công cụ như `objcopy` có thể tạo thêm:
+
+```text
+.bin
+→ raw binary image
+
+.hex
+→ image có địa chỉ theo định dạng Intel HEX
+```
+
+Vì vậy khi debug bằng GDB/ST-Link, file ELF rất hữu ích vì còn symbol/debug info; còn khi nạp firmware, tool có thể dùng ELF/HEX/BIN tùy workflow.
+
+### Câu trả lời phỏng vấn nên nhớ
+
+Nếu hỏi **“Linker Script quan trọng gì trong embedded?”**:
+
+> **Linker Script mô tả bản đồ bộ nhớ thực của firmware: Flash/RAM bắt đầu ở đâu, section nào nằm ở đâu, Stack boundary ở đâu và các linker symbol nào được startup code sử dụng. Nó là cầu nối giữa object sections và memory map thật của MCU.**
+
+Nếu hỏi **“Tại sao `.data` vừa ở Flash vừa ở RAM?”**:
+
+> **Linker đặt runtime address của `.data` ở RAM nhưng lưu initial image của nó trong Flash. Startup code dùng linker symbols để copy initial values từ LMA trong Flash tới VMA trong RAM trước khi vào `main()`.**
 
 [↑ Về mục lục](#muc-luc)
