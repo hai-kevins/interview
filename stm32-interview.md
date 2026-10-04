@@ -32,6 +32,24 @@
    - 2.10. Quy trình cấu hình Clock
    - 2.11. Câu hỏi tự kiểm tra
 3. **GPIO**
+   - 3.1. GPIO là gì? Port và Pin
+   - 3.2. Bật Clock cho GPIO
+   - 3.3. Cấu trúc một GPIO Pin
+   - 3.4. Các chế độ Input
+   - 3.5. Các chế độ Output
+   - 3.6. Push-Pull và Open-Drain
+   - 3.7. Pull-Up / Pull-Down / Floating
+   - 3.8. Output Speed: 2 / 10 / 50 MHz
+   - 3.9. CRL / CRH và MODE / CNF
+   - 3.10. IDR / ODR
+   - 3.11. BSRR / BRR và thao tác Atomic
+   - 3.12. Alternate Function
+   - 3.13. AFIO và Pin Remapping
+   - 3.14. Analog Mode
+   - 3.15. GPIO cho UART / SPI / I2C / Timer / ADC
+   - 3.16. GPIO Locking
+   - 3.17. Quy trình cấu hình GPIO
+   - 3.18. Câu hỏi tự kiểm tra
 4. **Interrupt + NVIC + EXTI**
 5. **Timer + PWM**
 6. **UART**
@@ -9946,5 +9964,1604 @@ Peripheral Clock Enable
 **Điểm cần nhớ:**
 
 > **RCC không chỉ tạo clock cho CPU mà còn quyết định clock của toàn bộ bus và peripheral. Khi phân tích một peripheral, luôn xác định nguồn clock, prescaler của bus, clock thực tế của peripheral và bit Clock Enable tương ứng.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="chuong-03"></a>
+# 3. GPIO
+
+`GPIO` là viết tắt của:
+
+```text
+General-Purpose Input/Output
+```
+
+GPIO là giao diện số giữa vi điều khiển và thế giới bên ngoài. Một chân GPIO có thể được cấu hình để đọc tín hiệu, xuất tín hiệu hoặc được kết nối với một peripheral bên trong MCU thông qua Alternate Function.
+
+Luồng cấu hình tổng quát:
+
+```text
+RCC
+ ↓
+bật clock cho GPIO / AFIO
+ ↓
+chọn Mode và Configuration
+ ↓
+đọc / ghi chân
+hoặc
+kết nối chân với peripheral
+```
+
+<a id="muc-03-01"></a>
+## 3.1. GPIO là gì? Port và Pin
+
+Các chân GPIO được tổ chức thành từng **port**:
+
+```text
+GPIOA
+GPIOB
+GPIOC
+GPIOD
+GPIOE
+GPIOF
+GPIOG
+```
+
+Mỗi port có tối đa 16 pin:
+
+```text
+GPIOA
+├── PA0
+├── PA1
+├── PA2
+├── ...
+└── PA15
+```
+
+Cách đặt tên:
+
+```text
+PA5
+│ │
+│ └── Pin 5
+└──── Port A
+```
+
+Không phải mọi port và mọi pin đều tồn tại trên mọi mã STM32F10xxx hoặc mọi package. Pin thực tế phải được kiểm tra theo pinout của MCU đang sử dụng.
+
+### Trạng thái sau Reset
+
+Đối với GPIO thông thường, ngay sau reset:
+
+```text
+MODE = 00
+CNF  = 01
+```
+
+tương ứng:
+
+```text
+Input Floating
+```
+
+Alternate Function chưa hoạt động mặc định.
+
+Một số chân JTAG/SWD là ngoại lệ vì được dành cho giao diện debug sau reset:
+
+```text
+PA13 → JTMS / SWDIO
+PA14 → JTCK / SWCLK
+PA15 → JTDI
+PB3  → JTDO / TRACESWO
+PB4  → NJTRST
+```
+
+Do đó, không nên giả định tất cả pin đều hoàn toàn tự do ngay sau reset.
+
+---
+
+<a id="muc-03-02"></a>
+## 3.2. Bật Clock cho GPIO
+
+Trên STM32F1, GPIO nằm trên bus `APB2`.
+
+Trước khi cấu hình một port GPIO, phải bật clock cho port đó trong:
+
+```text
+RCC_APB2ENR
+```
+
+Ví dụ:
+
+```text
+IOPAEN
+→ GPIOA clock enable
+
+IOPBEN
+→ GPIOB clock enable
+
+IOPCEN
+→ GPIOC clock enable
+```
+
+Ví dụ bật clock GPIOA:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+```
+
+Luồng đúng:
+
+```text
+RCC
+ ↓
+bật GPIO clock
+ ↓
+cấu hình CRL / CRH
+ ↓
+đọc hoặc ghi GPIO
+```
+
+Nếu cần cấu hình `AFIO_MAPR`, `AFIO_EXTICR` hoặc các thanh ghi AFIO khác thì phải bật thêm:
+
+```text
+AFIOEN
+```
+
+Ví dụ:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_AFIOEN;
+```
+
+Có thể bật nhiều clock trong một lần ghi:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN
+               | RCC_APB2ENR_AFIOEN;
+```
+
+---
+
+<a id="muc-03-03"></a>
+## 3.3. Cấu trúc một GPIO Pin
+
+Một GPIO pin có thể hình dung với các khối chính:
+
+```text
+                    +------------------+
+External pin ───────┤ Protection       |
+                    +------------------+
+                             │
+             ┌───────────────┴───────────────┐
+             ↓                               ↓
+       Input Driver                    Output Driver
+             │                               │
+      Schmitt Trigger                  P-MOS / N-MOS
+             │                               │
+             ↓                               ↑
+           IDR                         ODR / Peripheral
+```
+
+Các thành phần quan trọng:
+
+```text
+Input path
+→ đọc trạng thái trên chân
+
+Output path
+→ điều khiển mức logic trên chân
+
+Pull-Up / Pull-Down
+→ tạo mức mặc định cho input
+
+Alternate Function
+→ kết nối pin với peripheral
+
+Analog path
+→ kết nối pin với khối analog khi phù hợp
+```
+
+### Input Driver
+
+Ở Digital Input, tín hiệu từ chân đi qua input driver và Schmitt trigger rồi được đưa vào `GPIOx_IDR`.
+
+### Output Driver
+
+Output driver sử dụng transistor P-MOS và N-MOS để tạo các kiểu:
+
+```text
+Push-Pull
+Open-Drain
+```
+
+### Chân 5-V tolerant
+
+Một số GPIO có đặc tính `5-V tolerant`, được biểu diễn bằng miền `VDD_FT`. Không được giả định mọi GPIO đều chịu được 5 V; phải kiểm tra đúng pin và đặc tính điện của MCU.
+
+---
+
+<a id="muc-03-04"></a>
+## 3.4. Các chế độ Input
+
+Khi:
+
+```text
+MODE[1:0] = 00
+```
+
+pin được cấu hình làm Input.
+
+`CNF[1:0]` quyết định loại Input:
+
+| `CNF[1:0]` | Input mode |
+|---|---|
+| `00` | Analog |
+| `01` | Floating |
+| `10` | Pull-Up / Pull-Down |
+| `11` | Reserved |
+
+Khi pin ở Digital Input:
+
+```text
+Output Buffer
+→ OFF
+
+Schmitt Trigger
+→ ON
+
+Input Data Register
+→ nhận trạng thái chân
+```
+
+Trạng thái chân được lấy mẫu vào `GPIOx_IDR` theo clock APB2.
+
+### Input Floating
+
+```text
+MODE = 00
+CNF  = 01
+```
+
+Pin không sử dụng pull-up hoặc pull-down nội bộ.
+
+```text
+External signal
+     ↓
+GPIO pin
+     ↓
+Input driver
+     ↓
+IDR
+```
+
+Nếu bên ngoài không chủ động điều khiển chân, mức logic có thể không xác định.
+
+### Input Pull-Up / Pull-Down
+
+```text
+MODE = 00
+CNF  = 10
+```
+
+STM32F1 sử dụng bit tương ứng trong `ODR` để chọn hướng kéo:
+
+```text
+ODR bit = 1
+→ Pull-Up
+
+ODR bit = 0
+→ Pull-Down
+```
+
+Ví dụ PA0 Input Pull-Up:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+
+/* PA0: MODE=00, CNF=10 */
+GPIOA->CRL &= ~(0xFU << 0);
+GPIOA->CRL |=  (0x8U << 0);
+
+/* Chọn Pull-Up */
+GPIOA->ODR |= (1U << 0);
+```
+
+Đây là đặc điểm quan trọng của GPIO STM32F1: `ODR` còn tham gia chọn Pull-Up/Pull-Down khi pin ở chế độ Input Pull-Up/Pull-Down.
+
+---
+
+<a id="muc-03-05"></a>
+## 3.5. Các chế độ Output
+
+Khi:
+
+```text
+MODE[1:0] != 00
+```
+
+pin được cấu hình làm Output hoặc Alternate Function Output.
+
+Trong General-Purpose Output:
+
+```text
+CNF = 00
+→ Push-Pull
+
+CNF = 01
+→ Open-Drain
+```
+
+Khi pin ở Output:
+
+```text
+Output Buffer
+→ ON
+
+Schmitt Trigger
+→ ON
+
+Weak Pull-Up / Pull-Down
+→ OFF
+```
+
+Giá trị xuất được điều khiển bởi `GPIOx_ODR` hoặc các thanh ghi set/reset tương ứng.
+
+Ví dụ PA5 làm General-Purpose Push-Pull Output:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+
+/* PA5: MODE=10 → 2 MHz, CNF=00 → Push-Pull */
+GPIOA->CRL &= ~(0xFU << (5U * 4U));
+GPIOA->CRL |=  (0x2U << (5U * 4U));
+```
+
+---
+
+<a id="muc-03-06"></a>
+## 3.6. Push-Pull và Open-Drain
+
+### Push-Pull
+
+Push-Pull sử dụng cả P-MOS và N-MOS.
+
+```text
+ODR = 1
+→ P-MOS ON
+→ pin được kéo lên mức cao
+
+ODR = 0
+→ N-MOS ON
+→ pin được kéo xuống mức thấp
+```
+
+Sơ đồ:
+
+```text
+        VDD
+         │
+       P-MOS
+         │
+         ├──── GPIO Pin
+         │
+       N-MOS
+         │
+        GND
+```
+
+Đặc điểm:
+
+```text
+0 → chủ động kéo Low
+1 → chủ động kéo High
+```
+
+Phù hợp với các tín hiệu số thông thường cần MCU chủ động điều khiển cả hai mức logic.
+
+### Open-Drain
+
+Open-Drain chỉ dùng N-MOS ở output driver.
+
+```text
+ODR = 0
+→ N-MOS ON
+→ pin bị kéo xuống Low
+
+ODR = 1
+→ N-MOS OFF
+→ pin ở High-Z
+```
+
+Sơ đồ:
+
+```text
+External Pull-Up
+      │
+     VDD
+      │
+      R
+      │
+      ├──── GPIO Pin
+      │
+    N-MOS
+      │
+     GND
+```
+
+Open-Drain không tự chủ động tạo mức High. Khi cần mức High, đường tín hiệu thường cần pull-up thích hợp.
+
+Đây là cấu hình tiêu biểu cho I2C:
+
+```text
+SCL → Alternate Function Open-Drain
+SDA → Alternate Function Open-Drain
+```
+
+### So sánh
+
+| Đặc điểm | Push-Pull | Open-Drain |
+|---|---|---|
+| Chủ động kéo Low | Có | Có |
+| Chủ động kéo High | Có | Không |
+| Trạng thái khi xuất `1` | High | High-Z |
+| Thường cần pull-up ngoài | Không | Có trong các bus như I2C |
+| Ví dụ | LED, UART TX, SPI output | I2C SDA/SCL |
+
+---
+
+<a id="muc-03-07"></a>
+## 3.7. Pull-Up / Pull-Down / Floating
+
+### Pull-Up
+
+Pull-Up tạo xu hướng mặc định:
+
+```text
+không có tín hiệu ngoài
+→ logic 1
+```
+
+Sơ đồ:
+
+```text
+VDD
+ │
+ R
+ │
+ ├──── GPIO Input
+```
+
+### Pull-Down
+
+Pull-Down tạo xu hướng mặc định:
+
+```text
+không có tín hiệu ngoài
+→ logic 0
+```
+
+Sơ đồ:
+
+```text
+GPIO Input
+ │
+ R
+ │
+GND
+```
+
+### Floating
+
+Floating không dùng điện trở kéo nội bộ:
+
+```text
+GPIO Input
+→ không Pull-Up
+→ không Pull-Down
+```
+
+Floating phù hợp khi nguồn tín hiệu bên ngoài luôn chủ động điều khiển mức logic.
+
+Không nên để một input không được điều khiển ở trạng thái floating nếu ứng dụng cần mức logic xác định.
+
+---
+
+<a id="muc-03-08"></a>
+## 3.8. Output Speed: 2 / 10 / 50 MHz
+
+Ở Output mode, `MODE[1:0]` vừa cho biết pin là Output vừa chọn **maximum output speed**.
+
+| `MODE[1:0]` | Chế độ |
+|---|---|
+| `00` | Input |
+| `01` | Output, max speed 10 MHz |
+| `10` | Output, max speed 2 MHz |
+| `11` | Output, max speed 50 MHz |
+
+Điểm cần phân biệt:
+
+```text
+Output Speed
+≠
+tần số mà phần mềm bắt buộc phải toggle pin
+```
+
+Đây là lựa chọn khả năng tốc độ của output driver.
+
+Ví dụ một LED không cần cấu hình 50 MHz chỉ vì CPU chạy ở 72 MHz.
+
+Cấu hình tốc độ nên phù hợp với nhu cầu tín hiệu và đặc tính phần cứng của hệ thống.
+
+---
+
+<a id="muc-03-09"></a>
+## 3.9. CRL / CRH và MODE / CNF
+
+STM32F1 dùng hai thanh ghi cấu hình cho mỗi port:
+
+```text
+GPIOx_CRL
+→ Pin 0 → Pin 7
+
+GPIOx_CRH
+→ Pin 8 → Pin 15
+```
+
+Mỗi pin sử dụng 4 bit:
+
+```text
+CNF[1:0] MODE[1:0]
+```
+
+Sơ đồ:
+
+```text
+4 bit / pin
+
++------+------+------+------+
+| CNF1 | CNF0 | MODE1| MODE0|
++------+------+------+------+
+```
+
+### CRL
+
+`GPIOx_CRL` chứa cấu hình:
+
+```text
+Pin 0
+Pin 1
+...
+Pin 7
+```
+
+Ví dụ bit của pin 5:
+
+```text
+Pin 5
+→ CRL[23:20]
+```
+
+### CRH
+
+`GPIOx_CRH` chứa cấu hình:
+
+```text
+Pin 8
+Pin 9
+...
+Pin 15
+```
+
+Ví dụ pin 13:
+
+```text
+Pin 13
+→ CRH[23:20]
+```
+
+### Bảng MODE/CNF tổng hợp
+
+| Chức năng | MODE | CNF |
+|---|---|---|
+| Analog Input | `00` | `00` |
+| Floating Input | `00` | `01` |
+| Pull-Up/Pull-Down Input | `00` | `10` |
+| General-Purpose Push-Pull | `01/10/11` | `00` |
+| General-Purpose Open-Drain | `01/10/11` | `01` |
+| Alternate Function Push-Pull | `01/10/11` | `10` |
+| Alternate Function Open-Drain | `01/10/11` | `11` |
+
+Với Output, `MODE` chọn:
+
+```text
+01 → 10 MHz
+10 → 2 MHz
+11 → 50 MHz
+```
+
+### Công thức vị trí bit
+
+Với pin `n` từ `0` đến `7`:
+
+```text
+shift = n × 4
+→ cấu hình trong CRL
+```
+
+Với pin `n` từ `8` đến `15`:
+
+```text
+shift = (n - 8) × 4
+→ cấu hình trong CRH
+```
+
+Ví dụ PA9:
+
+```text
+PA9
+→ CRH
+→ shift = (9 - 8) × 4
+        = 4
+```
+
+---
+
+<a id="muc-03-10"></a>
+## 3.10. IDR / ODR
+
+### GPIOx_IDR — Input Data Register
+
+`IDR` chứa trạng thái input của các pin:
+
+```text
+IDR0  → Pin 0
+IDR1  → Pin 1
+...
+IDR15 → Pin 15
+```
+
+Ví dụ đọc PA0:
+
+```c
+uint32_t state = (GPIOA->IDR >> 0) & 1U;
+```
+
+Hoặc:
+
+```c
+if (GPIOA->IDR & (1U << 0))
+{
+    /* PA0 đang ở mức logic 1 */
+}
+```
+
+### GPIOx_ODR — Output Data Register
+
+`ODR` chứa output latch của các pin:
+
+```text
+ODR0  → Pin 0
+...
+ODR15 → Pin 15
+```
+
+Ví dụ set PA5 bằng ODR:
+
+```c
+GPIOA->ODR |= (1U << 5);
+```
+
+Reset PA5:
+
+```c
+GPIOA->ODR &= ~(1U << 5);
+```
+
+Toggle PA5:
+
+```c
+GPIOA->ODR ^= (1U << 5);
+```
+
+### IDR và ODR không giống nhau
+
+```text
+ODR
+→ giá trị output latch
+
+IDR
+→ trạng thái được input path lấy từ chân
+```
+
+Ở chế độ Output, input path vẫn có thể hoạt động, vì vậy có thể đọc trạng thái chân qua `IDR`.
+
+---
+
+<a id="muc-03-11"></a>
+## 3.11. BSRR / BRR và thao tác Atomic
+
+### Vấn đề của Read-Modify-Write trên ODR
+
+Lệnh:
+
+```c
+GPIOA->ODR |= (1U << 5);
+```
+
+về bản chất gồm:
+
+```text
+READ ODR
+   ↓
+MODIFY
+   ↓
+WRITE ODR
+```
+
+Nếu nhiều ngữ cảnh cùng sửa `ODR`, thao tác read-modify-write có thể tác động tới các bit khác ngoài ý muốn nếu không được kiểm soát đúng.
+
+### GPIOx_BSRR
+
+`BSRR` cho phép set/reset pin bằng một lần ghi APB2.
+
+Cấu trúc:
+
+```text
+BSRR[15:0]
+→ SET pin 0 → 15
+
+BSRR[31:16]
+→ RESET pin 0 → 15
+```
+
+Set PA5:
+
+```c
+GPIOA->BSRR = (1U << 5);
+```
+
+Reset PA5:
+
+```c
+GPIOA->BSRR = (1U << (5 + 16));
+```
+
+Có thể set/reset nhiều pin trong cùng một lần ghi:
+
+```c
+GPIOA->BSRR = (1U << 5)
+            | (1U << 6)
+            | (1U << (7 + 16));
+```
+
+Ý nghĩa:
+
+```text
+PA5 → Set
+PA6 → Set
+PA7 → Reset
+```
+
+Nếu cả bit Set và Reset của cùng một pin cùng được ghi `1`, thao tác Set có ưu tiên.
+
+### GPIOx_BRR
+
+`BRR` chỉ dùng để reset các bit:
+
+```text
+ghi 1
+→ reset bit tương ứng trong ODR
+```
+
+Ví dụ:
+
+```c
+GPIOA->BRR = (1U << 5);
+```
+
+### Vì sao BSRR quan trọng?
+
+```text
+ODR read-modify-write
+→ nhiều bước
+
+BSRR
+→ một lần ghi
+→ atomic ở mức thao tác set/reset GPIO
+```
+
+Khi chỉ cần Set/Reset pin, ưu tiên `BSRR` giúp tránh read-modify-write không cần thiết.
+
+---
+
+<a id="muc-03-12"></a>
+## 3.12. Alternate Function
+
+Một chân GPIO có thể được kết nối với tín hiệu từ peripheral bên trong MCU.
+
+Ví dụ:
+
+```text
+USART1
+  │
+  └── TX
+       ↓
+      PA9
+```
+
+Khi PA9 được cấu hình Alternate Function Output:
+
+```text
+USART1 peripheral
+       ↓
+Alternate Function
+       ↓
+GPIO output driver
+       ↓
+PA9
+```
+
+Khi đó output không còn được điều khiển như General-Purpose Output thông thường mà được điều khiển bởi peripheral.
+
+### Alternate Function Output
+
+Hai kiểu:
+
+```text
+Alternate Function Push-Pull
+Alternate Function Open-Drain
+```
+
+Trong Alternate Function Output:
+
+```text
+Output Buffer
+→ ON
+
+Nguồn điều khiển Output Buffer
+→ peripheral
+
+Input path
+→ vẫn có thể hoạt động
+```
+
+### Alternate Function Input
+
+Đối với các tín hiệu peripheral là input, chân được cấu hình theo input mode phù hợp:
+
+```text
+Floating
+Pull-Up
+Pull-Down
+```
+
+Ví dụ:
+
+```text
+USART RX
+→ Input Floating hoặc Input Pull-Up
+```
+
+---
+
+<a id="muc-03-13"></a>
+## 3.13. AFIO và Pin Remapping
+
+`AFIO` là:
+
+```text
+Alternate Function I/O
+```
+
+AFIO cho phép thay đổi mapping của một số peripheral sang các chân khác.
+
+Thanh ghi quan trọng:
+
+```text
+AFIO_MAPR
+```
+
+Trước khi truy cập các thanh ghi AFIO:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_AFIOEN;
+```
+
+### USART1 Remap
+
+Mặc định:
+
+```text
+USART1_TX → PA9
+USART1_RX → PA10
+```
+
+Remap:
+
+```text
+USART1_TX → PB6
+USART1_RX → PB7
+```
+
+### I2C1 Remap
+
+Mặc định:
+
+```text
+I2C1_SCL → PB6
+I2C1_SDA → PB7
+```
+
+Remap:
+
+```text
+I2C1_SCL → PB8
+I2C1_SDA → PB9
+```
+
+### SPI1 Remap
+
+Mặc định:
+
+```text
+SPI1_NSS  → PA4
+SPI1_SCK  → PA5
+SPI1_MISO → PA6
+SPI1_MOSI → PA7
+```
+
+Remap:
+
+```text
+SPI1_NSS  → PA15
+SPI1_SCK  → PB3
+SPI1_MISO → PB4
+SPI1_MOSI → PB5
+```
+
+### Timer Remap
+
+Một số Timer hỗ trợ:
+
+```text
+No Remap
+Partial Remap
+Full Remap
+```
+
+Ví dụ TIM3 có thể chuyển các channel từ nhóm chân mặc định sang một nhóm chân khác tùy lựa chọn remap.
+
+Không được suy đoán pin Alternate Function theo tên peripheral. Phải kiểm tra pin mapping và remap của đúng MCU/package.
+
+### JTAG / SWD Remap
+
+Các chân debug mặc định:
+
+```text
+PA13 → JTMS / SWDIO
+PA14 → JTCK / SWCLK
+PA15 → JTDI
+PB3  → JTDO / TRACESWO
+PB4  → NJTRST
+```
+
+`AFIO_MAPR.SWJ_CFG` cho phép thay đổi cấu hình debug:
+
+```text
+Full JTAG + SWD
+JTAG không NJTRST
+JTAG OFF, SWD ON
+JTAG OFF, SWD OFF
+```
+
+Một cấu hình thường dùng khi cần giải phóng PA15/PB3/PB4 nhưng vẫn giữ khả năng debug là:
+
+```text
+JTAG OFF
+SWD ON
+```
+
+Không nên tắt cả SWD khi vẫn cần ST-Link để debug/nạp chương trình.
+
+---
+
+<a id="muc-03-14"></a>
+## 3.14. Analog Mode
+
+Analog mode:
+
+```text
+MODE = 00
+CNF  = 00
+```
+
+Khi pin ở Analog mode:
+
+```text
+Output Buffer
+→ OFF
+
+Schmitt Trigger / Digital Input
+→ OFF
+
+Weak Pull-Up / Pull-Down
+→ OFF
+
+IDR
+→ đọc về 0
+```
+
+Sơ đồ:
+
+```text
+Analog signal
+     ↓
+GPIO Pin
+     ↓
+Analog peripheral
+ADC / DAC
+```
+
+GPIO dùng làm ADC input phải được cấu hình Analog.
+
+Ví dụ PA0 Analog Input:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+
+/* PA0: MODE=00, CNF=00 */
+GPIOA->CRL &= ~(0xFU << 0);
+```
+
+Analog mode cũng tránh để digital input path hoạt động không cần thiết trên một tín hiệu analog.
+
+---
+
+<a id="muc-03-15"></a>
+## 3.15. GPIO cho UART / SPI / I2C / Timer / ADC
+
+GPIO mode phụ thuộc vào hướng và chức năng của peripheral.
+
+### USART
+
+Ví dụ Full-Duplex:
+
+```text
+USART_TX
+→ Alternate Function Push-Pull
+
+USART_RX
+→ Input Floating
+  hoặc Input Pull-Up
+```
+
+Ví dụ USART1 mặc định:
+
+```text
+PA9  → TX → AF Push-Pull
+PA10 → RX → Input
+```
+
+### SPI
+
+Ở Master mode:
+
+```text
+SCK
+→ Alternate Function Push-Pull
+
+MOSI
+→ Alternate Function Push-Pull
+
+MISO
+→ Input Floating / Pull-Up
+```
+
+`NSS` phụ thuộc cách quản lý NSS bằng hardware/software.
+
+Ở Slave mode, hướng của SCK/MOSI/MISO thay đổi theo vai trò của peripheral.
+
+### I2C
+
+```text
+SCL
+→ Alternate Function Open-Drain
+
+SDA
+→ Alternate Function Open-Drain
+```
+
+Hai đường I2C cần cơ chế kéo lên phù hợp để tạo mức High.
+
+### Timer
+
+Input Capture:
+
+```text
+TIMx_CHy
+→ Input Floating
+```
+
+Output Compare / PWM:
+
+```text
+TIMx_CHy
+→ Alternate Function Push-Pull
+```
+
+### ADC
+
+```text
+ADC input
+→ Analog Mode
+```
+
+### EXTI
+
+GPIO dùng làm external interrupt phải ở Input mode:
+
+```text
+Input Floating
+hoặc
+Input Pull-Up
+hoặc
+Input Pull-Down
+```
+
+Luồng khái niệm:
+
+```text
+GPIO Input
+    ↓
+AFIO / EXTI mapping
+    ↓
+EXTI
+    ↓
+NVIC
+    ↓
+ISR
+```
+
+Cấu hình chi tiết EXTI được xử lý ở chương **Interrupt + NVIC + EXTI**.
+
+### Bảng tóm tắt
+
+| Peripheral / Signal | GPIO mode thường dùng trên STM32F1 |
+|---|---|
+| UART TX | Alternate Function Push-Pull |
+| UART RX | Input Floating / Pull-Up |
+| SPI Master SCK | Alternate Function Push-Pull |
+| SPI Master MOSI | Alternate Function Push-Pull |
+| SPI Master MISO | Input Floating / Pull-Up |
+| I2C SCL | Alternate Function Open-Drain |
+| I2C SDA | Alternate Function Open-Drain |
+| Timer Input Capture | Input Floating |
+| Timer PWM / Output Compare | Alternate Function Push-Pull |
+| ADC Input | Analog |
+| EXTI Input | Input Floating / Pull-Up / Pull-Down |
+
+---
+
+<a id="muc-03-16"></a>
+## 3.16. GPIO Locking
+
+`GPIOx_LCKR` cho phép khóa cấu hình của một hoặc nhiều pin.
+
+Sau khi lock sequence hoàn tất:
+
+```text
+CRL / CRH của pin bị khóa
+→ không thể thay đổi
+→ cho tới lần reset tiếp theo
+```
+
+Các bit:
+
+```text
+LCK0 → Pin 0
+...
+LCK15 → Pin 15
+
+LCKK → Lock Key
+```
+
+Lock sequence:
+
+```text
+1. Write LCKK = 1
+2. Write LCKK = 0
+3. Write LCKK = 1
+4. Read LCKK → 0
+5. Read LCKK → 1   (xác nhận)
+```
+
+Trong toàn bộ chuỗi, các bit `LCK[15:0]` không được thay đổi.
+
+GPIO Lock phù hợp khi ứng dụng muốn cố định cấu hình chân sau giai đoạn khởi tạo.
+
+---
+
+<a id="muc-03-17"></a>
+## 3.17. Quy trình cấu hình GPIO
+
+Quy trình tổng quát:
+
+```text
+1. Xác định Port và Pin
+        ↓
+2. Bật RCC clock cho GPIO
+        ↓
+3. Nếu cần remap → bật AFIO clock
+        ↓
+4. Chọn Input / Output / AF / Analog
+        ↓
+5. Cấu hình MODE + CNF trong CRL/CRH
+        ↓
+6. Nếu Input Pull-Up/Pull-Down
+   → cấu hình ODR
+        ↓
+7. Nếu Alternate Function
+   → cấu hình peripheral và AFIO remap nếu cần
+        ↓
+8. Đọc IDR hoặc ghi BSRR/ODR
+```
+
+### Ví dụ 1 — PA5 Output Push-Pull, 2 MHz
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+
+/* Xóa 4 bit cấu hình PA5 */
+GPIOA->CRL &= ~(0xFU << (5U * 4U));
+
+/* MODE=10: Output 2 MHz
+   CNF=00 : General-Purpose Push-Pull */
+GPIOA->CRL |=  (0x2U << (5U * 4U));
+```
+
+Set PA5:
+
+```c
+GPIOA->BSRR = (1U << 5);
+```
+
+Reset PA5:
+
+```c
+GPIOA->BSRR = (1U << (5 + 16));
+```
+
+### Ví dụ 2 — PA0 Input Pull-Up
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+
+/* MODE=00, CNF=10 */
+GPIOA->CRL &= ~(0xFU << 0);
+GPIOA->CRL |=  (0x8U << 0);
+
+/* Pull-Up */
+GPIOA->ODR |= (1U << 0);
+```
+
+Đọc PA0:
+
+```c
+if (GPIOA->IDR & (1U << 0))
+{
+    /* High */
+}
+else
+{
+    /* Low */
+}
+```
+
+### Ví dụ 3 — USART1 TX/RX mặc định
+
+Bật clock:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
+```
+
+PA9 — TX:
+
+```text
+Alternate Function Push-Pull
+```
+
+PA10 — RX:
+
+```text
+Input Floating
+hoặc
+Input Pull-Up
+```
+
+Ví dụ cấu hình PA9 AF Push-Pull 50 MHz:
+
+```c
+/* PA9 nằm trong CRH, shift = 4 */
+GPIOA->CRH &= ~(0xFU << 4);
+
+/* MODE=11, CNF=10 → 0b1011 = 0xB */
+GPIOA->CRH |=  (0xBU << 4);
+```
+
+PA10 Input Floating:
+
+```c
+/* PA10 nằm trong CRH, shift = 8 */
+GPIOA->CRH &= ~(0xFU << 8);
+
+/* MODE=00, CNF=01 → 0b0100 = 0x4 */
+GPIOA->CRH |=  (0x4U << 8);
+```
+
+### Ví dụ 4 — I2C1 SCL/SDA
+
+Mặc định:
+
+```text
+PB6 → I2C1_SCL
+PB7 → I2C1_SDA
+```
+
+Cả hai:
+
+```text
+Alternate Function Open-Drain
+```
+
+Ví dụ 50 MHz output configuration:
+
+```text
+MODE = 11
+CNF  = 11
+→ 0b1111
+```
+
+Cần đảm bảo hệ thống có pull-up phù hợp trên SCL/SDA.
+
+---
+
+### Lỗi thường gặp
+
+#### Quên bật RCC Clock
+
+```text
+cấu hình GPIO register
+nhưng GPIO clock chưa bật
+```
+
+→ GPIO không hoạt động như mong muốn.
+
+#### Cấu hình sai CRL / CRH
+
+```text
+Pin 0–7
+→ CRL
+
+Pin 8–15
+→ CRH
+```
+
+#### Nhầm MODE và CNF
+
+```text
+MODE
+→ Input hay Output + maximum output speed
+
+CNF
+→ kiểu Input / Output / Alternate Function
+```
+
+#### Input Pull-Up nhưng quên ODR
+
+```text
+MODE = 00
+CNF  = 10
+```
+
+chưa đủ.
+
+Cần:
+
+```text
+ODR = 1 → Pull-Up
+ODR = 0 → Pull-Down
+```
+
+#### Dùng ODR read-modify-write khi chỉ cần Set/Reset
+
+Nếu chỉ cần thay đổi pin riêng lẻ:
+
+```text
+BSRR
+→ phù hợp hơn cho thao tác atomic set/reset
+```
+
+#### Dùng I2C ở Push-Pull
+
+I2C SCL/SDA trên STM32F1 phải được cấu hình:
+
+```text
+Alternate Function Open-Drain
+```
+
+#### Dùng ADC nhưng để Digital Input
+
+ADC input nên được cấu hình:
+
+```text
+Analog Mode
+```
+
+#### Remap nhưng quên bật AFIO Clock
+
+Trước khi sửa `AFIO_MAPR`:
+
+```text
+AFIOEN = 1
+```
+
+#### Dùng chân JTAG/SWD như GPIO mà không xử lý debug mapping
+
+PA13/PA14/PA15/PB3/PB4 có liên quan đến JTAG/SWD. Nếu cần dùng chúng cho GPIO phải xem `SWJ_CFG` và giữ đường debug cần thiết.
+
+---
+
+<a id="muc-03-18"></a>
+## 3.18. Câu hỏi tự kiểm tra
+
+1. GPIO viết tắt của gì?
+2. `PA5` có ý nghĩa gì?
+3. GPIO trên STM32F1 nằm trên bus nào?
+4. Thanh ghi nào dùng để bật clock GPIOA?
+5. Sau reset, GPIO thông thường ở mode nào?
+6. Vì sao PA13/PA14/PA15/PB3/PB4 cần chú ý đặc biệt?
+7. `CRL` cấu hình những pin nào?
+8. `CRH` cấu hình những pin nào?
+9. Mỗi pin dùng bao nhiêu bit cấu hình trong CRL/CRH?
+10. `MODE[1:0] = 00` có nghĩa gì?
+11. Khi Input, `CNF=00`, `01`, `10` lần lượt là gì?
+12. Khi Output, `CNF=00`, `01`, `10`, `11` lần lượt là gì?
+13. Output speed có những lựa chọn nào?
+14. Push-Pull hoạt động như thế nào khi xuất `0` và `1`?
+15. Open-Drain hoạt động như thế nào khi xuất `0` và `1`?
+16. Vì sao I2C dùng Open-Drain?
+17. Floating Input khác Pull-Up/Pull-Down ở điểm nào?
+18. Trên STM32F1, chọn Pull-Up hay Pull-Down bằng thanh ghi nào?
+19. `IDR` dùng để làm gì?
+20. `ODR` dùng để làm gì?
+21. `BSRR` khác `ODR` ở điểm nào?
+22. 16 bit thấp của `BSRR` làm gì?
+23. 16 bit cao của `BSRR` làm gì?
+24. Vì sao `BSRR` phù hợp cho atomic set/reset?
+25. `BRR` dùng để làm gì?
+26. Alternate Function là gì?
+27. UART TX thường dùng GPIO mode nào?
+28. UART RX thường dùng GPIO mode nào?
+29. I2C SCL/SDA dùng GPIO mode nào?
+30. SPI Master SCK/MOSI dùng GPIO mode nào?
+31. Timer PWM output dùng GPIO mode nào?
+32. ADC input dùng GPIO mode nào?
+33. AFIO dùng để làm gì?
+34. Trước khi truy cập `AFIO_MAPR` cần bật clock nào?
+35. USART1 mặc định và remap dùng những chân nào?
+36. SPI1 mặc định dùng PA4–PA7; sau remap dùng những chân nào?
+37. `SWJ_CFG` liên quan tới chức năng gì?
+38. Vì sao không nên tắt SWD khi vẫn cần ST-Link?
+39. GPIO Locking có tác dụng gì?
+40. Hãy mô tả đầy đủ quy trình cấu hình một GPIO output.
+41. Hãy mô tả đầy đủ quy trình cấu hình một GPIO input có pull-up.
+42. Hãy cấu hình về mặt khái niệm PA9/PA10 cho USART1.
+43. Hãy giải thích sự khác nhau giữa `IDR`, `ODR` và `BSRR`.
+44. Hãy giải thích vì sao Input Pull-Up trên STM32F1 vẫn cần thiết lập bit `ODR`.
+45. Hãy giải thích luồng `Peripheral → Alternate Function → GPIO Pin`.
+
+---
+
+## 3.19. Tóm tắt
+
+GPIO STM32F1:
+
+```text
+GPIO
+├── Input
+│   ├── Analog
+│   ├── Floating
+│   └── Pull-Up / Pull-Down
+│
+└── Output
+    ├── General-Purpose
+    │   ├── Push-Pull
+    │   └── Open-Drain
+    │
+    └── Alternate Function
+        ├── Push-Pull
+        └── Open-Drain
+```
+
+Thanh ghi chính:
+
+```text
+CRL
+→ Pin 0–7
+
+CRH
+→ Pin 8–15
+
+IDR
+→ đọc trạng thái pin
+
+ODR
+→ output latch / chọn Pull-Up-Pull-Down khi Input PU/PD
+
+BSRR
+→ atomic Set / Reset
+
+BRR
+→ Reset
+
+LCKR
+→ khóa cấu hình
+```
+
+Cấu hình một pin:
+
+```text
+RCC Clock Enable
+      ↓
+CRL / CRH
+      ↓
+MODE + CNF
+      ↓
+IDR / ODR / BSRR
+```
+
+Peripheral:
+
+```text
+UART TX
+→ AF Push-Pull
+
+UART RX
+→ Input
+
+SPI Master Output
+→ AF Push-Pull
+
+I2C
+→ AF Open-Drain
+
+Timer PWM
+→ AF Push-Pull
+
+ADC
+→ Analog
+```
+
+AFIO:
+
+```text
+Peripheral
+   ↓
+Default mapping
+hoặc
+Remapping
+   ↓
+GPIO Pin
+```
+
+**Điểm cần nhớ:**
+
+> **Trên STM32F1, muốn sử dụng GPIO phải bắt đầu từ RCC, sau đó cấu hình `MODE/CNF` trong `CRL/CRH`. `IDR` dùng để đọc chân, `ODR` lưu trạng thái output, còn `BSRR` cho phép set/reset pin bằng thao tác atomic. Khi pin phục vụ peripheral, phải chọn đúng Alternate Function và xử lý AFIO/remap nếu cần.**
 
 [↑ Về mục lục](#muc-luc)
