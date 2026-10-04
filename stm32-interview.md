@@ -12,8 +12,8 @@
    - 1.2. Operation Modes
    - 1.3. Access Level
    - 1.4. Core Registers
-   - **1.5. Reset Sequence** ← đang triển khai
-   - 1.6. Bus Architecture
+   - 1.5. Reset Sequence
+   - **1.6. Bus Architecture** ← đang triển khai
    - 1.7. Memory Map
    - 1.8. Memory-Mapped I/O
    - 1.9. Flash và SRAM
@@ -2687,5 +2687,702 @@ PC
 **Ý quan trọng nhất:**
 
 > **Sau reset, processor lấy initial MSP từ `0x00000000`, lấy địa chỉ Reset Handler từ `0x00000004`, chạy Reset Handler để thực hiện các bước khởi tạo cần thiết, rồi mới gọi `main()`.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-06"></a>
+## 1.6. Bus Architecture
+
+### 1.6.1. Bus Architecture dùng để làm gì?
+
+Processor core không hoạt động độc lập. Nó cần trao đổi với:
+
+```text
+Flash / CODE region
+SRAM
+Peripheral
+PPB
+Vùng đặc thù của nhà sản xuất MCU
+...
+```
+
+Việc trao đổi này được thực hiện thông qua các **bus interface**.
+
+Theo tài liệu:
+
+> Các bus interface của Cortex-Mx dựa trên đặc tả **AMBA**.
+
+Có thể hình dung:
+
+```text
+Processor Core
+     │
+     │ Bus
+     ↓
+Memory / Peripheral / System resources
+```
+
+Bus có nhiệm vụ truyền các thông tin phục vụ truy cập, ví dụ:
+
+```text
+Địa chỉ
+Dữ liệu
+Tín hiệu điều khiển
+```
+
+Trong phạm vi tài liệu nguồn của mục này, trọng tâm là:
+
+```text
+AMBA
+├── AHB-Lite
+└── APB
+```
+
+---
+
+### 1.6.2. AMBA là gì?
+
+Theo hình tài liệu:
+
+```text
+AMBA
+= Advanced Microcontroller Bus Architecture
+```
+
+Tài liệu mô tả AMBA là một đặc tả do ARM thiết kế để quy định chuẩn giao tiếp **on-chip** bên trong một System-on-Chip.
+
+Có thể hiểu ở mức khái niệm:
+
+```text
+AMBA
+→ bộ quy tắc / đặc tả
+→ chuẩn hóa cách các khối trong chip giao tiếp với nhau
+```
+
+Hình nguồn cho biết AMBA hỗ trợ nhiều bus protocol, trong đó mục này tập trung vào:
+
+```text
+AHB-Lite
+APB
+```
+
+---
+
+### 1.6.3. AHB-Lite
+
+Theo tài liệu:
+
+```text
+AHB-Lite
+= AMBA High-performance Bus
+```
+
+AHB-Lite được dùng chủ yếu cho:
+
+```text
+Main bus interfaces
+High-speed communication
+Các peripheral yêu cầu tốc độ hoạt động cao
+```
+
+Có thể nhớ ngắn gọn:
+
+> **AHB-Lite là bus chính, hướng tới truy cập tốc độ cao trong hệ thống.**
+
+Trong hình kiến trúc bus, các đường:
+
+```text
+PPB
+System
+D-CODE
+I-CODE
+```
+
+đều được biểu diễn với giao tiếp:
+
+```text
+AHB
+32 bit
+```
+
+---
+
+### 1.6.4. APB
+
+Theo tài liệu:
+
+```text
+APB
+= AMBA Peripheral Bus
+```
+
+APB được mô tả là bus dùng cho:
+
+```text
+PPB access
+một số on-chip peripheral access
+```
+
+và các truy cập này đi thông qua:
+
+```text
+AHB-APB bridge
+```
+
+Tài liệu cũng nhấn mạnh rằng APB được dùng cho giao tiếp tốc độ thấp hơn AHB.
+
+Có thể nhớ:
+
+```text
+AHB
+→ tốc độ cao hơn
+
+APB
+→ tốc độ thấp hơn
+→ phù hợp với nhiều peripheral không cần tốc độ cao
+```
+
+---
+
+### 1.6.5. Tại sao cần AHB và APB?
+
+Theo cách tổ chức trong tài liệu:
+
+```text
+Các khối cần tốc độ cao
+        ↓
+      AHB-Lite
+
+Các peripheral không cần tốc độ cao
+        ↓
+       APB
+```
+
+Điều này giúp hệ thống không phải dùng cùng một kiểu bus cho mọi thiết bị.
+
+Sơ đồ khái niệm:
+
+```text
+                 Processor
+                     │
+                     ↓
+                  AHB-Lite
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+          ↓                     ↓
+   Khối tốc độ cao        AHB-APB Bridge
+                                │
+                                ↓
+                               APB
+                                │
+                                ↓
+                      Peripheral tốc độ thấp hơn
+```
+
+---
+
+### 1.6.6. AHB-APB Bridge
+
+Tài liệu mô tả APB được truy cập thông qua:
+
+```text
+AHB-APB Bridge
+```
+
+Vai trò ở mức khái niệm:
+
+```text
+AHB side
+   │
+   ↓
+AHB-APB Bridge
+   │
+   ↓
+APB side
+```
+
+Có thể hình dung khi processor muốn truy cập một peripheral nằm phía APB:
+
+```text
+Processor
+   ↓
+AHB
+   ↓
+AHB-APB Bridge
+   ↓
+APB
+   ↓
+Peripheral
+```
+
+Ở mục này chưa đi sâu vào timing hay protocol transaction của bridge.
+
+---
+
+### 1.6.7. Các bus interface được thể hiện trong hình Cortex-M
+
+Hình nguồn thể hiện bốn đường/interface quan trọng:
+
+```text
+PPB
+System
+D-CODE
+I-CODE
+```
+
+và các đường này giao tiếp ra các vùng tương ứng.
+
+Sơ đồ rút gọn:
+
+```text
+ARM Cortex-Mx Processor
+│
+├── PPB
+├── System
+├── D-CODE
+└── I-CODE
+```
+
+---
+
+### 1.6.8. I-CODE bus
+
+Theo hình:
+
+```text
+I-CODE
+→ AHB 32-bit
+→ CODE region
+```
+
+Mục đích được ghi rõ:
+
+```text
+Instruction fetch
+Vector table read
+```
+
+Có thể hình dung:
+
+```text
+CODE region
+    │
+    │ instruction fetch
+    │ vector table read
+    ↓
+ I-CODE
+    ↓
+Processor
+```
+
+Điểm cần nhớ:
+
+> **I-CODE phục vụ việc lấy lệnh và đọc vector table từ CODE region theo hình tài liệu.**
+
+---
+
+### 1.6.9. D-CODE bus
+
+Theo hình:
+
+```text
+D-CODE
+→ AHB 32-bit
+→ CODE region
+```
+
+Mục đích được ghi:
+
+```text
+Data access
+```
+
+Tức là:
+
+```text
+CODE region
+    │
+    │ data access
+    ↓
+ D-CODE
+    ↓
+Processor
+```
+
+Có thể nhớ ngắn:
+
+```text
+I-CODE
+→ instruction fetch
+
+D-CODE
+→ data access
+```
+
+trong vùng CODE theo sơ đồ nguồn.
+
+---
+
+### 1.6.10. System bus
+
+Hình tài liệu thể hiện:
+
+```text
+System
+→ AHB 32-bit
+```
+
+và ghi:
+
+```text
+Any access (read/write)
+```
+
+System bus nối tới vùng:
+
+```text
+SRAM
+Peripheral
+External RAM
+Device regions
+```
+
+Có thể hình dung:
+
+```text
+Processor
+   │
+   │ System bus
+   ↓
+SRAM / Peripheral / External RAM / Device regions
+```
+
+Điểm cần nhớ:
+
+> **System bus phục vụ các truy cập đọc/ghi tới các vùng hệ thống như SRAM và peripheral theo hình tài liệu.**
+
+---
+
+### 1.6.11. PPB interface
+
+Hình tài liệu còn thể hiện đường:
+
+```text
+PPB
+→ AHB 32-bit
+```
+
+với chú thích:
+
+```text
+Data access
+```
+
+và nó nối tới vùng:
+
+```text
+PPB
+```
+
+Ngoài ra hình còn thể hiện một vùng:
+
+```text
+MCU Vendor specific region
+```
+
+ở phía trên.
+
+Trong phạm vi nguồn hiện tại, tài liệu không giải thích chi tiết PPB là gì hoặc cấu trúc các register bên trong vùng đó, nên ở mục này chỉ cần ghi nhận:
+
+```text
+PPB
+→ một bus/interface và vùng truy cập riêng được thể hiện trong sơ đồ
+```
+
+Chi tiết về các thanh ghi memory-mapped liên quan tới processor/peripheral sẽ được học ở mục **Memory-Mapped I/O**.
+
+---
+
+### 1.6.12. Sơ đồ tổng hợp từ tài liệu
+
+Có thể diễn giải hình nguồn thành:
+
+```text
+                    ARM Cortex-Mx Processor
+                             │
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+        ↓                    ↓                    ↓
+      I-CODE               D-CODE               System
+        │                    │                    │
+        │ AHB 32-bit         │ AHB 32-bit         │ AHB 32-bit
+        │                    │                    │
+        ↓                    ↓                    ↓
+   CODE region          CODE region       SRAM / Peripheral /
+                                              External RAM /
+                                              Device regions
+
+                             │
+                             ↓
+                            PPB
+                             │
+                             │ AHB 32-bit
+                             ↓
+                         PPB region
+```
+
+Mục đích chính:
+
+```text
+I-CODE
+→ Instruction fetch
+→ Vector table read
+
+D-CODE
+→ Data access tới CODE region
+
+System
+→ Read/Write tới SRAM / Peripheral / Device regions
+
+PPB
+→ Data access tới PPB region
+```
+
+---
+
+### 1.6.13. Quan hệ giữa Bus Architecture và Memory Map
+
+Bus Architecture trả lời câu hỏi:
+
+> **Processor đi bằng đường nào để truy cập các vùng trong hệ thống?**
+
+Memory Map sẽ trả lời câu hỏi:
+
+> **Các vùng đó nằm ở những địa chỉ nào trong không gian địa chỉ?**
+
+Có thể nối hai khái niệm:
+
+```text
+Processor
+   ↓
+Bus Interface
+   ↓
+Memory Map
+   ↓
+CODE / SRAM / Peripheral / ...
+```
+
+Do đó:
+
+```text
+Bus Architecture
+≠
+Memory Map
+```
+
+nhưng hai phần liên quan trực tiếp tới nhau.
+
+---
+
+### 1.6.14. Phân biệt nhanh AHB-Lite và APB
+
+| Tiêu chí | AHB-Lite | APB |
+|---|---|---|
+| Vai trò theo tài liệu | Main bus interface | Peripheral bus |
+| Tốc độ tương đối | Cao hơn | Thấp hơn |
+| Đối tượng sử dụng | Giao tiếp chính, peripheral cần tốc độ cao | Nhiều peripheral không yêu cầu tốc độ cao |
+| Kết nối với nhau | Phía chính | Thường đi qua AHB-APB Bridge |
+
+Cách nhớ:
+
+```text
+AHB-Lite
+→ High-performance
+
+APB
+→ Peripheral
+```
+
+---
+
+### 1.6.15. Phân biệt I-CODE, D-CODE và System bus
+
+| Bus | Mục đích theo hình tài liệu |
+|---|---|
+| `I-CODE` | Instruction fetch và vector table read từ CODE region |
+| `D-CODE` | Data access tới CODE region |
+| `System` | Read/write tới SRAM, Peripheral, External RAM và Device regions |
+
+Cách nhớ:
+
+```text
+I = Instruction
+D = Data
+System = các truy cập hệ thống khác
+```
+
+---
+
+### 1.6.16. Luồng truy cập ví dụ
+
+#### Trường hợp 1 — Processor lấy lệnh
+
+```text
+CODE region
+    ↓
+I-CODE
+    ↓
+Processor
+```
+
+#### Trường hợp 2 — Processor đọc dữ liệu trong CODE region
+
+```text
+CODE region
+    ↓
+D-CODE
+    ↓
+Processor
+```
+
+#### Trường hợp 3 — Processor đọc/ghi SRAM
+
+```text
+Processor
+    ↓
+System bus
+    ↓
+SRAM
+```
+
+#### Trường hợp 4 — Processor truy cập peripheral
+
+Theo sơ đồ kiến trúc bus:
+
+```text
+Processor
+    ↓
+System / AHB
+    ↓
+Peripheral region
+```
+
+Nếu peripheral nằm phía APB theo cách tổ chức của hệ thống:
+
+```text
+Processor
+    ↓
+AHB
+    ↓
+AHB-APB Bridge
+    ↓
+APB
+    ↓
+Peripheral
+```
+
+---
+
+### 1.6.17. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“AMBA là gì?”**, có thể trả lời:
+
+> **AMBA là đặc tả bus do ARM thiết kế để chuẩn hóa giao tiếp on-chip. Trong tài liệu này, hai protocol chính được nhắc tới là AHB-Lite và APB.**
+
+Nếu hỏi **“AHB-Lite và APB khác nhau thế nào?”**:
+
+> **AHB-Lite được dùng cho main bus interface và các giao tiếp tốc độ cao hơn, còn APB được dùng cho nhiều peripheral không cần tốc độ cao và thường được nối với AHB qua AHB-APB Bridge.**
+
+Nếu hỏi **“I-CODE dùng để làm gì?”**:
+
+> **Theo hình tài liệu, I-CODE dùng cho instruction fetch và vector table read từ CODE region.**
+
+Nếu hỏi **“D-CODE dùng để làm gì?”**:
+
+> **D-CODE dùng để truy cập dữ liệu trong CODE region.**
+
+Nếu hỏi **“System bus dùng để làm gì?”**:
+
+> **System bus dùng cho các truy cập đọc/ghi tới các vùng như SRAM, peripheral, external RAM và device region.**
+
+Nếu hỏi **“AHB-APB Bridge có vai trò gì?”**:
+
+> **Nó làm cầu nối giữa phía AHB và phía APB để processor có thể truy cập các peripheral được kết nối trên APB.**
+
+---
+
+### 1.6.18. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Bus Architecture dùng để giải quyết vấn đề gì?
+2. AMBA là gì theo tài liệu?
+3. AMBA do ai thiết kế?
+4. Hai bus protocol được tài liệu nhắc tới là gì?
+5. AHB-Lite được dùng chủ yếu cho loại giao tiếp nào?
+6. APB được dùng chủ yếu cho loại giao tiếp nào?
+7. Vì sao hệ thống cần cả AHB và APB?
+8. AHB-APB Bridge có vai trò gì?
+9. I-CODE bus dùng để làm gì?
+10. I-CODE đọc những gì từ CODE region theo hình?
+11. D-CODE bus dùng để làm gì?
+12. System bus truy cập những vùng nào?
+13. Các bus trong hình có độ rộng bao nhiêu bit?
+14. PPB xuất hiện ở đâu trong sơ đồ?
+15. Bus Architecture và Memory Map khác nhau ở câu hỏi mà chúng trả lời như thế nào?
+16. Hãy mô tả đường đi khi processor fetch instruction.
+17. Hãy mô tả đường đi khi processor đọc/ghi SRAM.
+18. Hãy mô tả đường đi khái niệm khi processor truy cập một peripheral nằm phía APB.
+
+---
+
+### 1.6.19. Tóm tắt
+
+```text
+AMBA
+├── AHB-Lite
+│   ├── main bus interface
+│   └── high-speed communication
+│
+└── APB
+    ├── peripheral bus
+    ├── tốc độ thấp hơn AHB
+    └── thường nối qua AHB-APB Bridge
+```
+
+Các bus interface trong hình:
+
+```text
+I-CODE
+→ Instruction fetch
+→ Vector table read
+
+D-CODE
+→ Data access tới CODE region
+
+System
+→ Read/Write tới SRAM / Peripheral /
+  External RAM / Device regions
+
+PPB
+→ Data access tới PPB region
+```
+
+Sơ đồ tổng hợp:
+
+```text
+Processor
+   │
+   ├── I-CODE ──→ CODE region
+   ├── D-CODE ──→ CODE region
+   ├── System ──→ SRAM / Peripheral / Device regions
+   └── PPB ─────→ PPB region
+```
+
+**Ý quan trọng nhất:**
+
+> **Cortex-Mx sử dụng các bus interface dựa trên AMBA. AHB-Lite phục vụ các giao tiếp chính và tốc độ cao hơn, APB phục vụ nhiều peripheral tốc độ thấp hơn thông qua AHB-APB Bridge; còn I-CODE, D-CODE và System bus đảm nhiệm các loại truy cập khác nhau giữa processor và các vùng trong hệ thống.**
 
 [↑ Về mục lục](#muc-luc)
