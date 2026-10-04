@@ -73,6 +73,30 @@
    - 4.20. Ví dụ Button → EXTI → ISR
    - 4.21. Câu hỏi tự kiểm tra
 5. **Timer + PWM**
+   - 5.1. Timer là gì?
+   - 5.2. Các loại Timer trên STM32F1
+   - 5.3. Timer Clock
+   - 5.4. Counter: CNT
+   - 5.5. Prescaler: PSC
+   - 5.6. Auto-Reload Register: ARR
+   - 5.7. Up / Down / Center-Aligned Counting
+   - 5.8. Update Event và Update Interrupt
+   - 5.9. Công thức tính Timer Period / Frequency
+   - 5.10. Capture/Compare Channel
+   - 5.11. Output Compare
+   - 5.12. Input Capture
+   - 5.13. PWM là gì?
+   - 5.14. PWM Frequency và Duty Cycle
+   - 5.15. PWM Mode 1 / PWM Mode 2
+   - 5.16. CCRx và Compare Match
+   - 5.17. Preload: ARPE / OCxPE
+   - 5.18. GPIO Alternate Function cho PWM
+   - 5.19. Timer Interrupt và DMA
+   - 5.20. Advanced Timer: Complementary PWM / Dead-Time / Break
+   - 5.21. Quy trình cấu hình Timer
+   - 5.22. Quy trình cấu hình PWM
+   - 5.23. Ví dụ tính PSC / ARR / CCR
+   - 5.24. Câu hỏi tự kiểm tra
 6. **UART**
 7. **SPI + I2C**
 8. **ADC**
@@ -13466,5 +13490,2469 @@ EXTI10–15
 **Điểm cần nhớ:**
 
 > **EXTI phát hiện cạnh và tạo interrupt request; AFIO chọn GPIO port được nối vào từng EXTI line; NVIC quản lý enable, pending và priority; ISR phải xác định đúng nguồn interrupt và clear flag theo cơ chế của peripheral. Với `EXTI_PR`, pending bit được clear bằng cách ghi `1` vào chính bit đó.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="chuong-05"></a>
+# 5. Timer + PWM
+
+Timer là một khối phần cứng đếm theo clock. Từ bộ đếm này, STM32 có thể tạo time base, interrupt định kỳ, đo tín hiệu đầu vào, tạo Output Compare và phát PWM.
+
+Luồng nền tảng:
+
+```text
+TIMxCLK
+   ↓
+Prescaler
+   ↓
+Counter
+   ↓
+Auto-Reload
+   ↓
+Update Event
+   ↓
+Capture / Compare
+   ↓
+PWM / Input Capture / Output Compare
+```
+
+Các khối Timer liên hệ trực tiếp với:
+
+```text
+RCC
+→ cấp Timer Clock
+
+GPIO Alternate Function
+→ đưa tín hiệu Timer ra/vào chân
+
+NVIC
+→ xử lý Timer Interrupt
+
+DMA
+→ truyền dữ liệu theo Timer event
+```
+
+<a id="muc-05-01"></a>
+## 5.1. Timer là gì?
+
+Timer có thể xem như một bộ đếm phần cứng:
+
+```text
+Clock
+  ↓
+Counter
+  ↓
+0, 1, 2, 3, ...
+```
+
+Thay vì CPU tự tăng một biến bằng software:
+
+```c
+counter++;
+```
+
+Timer tự đếm bằng phần cứng khi được cấp clock và enable.
+
+Timer thường được dùng cho:
+
+```text
+Time base
+Delay / periodic event
+Periodic interrupt
+PWM generation
+Output Compare
+Input Capture
+Frequency measurement
+Pulse-width measurement
+Encoder interface
+Trigger cho ADC / DAC
+DMA request
+```
+
+Ba khối cơ bản nhất:
+
+```text
+PSC
+→ chia Timer Clock
+
+CNT
+→ giá trị bộ đếm hiện tại
+
+ARR
+→ giới hạn chu kỳ đếm
+```
+
+Các channel Capture/Compare thêm:
+
+```text
+CCR1
+CCR2
+CCR3
+CCR4
+```
+
+---
+
+<a id="muc-05-02"></a>
+## 5.2. Các loại Timer trên STM32F1
+
+STM32F1 có nhiều loại Timer với khả năng khác nhau. Peripheral thực tế phụ thuộc từng mã MCU và density.
+
+### Advanced-Control Timer
+
+Các Timer tiêu biểu:
+
+```text
+TIM1
+TIM8
+```
+
+Khả năng:
+
+```text
+16-bit counter
+Prescaler
+Input Capture
+Output Compare
+PWM
+Complementary PWM
+Dead-Time
+Break input
+Repetition Counter
+Encoder
+Interrupt / DMA
+```
+
+TIM1/TIM8 phù hợp với các ứng dụng điều khiển công suất và motor cần nhiều cơ chế bảo vệ phần cứng.
+
+### General-Purpose Timer
+
+Nhóm chính:
+
+```text
+TIM2
+TIM3
+TIM4
+TIM5
+```
+
+Các Timer này có:
+
+```text
+16-bit up/down/up-down counter
+16-bit prescaler
+tối đa 4 Capture/Compare channel
+Input Capture
+Output Compare
+PWM Edge-Aligned
+PWM Center-Aligned
+One-Pulse
+Encoder interface
+Interrupt / DMA
+Timer synchronization
+```
+
+Đây là nhóm phù hợp nhất để học các khái niệm Timer cơ bản.
+
+Một số STM32F1 còn có:
+
+```text
+TIM9
+TIM10
+TIM11
+TIM12
+TIM13
+TIM14
+```
+
+với số channel và tính năng phụ thuộc từng Timer.
+
+### Basic Timer
+
+```text
+TIM6
+TIM7
+```
+
+Basic Timer có cấu trúc đơn giản hơn:
+
+```text
+16-bit Upcounter
+16-bit Prescaler
+Auto-Reload
+Update Event
+Interrupt / DMA
+Trigger cho DAC
+```
+
+Basic Timer không có các Capture/Compare channel như TIM2–TIM5.
+
+TIM6/TIM7 chỉ có trên một số nhóm STM32F1 như high-density, XL-density và connectivity line.
+
+### So sánh khái quát
+
+| Nhóm | Counter | Capture/Compare | PWM | Complementary PWM / Dead-Time |
+|---|---|---|---|---|
+| TIM1/TIM8 | Có | Có | Có | Có |
+| TIM2–TIM5 | Có | Có | Có | Không như Advanced Timer |
+| TIM6/TIM7 | Có | Không | Không | Không |
+
+---
+
+<a id="muc-05-03"></a>
+## 5.3. Timer Clock
+
+Trước mọi phép tính Timer, phải xác định:
+
+```text
+Timer nằm trên APB nào?
+        ↓
+PCLK của bus đó là bao nhiêu?
+        ↓
+APB Prescaler = /1 hay khác /1?
+        ↓
+TIMxCLK bằng bao nhiêu?
+```
+
+Quy tắc Timer Clock của STM32F1:
+
+```text
+Nếu APB Prescaler = /1:
+    TIMxCLK = PCLKx
+
+Nếu APB Prescaler != /1:
+    TIMxCLK = 2 × PCLKx
+```
+
+Ví dụ hệ thống:
+
+```text
+HCLK  = 72 MHz
+PCLK1 = 36 MHz
+PPRE1 = /2
+```
+
+TIM2 nằm trên APB1:
+
+```text
+PPRE1 != /1
+
+TIM2CLK
+= 2 × PCLK1
+= 2 × 36 MHz
+= 72 MHz
+```
+
+Nếu:
+
+```text
+PCLK2 = 72 MHz
+PPRE2 = /1
+```
+
+thì TIM1:
+
+```text
+TIM1CLK
+= PCLK2
+= 72 MHz
+```
+
+### Sai lầm thường gặp
+
+Không được mặc định:
+
+```text
+Timer Clock = PCLK
+```
+
+Mà phải kiểm tra APB Prescaler.
+
+---
+
+<a id="muc-05-04"></a>
+## 5.4. Counter: CNT
+
+Thanh ghi:
+
+```text
+TIMx_CNT
+```
+
+chứa giá trị counter hiện tại.
+
+Ở Upcounting:
+
+```text
+0
+1
+2
+3
+...
+ARR
+0
+1
+...
+```
+
+Khi Timer được enable bằng:
+
+```text
+TIMx_CR1.CEN = 1
+```
+
+counter bắt đầu chạy theo `CK_CNT`.
+
+Có thể đọc counter:
+
+```c
+uint16_t value = TIM2->CNT;
+```
+
+hoặc ghi giá trị mới:
+
+```c
+TIM2->CNT = 0;
+```
+
+`CNT` là nền tảng của:
+
+```text
+Time base
+Input Capture
+Output Compare
+PWM
+Encoder
+```
+
+---
+
+<a id="muc-05-05"></a>
+## 5.5. Prescaler: PSC
+
+Thanh ghi:
+
+```text
+TIMx_PSC
+```
+
+chia Timer Clock trước khi clock đi vào counter.
+
+Sơ đồ:
+
+```text
+TIMxCLK
+   ↓
+  PSC
+   ↓
+CK_CNT
+   ↓
+  CNT
+```
+
+Công thức:
+
+```text
+fCNT =
+fTIM
+─────────
+PSC + 1
+```
+
+Điểm quan trọng:
+
+```text
+Hệ số chia thực tế = PSC + 1
+```
+
+Ví dụ:
+
+```text
+TIMxCLK = 72 MHz
+PSC     = 71
+```
+
+Ta có:
+
+```text
+fCNT
+= 72 MHz / (71 + 1)
+= 1 MHz
+```
+
+Suy ra:
+
+```text
+1 Timer tick = 1 µs
+```
+
+### Khoảng chia
+
+PSC là thanh ghi 16-bit:
+
+```text
+PSC = 0
+→ chia 1
+
+PSC = 1
+→ chia 2
+
+...
+
+PSC = 65535
+→ chia 65536
+```
+
+### PSC được Buffer
+
+Giá trị `PSC` mới không nhất thiết tác động ngay lập tức.
+
+Luồng:
+
+```text
+Software ghi PSC
+      ↓
+PSC preload / buffer
+      ↓
+Update Event
+      ↓
+prescaler mới có hiệu lực
+```
+
+Nếu muốn nạp cấu hình trước khi bắt đầu Timer, thường tạo Update Event bằng:
+
+```text
+TIMx_EGR.UG = 1
+```
+
+---
+
+<a id="muc-05-06"></a>
+## 5.6. Auto-Reload Register: ARR
+
+Thanh ghi:
+
+```text
+TIMx_ARR
+```
+
+quy định giới hạn chu kỳ đếm.
+
+Trong Upcounting:
+
+```text
+CNT = 0
+  ↓
+1
+  ↓
+2
+  ↓
+...
+  ↓
+ARR
+  ↓
+overflow
+  ↓
+CNT = 0
+```
+
+Counter đi qua:
+
+```text
+0 → ARR
+```
+
+nên số tick trong một chu kỳ Edge-Aligned Upcounting là:
+
+```text
+ARR + 1
+```
+
+Ví dụ:
+
+```text
+ARR = 999
+```
+
+counter chạy:
+
+```text
+0 → 999
+```
+
+tức:
+
+```text
+1000 Timer ticks
+```
+
+### ARR Preload
+
+`ARR` có cơ chế preload/shadow register.
+
+Bit:
+
+```text
+TIMx_CR1.ARPE
+```
+
+quyết định cách giá trị ARR mới được áp dụng.
+
+Khi preload được sử dụng:
+
+```text
+Software ghi ARR
+      ↓
+ARR preload register
+      ↓
+Update Event
+      ↓
+ARR active/shadow register
+```
+
+Cơ chế này rất hữu ích khi thay đổi period trong lúc Timer đang chạy.
+
+---
+
+<a id="muc-05-07"></a>
+## 5.7. Up / Down / Center-Aligned Counting
+
+General-Purpose và Advanced Timer có thể hỗ trợ nhiều hướng đếm.
+
+### Upcounting
+
+```text
+0 → 1 → 2 → ... → ARR
+                      ↓
+                      0
+```
+
+Đây là mode đơn giản nhất.
+
+Trong `TIMx_CR1`:
+
+```text
+DIR = 0
+```
+
+khi dùng Edge-Aligned Upcounting.
+
+### Downcounting
+
+```text
+ARR → ARR-1 → ... → 1 → 0
+                         ↓
+                        ARR
+```
+
+Trong Edge-Aligned Downcounting:
+
+```text
+DIR = 1
+```
+
+### Center-Aligned
+
+Counter chạy lên rồi chạy xuống:
+
+```text
+0 → 1 → 2 → ... → ARR-1
+                       ↓
+                      ARR
+                       ↓
+ARR-1 ← ... ← 2 ← 1
+                       ↓
+                       0
+```
+
+Trong Center-Aligned mode:
+
+```text
+CMS != 00
+```
+
+Direction được phần cứng cập nhật để phản ánh hướng đếm hiện tại.
+
+Center-Aligned hữu ích khi tạo PWM đối xứng.
+
+### Edge-Aligned và Center-Aligned
+
+```text
+Edge-Aligned
+→ chu kỳ bắt đầu tại cùng một biên counter
+
+Center-Aligned
+→ counter chạy lên rồi xuống
+→ waveform được căn đối xứng quanh tâm chu kỳ
+```
+
+Với cùng `PSC` và `ARR`, Center-Aligned có chu kỳ đếm dài hơn Edge-Aligned.
+
+---
+
+<a id="muc-05-08"></a>
+## 5.8. Update Event và Update Interrupt
+
+`Update Event` thường được viết tắt:
+
+```text
+UEV
+```
+
+UEV có thể xảy ra từ:
+
+```text
+Counter overflow
+Counter underflow
+Software đặt UG
+Một số cơ chế trigger/synchronization
+```
+
+### Khi UEV xảy ra
+
+Tùy cấu hình, UEV có thể:
+
+```text
+Reload Prescaler
+Transfer ARR preload → active
+Transfer CCR preload → active
+Set Update Interrupt Flag
+Generate Interrupt
+Generate DMA request
+```
+
+Các bit/register quan trọng:
+
+```text
+TIMx_SR.UIF
+→ Update Interrupt Flag
+
+TIMx_DIER.UIE
+→ Update Interrupt Enable
+
+TIMx_EGR.UG
+→ tạo Update Event bằng software
+```
+
+### Update Interrupt
+
+Luồng:
+
+```text
+CNT overflow / underflow
+        ↓
+Update Event
+        ↓
+UIF = 1
+        ↓
+UIE = 1?
+        ↓
+Timer IRQ
+        ↓
+NVIC
+        ↓
+TIMx_IRQHandler()
+```
+
+Ví dụ khái niệm:
+
+```c
+void TIM2_IRQHandler(void)
+{
+    if (TIM2->SR & TIM_SR_UIF)
+    {
+        TIM2->SR &= ~TIM_SR_UIF;
+
+        /* xử lý Update Event */
+    }
+}
+```
+
+Phải phân biệt:
+
+```text
+TIMx_SR.UIF
+→ flag của Timer
+
+NVIC pending
+→ trạng thái IRQ tại NVIC
+```
+
+---
+
+<a id="muc-05-09"></a>
+## 5.9. Công thức tính Timer Period / Frequency
+
+Với Edge-Aligned Upcounting:
+
+```text
+fCNT =
+fTIM
+─────────
+PSC + 1
+```
+
+Số tick một chu kỳ:
+
+```text
+ARR + 1
+```
+
+Do đó:
+
+```text
+fUPDATE =
+fTIM
+──────────────────────
+(PSC + 1)(ARR + 1)
+```
+
+Period:
+
+```text
+TUPDATE =
+(PSC + 1)(ARR + 1)
+──────────────────────
+fTIM
+```
+
+Nếu Timer được dùng để tạo PWM Edge-Aligned:
+
+```text
+fPWM = fUPDATE
+```
+
+### Ví dụ 1 ms
+
+Giả sử:
+
+```text
+TIM2CLK = 72 MHz
+PSC     = 71
+ARR     = 999
+```
+
+Bước 1:
+
+```text
+fCNT
+= 72 MHz / 72
+= 1 MHz
+```
+
+Bước 2:
+
+```text
+Timer tick
+= 1 / 1 MHz
+= 1 µs
+```
+
+Bước 3:
+
+```text
+Period
+= 1000 × 1 µs
+= 1 ms
+```
+
+Tần số:
+
+```text
+f = 1 kHz
+```
+
+### Center-Aligned
+
+Trong Center-Aligned mode, một chu kỳ đầy đủ gồm một lượt đếm lên và một lượt đếm xuống.
+
+Với `ARR > 0`:
+
+```text
+số Timer tick / chu kỳ
+= 2 × ARR
+```
+
+Nên:
+
+```text
+fCENTER =
+fCNT
+────────
+2 × ARR
+```
+
+Công thức Edge-Aligned `(ARR + 1)` không được áp dụng nguyên xi cho Center-Aligned.
+
+---
+
+<a id="muc-05-10"></a>
+## 5.10. Capture/Compare Channel
+
+General-Purpose Timer có thể có tối đa bốn channel:
+
+```text
+CH1
+CH2
+CH3
+CH4
+```
+
+Mỗi channel có một Capture/Compare Register:
+
+```text
+TIMx_CCR1
+TIMx_CCR2
+TIMx_CCR3
+TIMx_CCR4
+```
+
+`CCR` có vai trò khác nhau tùy mode:
+
+```text
+Input Capture
+→ CNT được chụp vào CCR
+
+Output Compare
+→ CNT được so sánh với CCR
+```
+
+Đây là quan hệ cốt lõi:
+
+```text
+Input Capture:
+CNT → CCR
+
+Output Compare:
+CNT ↔ CCR
+```
+
+Các channel còn có thể dùng cho:
+
+```text
+PWM
+One-Pulse
+PWM Input
+```
+
+---
+
+<a id="muc-05-11"></a>
+## 5.11. Output Compare
+
+Output Compare liên tục so sánh:
+
+```text
+TIMx_CNT
+với
+TIMx_CCRx
+```
+
+Khi:
+
+```text
+CNT == CCRx
+```
+
+xảy ra Compare Match.
+
+Tại Compare Match, Timer có thể:
+
+```text
+giữ output
+set output active
+set output inactive
+toggle output
+set CCxIF
+generate interrupt
+generate DMA request
+```
+
+Các thanh ghi liên quan:
+
+```text
+TIMx_CCMR1 / CCMR2
+→ chọn Output Compare mode
+
+TIMx_CCER
+→ enable output + polarity
+
+TIMx_CCRx
+→ compare value
+
+TIMx_SR
+→ Compare flag
+
+TIMx_DIER
+→ Compare interrupt / DMA enable
+```
+
+### Ví dụ Toggle
+
+Giả sử:
+
+```text
+CCR1 = 500
+```
+
+Khi:
+
+```text
+CNT == 500
+```
+
+channel có thể được cấu hình để:
+
+```text
+OC1 toggle
+```
+
+Output Compare có thể dùng để:
+
+```text
+tạo waveform
+tạo timestamp event
+tạo interrupt tại thời điểm xác định
+One-Pulse
+```
+
+PWM là một chế độ chuyên biệt dựa trên cơ chế Compare.
+
+---
+
+<a id="muc-05-12"></a>
+## 5.12. Input Capture
+
+Input Capture dùng cạnh tín hiệu đầu vào để chụp giá trị counter.
+
+Luồng:
+
+```text
+External signal
+      ↓
+Rising / Falling Edge
+      ↓
+Timer Input
+      ↓
+Capture Event
+      ↓
+CNT hiện tại
+      ↓
+CCRx
+```
+
+Ví dụ:
+
+```text
+CNT = 1250
+Rising Edge xảy ra
+→ CCR1 = 1250
+```
+
+### Đo Period
+
+Hai capture liên tiếp:
+
+```text
+Capture 1 = 1000
+Capture 2 = 3000
+```
+
+Hiệu:
+
+```text
+ΔCNT = 3000 - 1000
+     = 2000 ticks
+```
+
+Nếu:
+
+```text
+fCNT = 1 MHz
+```
+
+thì:
+
+```text
+1 tick = 1 µs
+```
+
+Period:
+
+```text
+T = 2000 µs
+  = 2 ms
+```
+
+Frequency:
+
+```text
+f = 1 / 2 ms
+  = 500 Hz
+```
+
+### Input Capture có thể cấu hình thêm
+
+```text
+Input polarity
+Digital filter
+Input prescaler
+Capture interrupt
+Capture DMA
+```
+
+Input Capture thường dùng để đo:
+
+```text
+Frequency
+Period
+Pulse width
+PWM input
+```
+
+---
+
+<a id="muc-05-13"></a>
+## 5.13. PWM là gì?
+
+`PWM`:
+
+```text
+Pulse Width Modulation
+```
+
+PWM là tín hiệu số tuần hoàn được mô tả bởi hai thông số chính:
+
+```text
+Frequency
+Duty Cycle
+```
+
+Ví dụ Duty 25%:
+
+```text
+HIGH ─────┐
+          │
+LOW       └───────────────
+
+      25%       75%
+```
+
+Duty 50%:
+
+```text
+HIGH ─────────┐
+              │
+LOW           └───────────
+
+        50%        50%
+```
+
+### Frequency
+
+Frequency cho biết:
+
+```text
+bao nhiêu chu kỳ PWM / giây
+```
+
+### Duty Cycle
+
+Duty Cycle là tỷ lệ thời gian tín hiệu ở trạng thái active trong một chu kỳ.
+
+```text
+Duty =
+Tactive
+─────── × 100%
+Tperiod
+```
+
+PWM được dùng trong:
+
+```text
+LED brightness
+DC motor speed
+Servo control
+Power conversion
+Audio đơn giản
+Tạo tín hiệu điều khiển theo tỷ lệ
+```
+
+---
+
+<a id="muc-05-14"></a>
+## 5.14. PWM Frequency và Duty Cycle
+
+Với PWM Edge-Aligned, Upcounting:
+
+```text
+fPWM =
+fTIM
+──────────────────────
+(PSC + 1)(ARR + 1)
+```
+
+Ba tham số:
+
+```text
+PSC
+→ chia Timer Clock
+
+ARR
+→ quyết định PWM period / frequency
+
+CCR
+→ quyết định thời điểm compare
+→ từ đó quyết định duty
+```
+
+### PWM Mode 1, Active-High, Upcounting
+
+Quan hệ cơ bản:
+
+```text
+CNT < CCRx
+→ OCxREF active
+
+CNT >= CCRx
+→ OCxREF inactive
+```
+
+Với cấu hình này:
+
+```text
+Duty ≈
+CCRx
+─────── × 100%
+ARR + 1
+```
+
+Ví dụ:
+
+```text
+ARR  = 999
+CCR1 = 250
+```
+
+Ta có:
+
+```text
+Duty
+= 250 / 1000 × 100%
+= 25%
+```
+
+### Edge Cases
+
+Nếu:
+
+```text
+CCR = 0
+```
+
+thì PWM Mode 1 Upcounting active-high cho:
+
+```text
+0% duty
+```
+
+Nếu compare value lớn hơn ARR:
+
+```text
+CCR > ARR
+```
+
+thì `OCxREF` được giữ active trong PWM Mode 1 Upcounting.
+
+Cần lưu ý giới hạn độ rộng thanh ghi khi tạo trường hợp 100%.
+
+---
+
+<a id="muc-05-15"></a>
+## 5.15. PWM Mode 1 / PWM Mode 2
+
+PWM được chọn qua:
+
+```text
+OCxM
+```
+
+trong `TIMx_CCMRx`.
+
+### PWM Mode 1
+
+Mã mode:
+
+```text
+OCxM = 110
+```
+
+Với Upcounting:
+
+```text
+CNT < CCRx
+→ OCxREF active
+
+CNT >= CCRx
+→ OCxREF inactive
+```
+
+### PWM Mode 2
+
+Mã mode:
+
+```text
+OCxM = 111
+```
+
+PWM Mode 2 tạo quan hệ logic ngược với PWM Mode 1 đối với `OCxREF`.
+
+Có thể nhớ:
+
+```text
+PWM Mode 1
+→ active trước Compare Match
+
+PWM Mode 2
+→ active theo quan hệ ngược lại
+```
+
+### Output Polarity
+
+Waveform thực tế ở chân còn phụ thuộc:
+
+```text
+CCxP
+→ Output Polarity
+```
+
+Do đó:
+
+```text
+PWM Mode
++
+Output Polarity
+→ mức logic thực tế trên OCx pin
+```
+
+Không được suy luận duty ở chân chỉ từ `CCR` nếu polarity đã bị đảo.
+
+---
+
+<a id="muc-05-16"></a>
+## 5.16. CCRx và Compare Match
+
+`TIMx_CCRx` chứa Capture hoặc Compare value tùy channel mode.
+
+Trong PWM:
+
+```text
+CNT
+ ↓
+so sánh
+ ↓
+CCRx
+```
+
+Compare point quyết định vị trí chuyển trạng thái của `OCxREF`.
+
+Ví dụ:
+
+```text
+ARR = 999
+```
+
+Duty 10%:
+
+```text
+CCR = 100
+```
+
+Duty 50%:
+
+```text
+CCR = 500
+```
+
+Duty 90%:
+
+```text
+CCR = 900
+```
+
+Trong PWM Mode 1, Upcounting, Active-High:
+
+```text
+CCR tăng
+→ thời gian active tăng
+→ Duty tăng
+```
+
+### Thay Duty ở Runtime
+
+Có thể cập nhật:
+
+```c
+TIM2->CCR1 = new_value;
+```
+
+Nếu `OCxPE` được enable:
+
+```text
+giá trị mới
+→ preload
+→ chờ Update Event
+→ mới áp dụng đồng bộ
+```
+
+Điều này giúp tránh thay compare value giữa chu kỳ theo cách không mong muốn.
+
+---
+
+<a id="muc-05-17"></a>
+## 5.17. Preload: ARPE / OCxPE
+
+Timer sử dụng shadow/preload register để cập nhật period và duty tại thời điểm xác định.
+
+### ARR Preload
+
+Bit:
+
+```text
+TIMx_CR1.ARPE
+```
+
+Khi ARPE được bật:
+
+```text
+Software ghi ARR
+      ↓
+ARR preload
+      ↓
+Update Event
+      ↓
+ARR active
+```
+
+### CCR Preload
+
+Bit:
+
+```text
+OCxPE
+```
+
+nằm trong `TIMx_CCMRx`.
+
+Khi enable:
+
+```text
+Software ghi CCRx
+      ↓
+CCRx preload
+      ↓
+Update Event
+      ↓
+CCRx active
+```
+
+### Vì sao cần Preload?
+
+Nếu PWM đang chạy:
+
+```text
+cycle hiện tại
+      ↓
+Software đổi ARR / CCR
+      ↓
+giá trị tác động ngay giữa cycle
+```
+
+có thể làm chu kỳ hiện tại không theo period/duty mong muốn.
+
+Với preload:
+
+```text
+ghi giá trị mới
+      ↓
+chờ Update Event
+      ↓
+áp dụng ở boundary thích hợp
+```
+
+Waveform vì thế đồng bộ hơn.
+
+### UG
+
+Trước khi bắt đầu PWM, sau khi cấu hình các preload register:
+
+```text
+TIMx_EGR.UG = 1
+```
+
+được dùng để tạo Update Event bằng software.
+
+Luồng:
+
+```text
+PSC / ARR / CCR đã cấu hình
+        ↓
+UG = 1
+        ↓
+preload → active
+        ↓
+bắt đầu counter
+```
+
+---
+
+<a id="muc-05-18"></a>
+## 5.18. GPIO Alternate Function cho PWM
+
+Timer có thể tạo PWM bên trong nhưng muốn thấy waveform ở chân ngoài thì channel phải được nối tới GPIO qua Alternate Function.
+
+Luồng:
+
+```text
+TIMx Counter
+    ↓
+Compare
+    ↓
+OCxREF
+    ↓
+Output Control
+    ↓
+Timer Channel
+    ↓
+GPIO Alternate Function
+    ↓
+Physical Pin
+```
+
+Trên STM32F1, Timer PWM output thường dùng:
+
+```text
+Alternate Function Push-Pull
+```
+
+Ví dụ:
+
+```text
+TIM2_CH1
+→ PA0
+→ Alternate Function Push-Pull
+```
+
+Pin chính xác phụ thuộc:
+
+```text
+Timer
+Channel
+Default mapping
+AFIO Remap
+MCU package
+```
+
+### Ví dụ PA0 cho TIM2_CH1
+
+GPIO:
+
+```text
+PA0
+→ Alternate Function Push-Pull
+```
+
+Timer:
+
+```text
+TIM2_CH1
+→ PWM Mode
+```
+
+Hai phía đều phải cấu hình đúng:
+
+```text
+GPIO config
++
+Timer config
+```
+
+Chỉ cấu hình Timer mà bỏ GPIO Alternate Function sẽ không tạo waveform đúng ở chân.
+
+---
+
+<a id="muc-05-19"></a>
+## 5.19. Timer Interrupt và DMA
+
+Timer có thể tạo interrupt hoặc DMA request từ nhiều loại event.
+
+Ví dụ:
+
+```text
+Update
+Input Capture
+Output Compare
+Trigger
+```
+
+### Update Interrupt
+
+Các bit:
+
+```text
+TIMx_DIER.UIE
+→ enable Update Interrupt
+
+TIMx_SR.UIF
+→ Update Interrupt Flag
+```
+
+Luồng:
+
+```text
+Counter overflow
+      ↓
+UEV
+      ↓
+UIF = 1
+      ↓
+UIE = 1
+      ↓
+Timer IRQ
+      ↓
+NVIC
+      ↓
+TIMx_IRQHandler()
+```
+
+### Capture/Compare Interrupt
+
+Mỗi channel có thể tạo:
+
+```text
+CC1IF
+CC2IF
+CC3IF
+CC4IF
+```
+
+và interrupt enable tương ứng:
+
+```text
+CC1IE
+CC2IE
+CC3IE
+CC4IE
+```
+
+### DMA
+
+Timer event cũng có thể tạo DMA request nếu bit enable tương ứng được bật.
+
+Luồng:
+
+```text
+Timer Event
+    ↓
+DMA Request
+    ↓
+DMA Controller
+    ↓
+Memory / Peripheral transfer
+```
+
+Ứng dụng:
+
+```text
+cập nhật PWM duty tự động
+capture chuỗi timestamp
+tạo waveform không cần CPU ghi từng mẫu
+```
+
+Chi tiết DMA được xử lý ở chương DMA.
+
+---
+
+<a id="muc-05-20"></a>
+## 5.20. Advanced Timer: Complementary PWM / Dead-Time / Break
+
+TIM1 và TIM8 có các tính năng nâng cao cho điều khiển công suất.
+
+### Complementary Output
+
+Một channel có thể có cặp output:
+
+```text
+CH1
+CH1N
+
+CH2
+CH2N
+
+CH3
+CH3N
+```
+
+Sơ đồ khái niệm:
+
+```text
+OC1REF
+ ├──→ CH1
+ └──→ CH1N
+```
+
+Hai output này có thể được dùng để điều khiển cặp transistor công suất.
+
+### Dead-Time
+
+Trong half-bridge hoặc full-bridge, không nên bật đồng thời transistor high-side và low-side.
+
+Nếu xảy ra:
+
+```text
+High-side ON
++
+Low-side ON
+```
+
+có thể tạo:
+
+```text
+Shoot-Through
+```
+
+Dead-Time chèn một khoảng trễ giữa hai lần chuyển trạng thái:
+
+```text
+High-side OFF
+      ↓
+  Dead-Time
+      ↓
+Low-side ON
+```
+
+Dead-Time được cấu hình trong:
+
+```text
+TIMx_BDTR
+```
+
+### Break Input
+
+Break cung cấp cơ chế phần cứng để đưa output về trạng thái an toàn khi có fault.
+
+Luồng:
+
+```text
+Fault
+ ↓
+BKIN / Break source
+ ↓
+Break logic
+ ↓
+Timer output protection
+ ↓
+PWM được disable / đưa về trạng thái đã cấu hình
+```
+
+Clock failure từ RCC CSS cũng có thể liên hệ với break của Advanced Timer trên STM32F1.
+
+### Main Output Enable
+
+Advanced Timer có:
+
+```text
+MOE
+→ Main Output Enable
+```
+
+trong `TIMx_BDTR`.
+
+Với TIM1/TIM8, chỉ cấu hình PWM channel chưa chắc đã đủ để pin xuất waveform nếu main output chưa được enable.
+
+### Repetition Counter
+
+`TIMx_RCR` cho phép Update Event xảy ra sau một số chu kỳ lặp nhất định.
+
+Khái niệm:
+
+```text
+PWM cycle
+PWM cycle
+PWM cycle
+...
+      ↓
+Repetition Counter hết
+      ↓
+Update Event
+```
+
+---
+
+<a id="muc-05-21"></a>
+## 5.21. Quy trình cấu hình Timer
+
+Ví dụ tạo time base định kỳ bằng TIM2.
+
+### Bước 1 — Bật Clock
+
+TIM2 nằm trên APB1:
+
+```c
+RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+```
+
+### Bước 2 — Xác định TIM2CLK
+
+Ví dụ:
+
+```text
+PCLK1 = 36 MHz
+PPRE1 = /2
+```
+
+thì:
+
+```text
+TIM2CLK = 72 MHz
+```
+
+### Bước 3 — Chọn PSC
+
+Muốn counter tick:
+
+```text
+1 µs
+```
+
+cần:
+
+```text
+fCNT = 1 MHz
+```
+
+Với:
+
+```text
+TIM2CLK = 72 MHz
+```
+
+ta chọn:
+
+```text
+PSC = 71
+```
+
+### Bước 4 — Chọn ARR
+
+Muốn period:
+
+```text
+1 ms
+```
+
+với tick 1 µs:
+
+```text
+1000 ticks
+```
+
+nên:
+
+```text
+ARR = 999
+```
+
+### Bước 5 — Cấu hình PSC / ARR
+
+```c
+TIM2->PSC = 71;
+TIM2->ARR = 999;
+```
+
+### Bước 6 — Tạo Update Event
+
+```c
+TIM2->EGR = TIM_EGR_UG;
+```
+
+Điều này giúp nạp giá trị buffered cần thiết trước khi bắt đầu.
+
+### Bước 7 — Nếu cần Interrupt
+
+```c
+TIM2->DIER |= TIM_DIER_UIE;
+NVIC_SetPriority(TIM2_IRQn, 5);
+NVIC_EnableIRQ(TIM2_IRQn);
+```
+
+### Bước 8 — Enable Counter
+
+```c
+TIM2->CR1 |= TIM_CR1_CEN;
+```
+
+### Luồng
+
+```text
+RCC Clock
+   ↓
+TIMxCLK
+   ↓
+PSC
+   ↓
+ARR
+   ↓
+UG
+   ↓
+Interrupt config nếu cần
+   ↓
+CEN = 1
+```
+
+---
+
+<a id="muc-05-22"></a>
+## 5.22. Quy trình cấu hình PWM
+
+Ví dụ:
+
+```text
+TIM2_CH1
+PWM = 1 kHz
+Duty = 25%
+TIM2CLK = 72 MHz
+```
+
+### Bước 1 — Bật Clock
+
+```text
+GPIO clock
++
+TIM2 clock
++
+AFIO clock nếu cần remap
+```
+
+Ví dụ PA0 / TIM2_CH1 mặc định:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+```
+
+### Bước 2 — GPIO Alternate Function Push-Pull
+
+PA0 nằm trong `GPIOA_CRL`.
+
+Ví dụ chọn AF Push-Pull:
+
+```text
+CNF = 10
+MODE != 00
+```
+
+Nếu chọn maximum output speed 2 MHz:
+
+```text
+MODE = 10
+CNF  = 10
+→ 0b1010
+```
+
+Ví dụ:
+
+```c
+GPIOA->CRL &= ~(0xFU << 0);
+GPIOA->CRL |=  (0xAU << 0);
+```
+
+### Bước 3 — PSC
+
+Chọn:
+
+```text
+PSC = 71
+```
+
+Ta có:
+
+```text
+fCNT = 1 MHz
+```
+
+### Bước 4 — ARR
+
+Muốn PWM 1 kHz:
+
+```text
+ARR + 1
+= 1 MHz / 1 kHz
+= 1000
+```
+
+nên:
+
+```text
+ARR = 999
+```
+
+### Bước 5 — CCR1
+
+Duty 25%:
+
+```text
+CCR1
+= 25% × 1000
+= 250
+```
+
+### Bước 6 — Chọn PWM Mode 1 + Preload
+
+Channel 1 nằm trong `TIM2_CCMR1`.
+
+Khái niệm:
+
+```text
+CC1S = 00
+→ channel là Output
+
+OC1M = 110
+→ PWM Mode 1
+
+OC1PE = 1
+→ CCR1 preload
+```
+
+### Bước 7 — Enable Channel
+
+```text
+CC1E = 1
+```
+
+trong:
+
+```text
+TIM2_CCER
+```
+
+Nếu Active-High:
+
+```text
+CC1P = 0
+```
+
+### Bước 8 — ARR Preload
+
+```text
+ARPE = 1
+```
+
+### Bước 9 — Generate Update Event
+
+```text
+UG = 1
+```
+
+### Bước 10 — Enable Counter
+
+```text
+CEN = 1
+```
+
+### Luồng hoàn chỉnh
+
+```text
+RCC GPIO + Timer
+       ↓
+GPIO AF Push-Pull
+       ↓
+TIMxCLK
+       ↓
+PSC
+       ↓
+ARR
+       ↓
+CCRx
+       ↓
+PWM Mode
+       ↓
+OCxPE + ARPE
+       ↓
+CCxE
+       ↓
+UG
+       ↓
+CEN
+       ↓
+PWM xuất ra chân
+```
+
+---
+
+<a id="muc-05-23"></a>
+## 5.23. Ví dụ tính PSC / ARR / CCR
+
+### Ví dụ 1 — PWM 1 kHz, Duty 25%
+
+Cho:
+
+```text
+TIM2CLK = 72 MHz
+```
+
+Yêu cầu:
+
+```text
+fPWM = 1 kHz
+Duty = 25%
+```
+
+Chọn counter clock dễ tính:
+
+```text
+fCNT = 1 MHz
+```
+
+Suy ra:
+
+```text
+PSC + 1
+= 72 MHz / 1 MHz
+= 72
+```
+
+nên:
+
+```text
+PSC = 71
+```
+
+Tiếp theo:
+
+```text
+ARR + 1
+= 1 MHz / 1 kHz
+= 1000
+```
+
+nên:
+
+```text
+ARR = 999
+```
+
+Duty:
+
+```text
+CCR1
+= 25% × 1000
+= 250
+```
+
+Kết quả:
+
+```text
+PSC  = 71
+ARR  = 999
+CCR1 = 250
+```
+
+Kiểm tra:
+
+```text
+fPWM
+= 72 MHz
+  ─────────────────
+  72 × 1000
+
+= 1 kHz
+```
+
+Duty:
+
+```text
+250 / 1000
+= 25%
+```
+
+---
+
+### Ví dụ 2 — PWM 20 kHz, Duty 60%
+
+Cho:
+
+```text
+TIMxCLK = 72 MHz
+```
+
+Chọn:
+
+```text
+PSC = 0
+```
+
+nên:
+
+```text
+fCNT = 72 MHz
+```
+
+Muốn:
+
+```text
+fPWM = 20 kHz
+```
+
+ta cần:
+
+```text
+ARR + 1
+= 72,000,000 / 20,000
+= 3600
+```
+
+nên:
+
+```text
+ARR = 3599
+```
+
+Duty 60%:
+
+```text
+CCR
+= 0.60 × 3600
+= 2160
+```
+
+Kết quả:
+
+```text
+PSC = 0
+ARR = 3599
+CCR = 2160
+```
+
+---
+
+### Ví dụ 3 — Timer Interrupt mỗi 10 ms
+
+Cho:
+
+```text
+TIM2CLK = 72 MHz
+```
+
+Chọn:
+
+```text
+PSC = 71
+```
+
+Suy ra:
+
+```text
+fCNT = 1 MHz
+1 tick = 1 µs
+```
+
+Muốn:
+
+```text
+10 ms
+= 10,000 µs
+```
+
+nên:
+
+```text
+ARR + 1 = 10,000
+```
+
+suy ra:
+
+```text
+ARR = 9999
+```
+
+Kết quả:
+
+```text
+Update Event mỗi 10 ms
+```
+
+nếu Timer chạy Upcounting liên tục.
+
+---
+
+### Ví dụ 4 — Đo Frequency bằng Input Capture
+
+Cho:
+
+```text
+fCNT = 1 MHz
+```
+
+Capture lần 1:
+
+```text
+CCR1 = 1000
+```
+
+Capture lần 2:
+
+```text
+CCR1 = 5000
+```
+
+Chênh lệch:
+
+```text
+ΔCNT = 4000
+```
+
+Period:
+
+```text
+T
+= 4000 / 1 MHz
+= 4 ms
+```
+
+Frequency:
+
+```text
+f
+= 1 / 4 ms
+= 250 Hz
+```
+
+Nếu counter overflow giữa hai capture, phép tính phải xử lý modulo/overflow phù hợp.
+
+---
+
+### Cách chọn PSC và ARR
+
+Một tần số có thể đạt được bằng nhiều cặp:
+
+```text
+PSC
+ARR
+```
+
+Ví dụ cùng một frequency có thể dùng:
+
+```text
+PSC nhỏ + ARR lớn
+hoặc
+PSC lớn + ARR nhỏ
+```
+
+Thông thường nên cân nhắc:
+
+```text
+Độ phân giải
+Giới hạn 16-bit
+Tần số mong muốn
+Dải Duty Cycle
+Khả năng thay đổi period/duty
+```
+
+Với PWM, `ARR` càng lớn thì số mức duty khả dụng càng nhiều.
+
+Ví dụ:
+
+```text
+ARR = 99
+→ khoảng 100 mức
+
+ARR = 999
+→ khoảng 1000 mức
+```
+
+với cùng cách biểu diễn duty.
+
+---
+
+<a id="muc-05-24"></a>
+## 5.24. Câu hỏi tự kiểm tra
+
+1. Timer là gì?
+2. Timer phần cứng khác software counter ở điểm nào?
+3. Ba thanh ghi nền tảng `PSC`, `CNT`, `ARR` có vai trò gì?
+4. Advanced Timer gồm những Timer tiêu biểu nào?
+5. General-Purpose Timer TIM2–TIM5 hỗ trợ những chức năng chính nào?
+6. TIM6/TIM7 khác TIM2–TIM5 ở điểm quan trọng nào?
+7. Trước khi tính Timer period phải xác định clock nào?
+8. Khi APB prescaler bằng `/1`, `TIMxCLK` bằng gì?
+9. Khi APB prescaler khác `/1`, `TIMxCLK` bằng gì?
+10. Nếu `PCLK1 = 36 MHz` và `PPRE1 = /2`, Timer trên APB1 chạy bao nhiêu MHz?
+11. `TIMx_CNT` chứa gì?
+12. `TIMx_CR1.CEN` có tác dụng gì?
+13. Công thức `fCNT` là gì?
+14. Vì sao công thức Prescaler có `PSC + 1`?
+15. `PSC = 0` tương ứng hệ số chia bao nhiêu?
+16. `PSC = 71`, `TIMxCLK = 72 MHz` cho `fCNT` bao nhiêu?
+17. `ARR` có vai trò gì?
+18. Vì sao một chu kỳ Upcounting từ `0 → ARR` có `ARR + 1` tick?
+19. `ARR = 999` tương ứng bao nhiêu count mỗi chu kỳ?
+20. Upcounting hoạt động như thế nào?
+21. Downcounting hoạt động như thế nào?
+22. Center-Aligned Counting hoạt động như thế nào?
+23. `DIR` dùng để làm gì trong Edge-Aligned mode?
+24. `CMS` dùng để chọn gì?
+25. Update Event là gì?
+26. UEV có thể được tạo từ những nguồn nào?
+27. `UIF` có ý nghĩa gì?
+28. `UIE` có ý nghĩa gì?
+29. `UG` dùng để làm gì?
+30. Công thức frequency của Timer Edge-Aligned Upcounting là gì?
+31. Công thức period tương ứng là gì?
+32. `TIMx_CCRx` có hai vai trò chính nào?
+33. Input Capture khác Output Compare như thế nào?
+34. Compare Match xảy ra khi nào?
+35. Output Compare có thể làm gì khi match?
+36. Input Capture dùng để đo những đại lượng nào?
+37. Làm sao tính period từ hai Capture value?
+38. PWM là gì?
+39. Hai thông số chính của PWM là gì?
+40. PWM Frequency phụ thuộc chủ yếu vào những thanh ghi nào?
+41. PWM Duty Cycle phụ thuộc chủ yếu vào thanh ghi nào?
+42. Công thức PWM Edge-Aligned frequency là gì?
+43. Công thức Duty cho PWM Mode 1 Active-High Upcounting là gì?
+44. `ARR = 999`, `CCR = 250` cho duty khoảng bao nhiêu?
+45. PWM Mode 1 và PWM Mode 2 khác nhau thế nào?
+46. `OCxM = 110` là mode nào?
+47. `OCxM = 111` là mode nào?
+48. `CCxP` điều khiển gì?
+49. `CCxE` điều khiển gì?
+50. `ARPE` dùng để làm gì?
+51. `OCxPE` dùng để làm gì?
+52. Vì sao preload hữu ích khi PWM đang chạy?
+53. Vì sao thường tạo `UG` trước khi enable counter?
+54. GPIO cho Timer PWM output thường dùng mode nào trên STM32F1?
+55. Nếu chỉ cấu hình Timer nhưng GPIO vẫn là Input Floating thì điều gì xảy ra ở chân?
+56. Timer có thể tạo những loại interrupt nào?
+57. Timer event có thể kích DMA không?
+58. `TIMx_SR.UIF` và NVIC Pending có phải cùng một trạng thái không?
+59. Complementary PWM là gì?
+60. Dead-Time dùng để tránh vấn đề gì?
+61. Break input có tác dụng gì?
+62. `MOE` có vai trò gì trên TIM1/TIM8?
+63. Repetition Counter dùng để làm gì?
+64. Hãy tính `PSC`, `ARR`, `CCR` cho PWM 1 kHz, duty 25%, `TIMxCLK = 72 MHz`.
+65. Hãy tính `ARR` cho Timer interrupt 10 ms nếu `fCNT = 1 MHz`.
+66. Với `TIMxCLK = 72 MHz`, `PSC = 0`, `ARR = 3599`, PWM frequency là bao nhiêu?
+67. Với `ARR = 3599`, `CCR = 2160`, duty xấp xỉ bao nhiêu?
+68. Vì sao cùng một PWM frequency có thể có nhiều cặp `PSC/ARR`?
+69. `ARR` lớn hơn có lợi gì cho PWM duty resolution?
+70. Hãy mô tả đầy đủ luồng `RCC → TIMxCLK → PSC → CNT → ARR → CCR → PWM → GPIO`.
+
+---
+
+## 5.25. Tóm tắt
+
+Luồng Timer:
+
+```text
+RCC
+ ↓
+TIMxCLK
+ ↓
+PSC
+ ↓
+CK_CNT
+ ↓
+CNT
+ ↓
+ARR
+ ↓
+Update Event
+```
+
+Công thức Edge-Aligned:
+
+```text
+fCNT =
+fTIM / (PSC + 1)
+```
+
+```text
+fUPDATE =
+fTIM / [(PSC + 1)(ARR + 1)]
+```
+
+PWM:
+
+```text
+Timer Clock
+    ↓
+PSC
+    ↓
+CNT
+    ↓
+ARR
+    ↓
+Compare với CCRx
+    ↓
+OCxREF
+    ↓
+GPIO Alternate Function
+    ↓
+PWM
+```
+
+Với PWM Mode 1, Active-High, Upcounting:
+
+```text
+fPWM =
+fTIM / [(PSC + 1)(ARR + 1)]
+```
+
+```text
+Duty ≈
+CCRx / (ARR + 1) × 100%
+```
+
+Capture/Compare:
+
+```text
+Input Capture
+→ CNT → CCR
+
+Output Compare
+→ CNT ↔ CCR
+```
+
+Preload:
+
+```text
+Software ghi ARR / CCR
+        ↓
+Preload
+        ↓
+Update Event
+        ↓
+Active register
+```
+
+Advanced Timer:
+
+```text
+TIM1 / TIM8
+├── Complementary PWM
+├── Dead-Time
+├── Break
+├── MOE
+└── Repetition Counter
+```
+
+**Điểm cần nhớ:**
+
+> **Muốn tính hoặc cấu hình Timer đúng, trước hết phải xác định `TIMxCLK`. Sau đó `PSC` quyết định counter clock, `ARR` quyết định chu kỳ, còn `CCR` quyết định Capture/Compare point và trong PWM quyết định duty. Khi xuất PWM ra chân, Timer channel phải được nối với GPIO bằng Alternate Function phù hợp.**
 
 [↑ Về mục lục](#muc-luc)
