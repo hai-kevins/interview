@@ -1,11 +1,11 @@
-# Ghi chú phỏng vấn STM32
+# STM32 Architecture / Memory Map
 
-> **Mục tiêu:** Ôn STM32 theo hướng phỏng vấn Embedded Firmware, đi từ kiến trúc nền tảng đến ngoại vi và gỡ lỗi.
+> Trình bày nền tảng kiến trúc Cortex-M trong STM32, tổ chức bộ nhớ, cơ chế khởi động, Stack và quá trình liên kết chương trình.
 
 ---
 
 <a id="muc-luc"></a>
-## Lộ trình tài liệu
+## Mục lục
 
 1. **STM32 architecture / memory map**
    - 1.1. Processor Core vs Processor vs Microcontroller
@@ -20,6 +20,17 @@
    - 1.10. Startup Code
    - 1.11. Linker Script và các section
 2. **RCC + Clock**
+   - 2.1. RCC là gì?
+   - 2.2. Các nguồn Clock: HSI / HSE / LSI / LSE
+   - 2.3. Clock Tree
+   - 2.4. PLL
+   - 2.5. SYSCLK / HCLK / PCLK1 / PCLK2
+   - 2.6. Prescaler và cách tính tần số
+   - 2.7. Peripheral Clock Enable và Peripheral Reset
+   - 2.8. Clock của Timer
+   - 2.9. Clock của các Peripheral quan trọng
+   - 2.10. Quy trình cấu hình Clock
+   - 2.11. Câu hỏi tự kiểm tra
 3. **GPIO**
 4. **Interrupt + NVIC + EXTI**
 5. **Timer + PWM**
@@ -72,7 +83,7 @@ Microcontroller
 
 **Core** là phần trực tiếp thực hiện các lệnh của chương trình.
 
-Theo hình minh họa trong tài liệu, core có các thành phần/chức năng chính:
+Core có các thành phần/chức năng chính:
 
 - **ALU** — thực hiện các phép toán số học và logic.
 - Logic để **giải mã và thực thi lệnh**.
@@ -95,7 +106,7 @@ ALU / các khối xử lý
 Result
 ```
 
-Core cũng chứa các thanh ghi đặc biệt mà tài liệu nhắc tới như:
+Core cũng chứa các thanh ghi đặc biệt như:
 
 ```text
 R0 → R15
@@ -112,7 +123,7 @@ Phần ý nghĩa cụ thể của từng thanh ghi sẽ được học riêng �
 
 **Processor** là khái niệm rộng hơn **processor core**.
 
-Hình nguồn minh họa một **Cortex-M4 processor**, bên trong có:
+Một **Cortex-M4 processor** có thể được biểu diễn với các khối:
 
 ```text
 Cortex-M4 processor
@@ -124,9 +135,9 @@ Tức là:
 
 > **Core là phần thực thi lệnh, còn processor bao gồm core và các khối hỗ trợ cần thiết để processor hoạt động trong hệ thống.**
 
-Trong hình nguồn còn xuất hiện FPU trong phần Cortex-M4.
+Cortex-M4 có thể tích hợp FPU tùy biến thể triển khai.
 
-> **Lưu ý khi học STM32:** hình nguồn đang minh họa **Cortex-M4**. Không nên suy ra rằng mọi STM32 đều có FPU. Mỗi dòng STM32 có thể sử dụng một biến thể Cortex-M khác nhau và có tập tính năng khác nhau.
+> **Lưu ý:** Không phải mọi STM32 đều có FPU. Mỗi dòng STM32 có thể sử dụng một biến thể Cortex-M khác nhau và có tập tính năng khác nhau.
 
 ---
 
@@ -134,7 +145,7 @@ Trong hình nguồn còn xuất hiện FPU trong phần Cortex-M4.
 
 **Microcontroller (MCU)** là một chip hoàn chỉnh tích hợp bộ xử lý cùng bộ nhớ và các ngoại vi.
 
-Có thể hình dung một STM32 ở mức khái niệm:
+Một STM32 có thể được biểu diễn ở mức khái niệm như sau:
 
 ```text
 +--------------------------------------------------+
@@ -170,7 +181,7 @@ Armv6-M / Armv7-M / Armv8-M / ...
 = kiến trúc mà các core tương ứng triển khai
 ```
 
-> **Hiệu chỉnh thuật ngữ:** không nên dùng `Cortex-M` như tên của một *kiến trúc* cụ thể. Trong phỏng vấn, cách nói an toàn hơn là: **STM32 là MCU; bên trong nó tích hợp một Cortex-M processor core; core đó triển khai một kiến trúc Arm-M tương ứng.**
+> **Thuật ngữ:** Không nên dùng `Cortex-M` như tên của một *kiến trúc* cụ thể. **STM32 là MCU; bên trong nó tích hợp một Cortex-M processor core; core đó triển khai một kiến trúc Arm-M tương ứng.**
 
 ### 1.1.2. Quan hệ giữa Core và STM32
 
@@ -205,7 +216,7 @@ Core cần giao tiếp với các thành phần khác thông qua hệ thống bu
 
 ### 1.1.3. Fetch là gì?
 
-Tài liệu định nghĩa **fetch** là quá trình CPU lấy mã lệnh từ bộ nhớ chương trình, thường là Flash/ROM, thông qua bus để chuẩn bị giải mã và thực thi.
+**Fetch** là quá trình CPU lấy mã lệnh từ bộ nhớ chương trình, thường là Flash/ROM, thông qua bus để chuẩn bị giải mã và thực thi.
 
 Có thể hình dung quá trình xử lý một lệnh ở mức cơ bản:
 
@@ -241,7 +252,7 @@ Ví dụ khi chương trình có:
 result = a + b;
 ```
 
-Ở mức khái niệm:
+
 
 ```text
 CPU lấy lệnh máy từ bộ nhớ
@@ -263,7 +274,7 @@ Mã C trước đó đã được biên dịch thành các lệnh máy phù hợ
 
 ### 1.1.4. Thanh ghi trong Core
 
-Tài liệu nhắc tới các thanh ghi:
+Các thanh ghi gồm:
 
 ```text
 R0 → R15
@@ -274,7 +285,7 @@ CONTROL
 
 Thanh ghi là vùng lưu trữ rất gần với khối xử lý và được core sử dụng trực tiếp khi thực thi lệnh.
 
-Ở mức hiện tại chỉ cần nhớ:
+Có thể phân nhóm như sau:
 
 ```text
 Core
@@ -302,7 +313,7 @@ PSP
 
 ### 1.1.5. Core giao tiếp với bộ nhớ bằng bus
 
-Tài liệu Cortex-M4 cung cấp ba đường bus chính:
+Cortex-M4 có ba đường bus chính:
 
 ```text
 I-Code bus
@@ -310,7 +321,7 @@ D-Code bus
 System bus
 ```
 
-Ý nghĩa được mô tả trong tài liệu:
+Ý nghĩa:
 
 ```text
 I-Code bus
@@ -352,7 +363,7 @@ Nếu mọi truy cập đều đi qua đúng một đường chung thì các ho�
 
 Việc Cortex-M có các đường bus phục vụ các nhóm truy cập khác nhau giúp tổ chức luồng truy cập hiệu quả hơn.
 
-Ở mức khái niệm:
+
 
 ```text
 Core cần:
@@ -361,7 +372,7 @@ Core cần:
 └── truy cập SRAM / Peripheral
 ```
 
-nên tài liệu tách thành:
+nên có thể phân tách thành:
 
 ```text
 Instruction → I-Code
@@ -375,7 +386,7 @@ Không cần ghi nhớ chi tiết bus transaction ở giai đoạn này.
 
 ### 1.1.7. AHB và APB — chỉ cần nhận diện trước
 
-Tài liệu nguồn còn đề cập hai loại bus:
+Hai loại bus chính được sử dụng là:
 
 ```text
 AHB
@@ -395,7 +406,7 @@ APB
 → hướng tới peripheral đơn giản hơn
 ```
 
-Tài liệu mô tả APB thường được nối với AHB thông qua:
+APB thường được nối với AHB thông qua:
 
 ```text
 AHB-to-APB Bridge
@@ -415,7 +426,7 @@ APB
 Peripheral
 ```
 
-Ví dụ các peripheral mà tài liệu liệt kê ở phía APB gồm:
+Ví dụ các peripheral phía APB gồm:
 
 ```text
 UART
@@ -475,21 +486,21 @@ Watchdog
 
 ---
 
-### 1.1.10. Ý cần nhớ khi phỏng vấn
+### 1.1.10. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Cortex-M và STM32 khác nhau như thế nào?”**, có thể trả lời ngắn:
+**Câu hỏi:** “Cortex-M và STM32 khác nhau như thế nào?”
 
 > **Cortex-M là lõi/kiến trúc xử lý ARM dùng để thực thi lệnh. STM32 là một vi điều khiển hoàn chỉnh tích hợp Cortex-M cùng Flash, SRAM và các peripheral như GPIO, Timer, UART, SPI, I2C...**
 
-Nếu hỏi **“Core làm gì?”**:
+**Câu hỏi:** “Core làm gì?”
 
 > **Core lấy lệnh từ bộ nhớ, giải mã và thực thi lệnh. Bên trong core có ALU, các thanh ghi và các khối điều khiển thực thi.**
 
-Nếu hỏi **“Fetch là gì?”**:
+**Câu hỏi:** “Fetch là gì?”
 
 > **Fetch là quá trình CPU lấy mã lệnh từ bộ nhớ chương trình thông qua bus để chuẩn bị giải mã và thực thi.**
 
-Nếu hỏi **“Core truy cập peripheral như thế nào?”**:
+**Câu hỏi:** “Core truy cập peripheral như thế nào?”
 
 > **Core thực hiện các thao tác đọc/ghi thông qua hệ thống bus. Peripheral của vi điều khiển thường được ánh xạ vào không gian địa chỉ, nên CPU có thể truy cập các thanh ghi của peripheral thông qua địa chỉ tương ứng.**
 
@@ -497,7 +508,7 @@ Khái niệm **memory-mapped peripheral** sẽ được triển khai kỹ ở ph
 
 ---
 
-### 1.1.11. Câu hỏi phỏng vấn tự kiểm tra
+### 1.1.11. Câu hỏi tự kiểm tra
 
 1. Processor Core là gì?
 2. Processor khác Processor Core ở điểm nào?
@@ -508,9 +519,9 @@ Khái niệm **memory-mapped peripheral** sẽ được triển khai kỹ ở ph
 7. Ba giai đoạn cơ bản khi xử lý một lệnh là gì?
 8. Fetch nghĩa là gì?
 9. CPU thường lấy mã chương trình từ đâu trong hệ thống nhúng?
-10. I-Code bus được dùng cho mục đích gì theo tài liệu?
-11. D-Code bus được dùng cho mục đích gì theo tài liệu?
-12. System bus được dùng cho mục đích gì theo tài liệu?
+10. I-Code bus được dùng cho mục đích gì ?
+11. D-Code bus được dùng cho mục đích gì ?
+12. System bus được dùng cho mục đích gì ?
 13. AHB và APB khác nhau ở ý tưởng sử dụng như thế nào?
 14. AHB-to-APB Bridge có vai trò gì?
 15. Tại sao không nên nói “STM32 chính là Cortex-M”?
@@ -564,7 +575,7 @@ System bus
 
 ### 1.2.1. Cortex-M có những chế độ hoạt động nào?
 
-Theo tài liệu, các bộ xử lý Cortex-M0/M3/M4 có **2 chế độ hoạt động**:
+ các bộ xử lý Cortex-M0/M3/M4 có **2 chế độ hoạt động**:
 
 ```text
 Operational Modes
@@ -582,13 +593,13 @@ Handler mode
 → thực thi exception handler / interrupt handler
 ```
 
-Tài liệu tổng quan cũng liệt kê **Operational mode of the processor** là một trong những nội dung đặc trưng cần hiểu khi học Cortex-M0/M3/M4.
+**Operational mode of the processor** là một đặc trưng quan trọng của Cortex-M0/M3/M4.
 
 ---
 
 ### 1.2.2. Thread mode
 
-Theo tài liệu:
+
 
 > Mã ứng dụng sẽ chạy trong **Thread mode**.
 
@@ -602,7 +613,7 @@ Khởi động processor
 Chạy mã ứng dụng
 ```
 
-Ví dụ ở mức khái niệm:
+Ví dụ:
 
 ```c
 int main(void)
@@ -614,11 +625,11 @@ int main(void)
 }
 ```
 
-Trong trạng thái chương trình đang thực thi luồng mã ứng dụng bình thường, tài liệu xếp việc thực thi đó vào **Thread mode**.
+Khi chương trình đang thực thi luồng mã ứng dụng bình thường, processor ở **Thread mode**.
 
-Tài liệu nguồn cũng gọi Thread mode là **"User Mode"**. Tuy nhiên, cách gọi này dễ gây nhầm với **Unprivileged**.
+Không nên đồng nhất Thread mode với **User Mode** hay **Unprivileged**, vì đây là các khái niệm khác nhau.
 
-> **Hiệu chỉnh kỹ thuật:** trong Cortex-M, **Thread mode không đồng nghĩa với Unprivileged/User**. Thread mode có thể chạy ở **Privileged** hoặc **Unprivileged**, còn Handler mode luôn Privileged. Trong tài liệu này nên ưu tiên thuật ngữ **Thread mode** thay vì dùng “User Mode”.
+> **Lưu ý:** Trong Cortex-M, **Thread mode không đồng nghĩa với Unprivileged/User**. Thread mode có thể chạy ở **Privileged** hoặc **Unprivileged**, còn Handler mode luôn Privileged. Nên dùng thuật ngữ **Thread mode** để tránh nhầm lẫn.
 
 Phần **Access Level** ở mục 1.3 sẽ tách riêng khái niệm quyền truy cập khỏi Operation Mode.
 
@@ -626,7 +637,7 @@ Phần **Access Level** ở mục 1.3 sẽ tách riêng khái niệm quyền tru
 
 ### 1.2.3. Handler mode
 
-Theo tài liệu:
+
 
 > Tất cả **exception handler** hoặc **interrupt handler** sẽ chạy trong **Handler mode**.
 
@@ -665,11 +676,11 @@ Exception handler / Interrupt handler
 
 ### 1.2.4. Processor bắt đầu ở mode nào?
 
-Theo tài liệu:
+
 
 > Processor luôn bắt đầu ở **Thread mode**.
 
-Do đó, ở mức khái niệm có thể ghi nhớ:
+Có thể ghi nhớ:
 
 ```text
 Processor bắt đầu hoạt động
@@ -683,7 +694,7 @@ Processor bắt đầu hoạt động
 
 ### 1.2.5. Khi nào Core chuyển từ Thread mode sang Handler mode?
 
-Tài liệu mô tả:
+Nội dung mô tả:
 
 - Khi core gặp **system exception**, hoặc
 - Khi có **external interrupt**,
@@ -712,7 +723,7 @@ Thread mode
 Handler mode
 ```
 
-Phần tài liệu Operation Modes hiện tại chỉ mô tả việc chuyển sang Handler mode để phục vụ exception/interrupt. Cơ chế exception chi tiết sẽ được học ở phần **Exception / Interrupt** sau này.
+Cơ chế exception chi tiết được trình bày riêng ở phần **Exception / Interrupt**.
 
 ---
 
@@ -755,7 +766,7 @@ sẽ được để sang phần chuyên về **Interrupt + NVIC + EXTI** và ph�
 
 | Tiêu chí | Thread mode | Handler mode |
 |---|---|---|
-| Mục đích chính theo tài liệu | Chạy mã ứng dụng | Chạy exception/interrupt handler |
+| Mục đích chính  | Chạy mã ứng dụng | Chạy exception/interrupt handler |
 | Mã thường chạy | Application code | Handler / ISR |
 | Processor bắt đầu ở đây | Có | Không |
 | Khi exception/interrupt xảy ra | Core rời Thread mode để xử lý sự kiện | Core chuyển vào mode này để phục vụ handler |
@@ -807,29 +818,29 @@ Handler mode
 
 ---
 
-### 1.2.9. Ý cần nhớ khi phỏng vấn
+### 1.2.9. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Cortex-M có những operation mode nào?”**, có thể trả lời:
+**Câu hỏi:** “Cortex-M có những operation mode nào?”
 
-> **Theo mô hình Cortex-M trong tài liệu, processor có hai operation mode là Thread mode và Handler mode. Mã ứng dụng chạy trong Thread mode, còn exception handler và interrupt handler chạy trong Handler mode.**
+> **Trong Cortex-M, processor có hai operation mode là Thread mode và Handler mode. Mã ứng dụng chạy trong Thread mode, còn exception handler và interrupt handler chạy trong Handler mode.**
 
-Nếu hỏi **“Processor bắt đầu ở mode nào?”**:
+**Câu hỏi:** “Processor bắt đầu ở mode nào?”
 
 > **Processor bắt đầu ở Thread mode.**
 
-Nếu hỏi **“Khi interrupt xảy ra thì mode thay đổi như thế nào?”**:
+**Câu hỏi:** “Khi interrupt xảy ra thì mode thay đổi như thế nào?”
 
 > **Khi core gặp system exception hoặc external interrupt, core chuyển từ Thread mode sang Handler mode để thực thi handler hoặc ISR tương ứng.**
 
-Nếu hỏi **“Thread mode và Handler mode khác nhau ở điểm chính nào?”**:
+**Câu hỏi:** “Thread mode và Handler mode khác nhau ở điểm chính nào?”
 
 > **Thread mode dành cho luồng mã ứng dụng bình thường, còn Handler mode dành cho việc xử lý exception và interrupt.**
 
 ---
 
-### 1.2.10. Câu hỏi phỏng vấn tự kiểm tra
+### 1.2.10. Câu hỏi tự kiểm tra
 
-1. Cortex-M0/M3/M4 có bao nhiêu operation mode theo tài liệu?
+1. Cortex-M0/M3/M4 có bao nhiêu operation mode ?
 2. Hai operation mode đó là gì?
 3. Mã ứng dụng bình thường chạy trong mode nào?
 4. Exception handler chạy trong mode nào?
@@ -882,7 +893,7 @@ Handler / ISR
 
 ### 1.3.1. Cortex-M có những mức truy cập nào?
 
-Theo tài liệu, Cortex-M0/M3/M4 cung cấp **2 mức truy cập**:
+ Cortex-M0/M3/M4 cung cấp **2 mức truy cập**:
 
 ```text
 Access Levels
@@ -906,7 +917,7 @@ Mục đích chính của hai mức này là phân biệt **mức quyền mà m�
 
 ### 1.3.2. Privileged Access Level — mức truy cập đặc quyền
 
-Theo tài liệu, khi mã chạy ở **Privileged Access Level (PAL)** thì nó có quyền truy cập đầy đủ hơn đối với:
+ khi mã chạy ở **Privileged Access Level (PAL)** thì nó có quyền truy cập đầy đủ hơn đối với:
 
 - Tài nguyên đặc thù của processor.
 - Các thanh ghi bị hạn chế truy cập.
@@ -922,7 +933,7 @@ Processor resources
 Restricted registers
 ```
 
-Ở mức phỏng vấn, có thể nhớ:
+Có thể nhớ:
 
 > **Privileged mode/access level cho phép mã truy cập các tài nguyên và thanh ghi hệ thống mà mã không đặc quyền có thể bị hạn chế.**
 
@@ -930,7 +941,7 @@ Restricted registers
 
 ### 1.3.3. Non-Privileged Access Level — mức truy cập không đặc quyền
 
-Theo tài liệu, khi mã chạy ở **Non-Privileged Access Level (NPAL)** thì mã có thể **không được phép truy cập một số thanh ghi bị hạn chế của processor**.
+ khi mã chạy ở **Non-Privileged Access Level (NPAL)** thì mã có thể **không được phép truy cập một số thanh ghi bị hạn chế của processor**.
 
 Có thể hình dung:
 
@@ -951,7 +962,7 @@ không được truy cập
 
 ### 1.3.4. Mức truy cập mặc định
 
-Theo tài liệu:
+
 
 > **Mặc định, mã bắt đầu chạy ở Privileged Access Level.**
 
@@ -965,7 +976,7 @@ Thread mode
 Privileged Access Level
 ```
 
-Như vậy, ở trạng thái khởi đầu theo tài liệu:
+Như vậy, ở trạng thái khởi đầu :
 
 ```text
 Operational mode = Thread mode
@@ -994,7 +1005,7 @@ Thread mode
 └── Non-Privileged
 ```
 
-Theo tài liệu, khi đang ở Thread mode và Privileged, chương trình có thể chuyển processor sang Non-Privileged.
+ khi đang ở Thread mode và Privileged, chương trình có thể chuyển processor sang Non-Privileged.
 
 Có thể hình dung:
 
@@ -1028,7 +1039,7 @@ Thread + Non-Privileged
 
 ### 1.3.6. Handler mode luôn chạy ở mức nào?
 
-Theo tài liệu:
+
 
 > **Handler mode luôn chạy ở Privileged Access Level.**
 
@@ -1056,7 +1067,7 @@ Handler mode
 
 ### 1.3.7. Vai trò của thanh ghi `CONTROL`
 
-Theo tài liệu, processor sử dụng thanh ghi:
+ processor sử dụng thanh ghi:
 
 ```text
 CONTROL
@@ -1064,9 +1075,9 @@ CONTROL
 
 để chuyển đổi mức truy cập khi ở Thread mode.
 
-Hình minh họa nguồn sử dụng cách viết rút gọn `CONTROL = 0/1`. Cách viết này **không nên học thuộc theo nghĩa toàn bộ thanh ghi `CONTROL` chỉ biểu diễn quyền truy cập**, vì `CONTROL` còn chứa các bit điều khiển khác.
+Cách viết rút gọn `CONTROL = 0/1` dễ gây nhầm vì `CONTROL` còn chứa các bit điều khiển khác.
 
-Cách hiểu chính xác hơn ở mức phỏng vấn:
+Cách hiểu chính xác hơn:
 
 ```text
 CONTROL.nPRIV — bit 0
@@ -1078,7 +1089,7 @@ CONTROL.SPSEL — bit 1
 1 → Thread mode dùng PSP
 ```
 
-> Một số tài liệu Cortex-M cũ có thể dùng tên trường khác như `TPL`/`ASPSEL`; ý nghĩa cốt lõi vẫn là **bit quyền của Thread mode** và **bit chọn Stack Pointer**.
+> Một số cách ký hiệu cũ có thể dùng tên trường khác như `TPL`/`ASPSEL`; ý nghĩa cốt lõi vẫn là **bit quyền của Thread mode** và **bit chọn Stack Pointer**.
 
 Trong Handler mode, processor luôn Privileged và luôn sử dụng MSP.
 
@@ -1086,7 +1097,7 @@ Trong Handler mode, processor luôn Privileged và luôn sử dụng MSP.
 
 ### 1.3.8. Tại sao từ Non-Privileged không thể tự quay lại Privileged?
 
-Theo tài liệu, khi Thread mode đã chuyển từ:
+ khi Thread mode đã chuyển từ:
 
 ```text
 Privileged
@@ -1106,13 +1117,13 @@ cơ chế phân quyền
 sẽ mất ý nghĩa
 ```
 
-Do đó, tài liệu mô tả con đường quay lại Privileged thông qua **Handler mode**.
+Do đó, nội dung mô tả con đường quay lại Privileged thông qua **Handler mode**.
 
 ---
 
 ### 1.3.9. Từ Non-Privileged quay lại Privileged như thế nào?
 
-Theo tài liệu và hình minh họa:
+
 
 ```text
 Thread mode
@@ -1153,7 +1164,7 @@ Privileged
 
 Điểm cốt lõi:
 
-> **Handler mode luôn có quyền Privileged, nên handler có thể thực hiện thao tác cần quyền cao rồi đưa Thread mode trở về mức Privileged theo cơ chế mô tả trong tài liệu.**
+> **Handler mode luôn có quyền Privileged, nên handler có thể thực hiện thao tác cần quyền cao rồi đưa Thread mode trở về mức Privileged theo cơ chế mô tả trong phần này.**
 
 ---
 
@@ -1168,7 +1179,7 @@ Thread mode  = Non-Privileged
 Handler mode = Privileged
 ```
 
-Cách hiểu đúng theo tài liệu:
+Cách hiểu đúng :
 
 | Operation Mode | Access Level có thể có |
 |---|---|
@@ -1201,9 +1212,9 @@ Hai cơ chế này có liên quan nhưng không phải cùng một khái niệm.
 
 ---
 
-### 1.3.11. Luồng chuyển trạng thái theo hình tài liệu
+### 1.3.11. Luồng chuyển trạng thái
 
-Hình nguồn có thể được diễn giải thành chuỗi sau:
+Luồng chuyển trạng thái có thể biểu diễn như sau:
 
 ```text
 1. Processor bắt đầu:
@@ -1219,7 +1230,7 @@ Hình nguồn có thể được diễn giải thành chuỗi sau:
    luôn Privileged
 
 5. Handler có thể thiết lập lại CONTROL theo cơ chế
-   được minh họa trong tài liệu
+   được thực hiện theo cơ chế trên
 
 6. Khi thoát handler:
    quay lại Thread mode
@@ -1247,7 +1258,7 @@ Thread / Privileged
 
 ### 1.3.12. Tại sao cần Access Level?
 
-Từ nội dung tài liệu có thể rút ra ý nghĩa chính:
+Ý nghĩa chính:
 
 ```text
 Privileged
@@ -1259,7 +1270,7 @@ Non-Privileged
 
 Nhờ vậy, mã ứng dụng có thể được chạy với quyền thấp hơn, trong khi mã xử lý hệ thống/exception vẫn chạy với quyền cao hơn.
 
-Ở mức Intern chỉ cần nắm:
+Điểm cốt lõi:
 
 > **Access Level là cơ chế kiểm soát quyền truy cập của mã đang chạy đối với các tài nguyên nhạy cảm của processor.**
 
@@ -1287,33 +1298,33 @@ Handler mode + Privileged
 
 ---
 
-### 1.3.14. Ý cần nhớ khi phỏng vấn
+### 1.3.14. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Cortex-M có những access level nào?”**, có thể trả lời:
+**Câu hỏi:** “Cortex-M có những access level nào?”
 
 > **Có hai mức truy cập: Privileged và Non-Privileged. Privileged có quyền truy cập đầy đủ hơn vào tài nguyên và các thanh ghi bị hạn chế của processor, còn Non-Privileged bị giới hạn một số quyền truy cập.**
 
-Nếu hỏi **“Thread mode có luôn là Non-Privileged không?”**:
+**Câu hỏi:** “Thread mode có luôn là Non-Privileged không?”
 
 > **Không. Thread mode có thể chạy ở Privileged hoặc Non-Privileged.**
 
-Nếu hỏi **“Handler mode chạy ở access level nào?”**:
+**Câu hỏi:** “Handler mode chạy ở access level nào?”
 
-> **Handler mode luôn chạy ở Privileged Access Level theo tài liệu.**
+> **Handler mode luôn chạy ở Privileged Access Level .**
 
-Nếu hỏi **“Tại sao mã Non-Privileged không thể tự nâng quyền trở lại?”**:
+**Câu hỏi:** “Tại sao mã Non-Privileged không thể tự nâng quyền trở lại?”
 
-> **Vì nếu mã không đặc quyền có thể tự chuyển thành đặc quyền thì cơ chế giới hạn quyền sẽ không còn ý nghĩa. Theo tài liệu, muốn quay lại Privileged cần đi qua Handler mode.**
+> **Vì nếu mã không đặc quyền có thể tự chuyển thành đặc quyền thì cơ chế giới hạn quyền sẽ không còn ý nghĩa.  muốn quay lại Privileged cần đi qua Handler mode.**
 
-Nếu hỏi **“Thanh ghi nào liên quan tới việc chuyển access level?”**:
+**Câu hỏi:** “Thanh ghi nào liên quan tới việc chuyển access level?”
 
-> **Thanh ghi `CONTROL`. Tài liệu minh họa `CONTROL.nPRIV = 0` cho Privileged và `CONTROL.nPRIV = 1` cho Non-Privileged; chi tiết từng bit sẽ học ở phần Core Registers.**
+> **Thanh ghi `CONTROL`. Nội dung minh họa `CONTROL.nPRIV = 0` cho Privileged và `CONTROL.nPRIV = 1` cho Non-Privileged; chi tiết từng bit sẽ học ở phần Core Registers.**
 
 ---
 
-### 1.3.15. Câu hỏi phỏng vấn tự kiểm tra
+### 1.3.15. Câu hỏi tự kiểm tra
 
-1. Cortex-M0/M3/M4 có bao nhiêu access level theo tài liệu?
+1. Cortex-M0/M3/M4 có bao nhiêu access level ?
 2. Hai access level đó là gì?
 3. Privileged Access Level cho phép truy cập những gì?
 4. Non-Privileged Access Level bị hạn chế điều gì?
@@ -1321,10 +1332,10 @@ Nếu hỏi **“Thanh ghi nào liên quan tới việc chuyển access level?�
 6. Thread mode có thể chạy ở những access level nào?
 7. Handler mode chạy ở access level nào?
 8. Operation Mode và Access Level có phải cùng một khái niệm không?
-9. Thanh ghi nào được tài liệu sử dụng để chuyển access level?
+9. Thanh ghi nào được nội dung sử dụng để chuyển access level?
 10. Từ Thread/Privileged có thể chuyển sang Thread/Non-Privileged như thế nào ở mức khái niệm?
 11. Vì sao Thread/Non-Privileged không thể tự chuyển trực tiếp về Privileged?
-12. Exception/interrupt có vai trò gì trong quá trình quay lại Privileged theo tài liệu?
+12. Exception/interrupt có vai trò gì trong quá trình quay lại Privileged ?
 13. Sau khi vào Handler mode, access level là gì?
 14. Hãy phân biệt `Thread + Privileged`, `Thread + Non-Privileged` và `Handler + Privileged`.
 
@@ -1373,7 +1384,7 @@ Thread / Privileged
 
 **Ý quan trọng nhất:**
 
-> **Operation Mode cho biết processor đang chạy luồng ứng dụng hay handler; Access Level cho biết mức quyền truy cập của mã đang chạy. Thread mode có thể Privileged hoặc Non-Privileged, còn Handler mode luôn Privileged theo tài liệu.**
+> **Operation Mode cho biết processor đang chạy luồng ứng dụng hay handler; Access Level cho biết mức quyền truy cập của mã đang chạy. Thread mode có thể Privileged hoặc Non-Privileged, còn Handler mode luôn Privileged .**
 
 [↑ Về mục lục](#muc-luc)
 
@@ -1385,7 +1396,7 @@ Thread / Privileged
 
 ### 1.4.1. Tổng quan các thanh ghi của Processor Core
 
-Theo sơ đồ tài liệu, các thanh ghi của processor core được chia thành các nhóm chính:
+Các thanh ghi của processor core được chia thành các nhóm chính:
 
 ```text
 Core Registers
@@ -1415,7 +1426,7 @@ Core Registers
     └── CONTROL
 ```
 
-Trong sơ đồ nguồn:
+Phân nhóm:
 
 - `R0` đến `R12` được gọi là **general-purpose registers**.
 - `R0` đến `R7` được đánh dấu là **low registers**.
@@ -1430,7 +1441,7 @@ Các thanh ghi phía dưới như `PSR`, `PRIMASK`, `FAULTMASK`, `BASEPRI`, `CON
 
 ### 1.4.2. R0 → R12 — General-Purpose Registers
 
-Theo sơ đồ tài liệu:
+Sơ đồ:
 
 ```text
 R0  ┐
@@ -1462,7 +1473,7 @@ R8 → R12
 
 > **R0 đến R12 là các thanh ghi đa dụng mà core dùng trong quá trình xử lý dữ liệu và thực thi chương trình.**
 
-Chi tiết quy ước thanh ghi nào thường dùng để truyền tham số, giữ biến cục bộ hay phải được caller/callee bảo toàn chưa được hình nguồn này mô tả đầy đủ, nên chưa triển khai ở đây.
+Quy ước truyền tham số, giữ biến cục bộ và bảo toàn thanh ghi được trình bày ở phần AAPCS.
 
 ---
 
@@ -1476,7 +1487,7 @@ R13
 SP — Stack Pointer
 ```
 
-Tài liệu còn cho thấy `SP` có hai phiên bản:
+`SP` có hai phiên bản banked:
 
 ```text
 SP
@@ -1496,9 +1507,9 @@ R13 / SP
    └── MSP
 ```
 
-Ở phần Core Registers hiện tại, chỉ cần ghi nhận rằng:
+Điểm cần nhớ:
 
-> **R13 là Stack Pointer và tài liệu thể hiện hai phiên bản của Stack Pointer là PSP và MSP.**
+> **R13 là Stack Pointer; hai Stack Pointer banked là PSP và MSP.**
 
 Cách PSP/MSP được chọn, mode nào dùng SP nào và cách Stack hoạt động sẽ được triển khai riêng trong phần **Stack cơ bản trên Cortex-M**.
 
@@ -1514,7 +1525,7 @@ R14
 LR — Link Register
 ```
 
-Hình Caller/Callee minh họa vai trò của `LR` khi một hàm gọi hàm khác.
+`LR` giữ vai trò quan trọng khi một hàm gọi hàm khác.
 
 Ví dụ:
 
@@ -1539,7 +1550,7 @@ void fun2(void)
 }
 ```
 
-Theo hình:
+
 
 ```text
 fun1 gọi fun2
@@ -1556,7 +1567,7 @@ PC = LR
 quay lại fun1
 ```
 
-Hình mô tả:
+Luồng thực thi:
 
 ```text
 LR = return address
@@ -1587,13 +1598,13 @@ fun1
 
 Ý cần nhớ:
 
-> **LR giữ thông tin địa chỉ quay về khi thực hiện lời gọi hàm theo mô hình minh họa trong tài liệu.**
+> **LR giữ thông tin địa chỉ quay về khi thực hiện lời gọi hàm.**
 
 ---
 
 ### 1.4.5. R15 — Program Counter
 
-Theo tài liệu:
+
 
 ```text
 R15
@@ -1601,18 +1612,18 @@ R15
 PC — Program Counter
 ```
 
-Hình Program Counter ghi rõ:
+
 
 > `PC` là thanh ghi `R15` và chứa địa chỉ chương trình hiện tại.
 
-Có thể hiểu ở mức khái niệm:
+Có thể hiểu:
 
 ```text
 PC
 → cho core biết vị trí lệnh trong luồng chương trình
 ```
 
-Trong hình Caller/Callee:
+Trong lời gọi hàm:
 
 ```text
 fun1 gọi fun2
@@ -1620,7 +1631,7 @@ fun1 gọi fun2
 PC nhảy tới địa chỉ của fun2
 ```
 
-Khi `fun2` kết thúc, hình minh họa:
+Khi `fun2` kết thúc:
 
 ```text
 PC = LR
@@ -1643,7 +1654,7 @@ PC ← LR
 
 ### 1.4.6. Program Counter khi Reset
 
-Hình tài liệu về `Program Counter` còn mô tả quá trình Reset:
+Trong quá trình Reset:
 
 ```text
 PC = R15
@@ -1665,7 +1676,7 @@ nạp giá trị đó vào PC
 bắt đầu thực thi tại địa chỉ Reset Handler
 ```
 
-Tài liệu cũng ghi:
+
 
 ```text
 Bit[0] của giá trị reset vector
@@ -1690,16 +1701,16 @@ PSR
 
 PSR được xếp vào nhóm **special registers**.
 
-Trong phạm vi hình nguồn hiện tại, tài liệu chưa giải thích chi tiết từng trường bit của PSR, vì vậy ở đây chỉ cần nhớ:
+PSR là thanh ghi trạng thái chương trình; cấu trúc chi tiết được trình bày ngay sau đây.
 
 > **PSR là thanh ghi trạng thái chương trình của processor.**
 
-Phần **Bổ sung kỹ thuật** ngay sau đây làm rõ thêm `xPSR`, `APSR`, `IPSR`, `EPSR` và T-bit dựa trên tài liệu T-bit/Programming Manual đi kèm.
+Các thành phần `xPSR`, `APSR`, `IPSR`, `EPSR` và T-bit được trình bày dưới đây.
 
 
 ---
 
-### Bổ sung kỹ thuật — `xPSR`, `APSR`, `IPSR`, `EPSR` và T-bit
+#### `xPSR`, `APSR`, `IPSR`, `EPSR` và T-bit
 
 Ở Cortex-M, `xPSR` là cách nhìn tổng hợp của các nhóm trạng thái:
 
@@ -1755,11 +1766,11 @@ BASEPRI
 Exception mask registers
 ```
 
-Do đó, ở mức tài liệu hiện có:
+Do đó:
 
 > **PRIMASK, FAULTMASK và BASEPRI là các thanh ghi liên quan đến việc mask exception.**
 
-Phần hình nguồn chưa mô tả cụ thể từng thanh ghi mask loại exception nào hay cách đặt bit, nên chưa đi sâu hơn trong mục này.
+Chi tiết từng thanh ghi mask exception được trình bày ở phần Interrupt / Exception.
 
 Nội dung chi tiết phù hợp hơn với phần **Interrupt / Exception** sau này.
 
@@ -1784,17 +1795,17 @@ Trong phần Core Registers, chỉ cần nối lại kiến thức:
 CONTROL
 → một special register của processor core
 → có liên quan tới trạng thái điều khiển processor
-→ trong tài liệu Access Level, được dùng để chuyển
+→ được dùng để chuyển
   Thread mode giữa Privileged và Non-Privileged
 ```
 
-Chi tiết từng bit trong `CONTROL` chưa xuất hiện trong nhóm hình Core Registers hiện tại nên chưa bổ sung ngoài phạm vi nguồn.
+Các bit quan trọng của `CONTROL` được trình bày ở phần Access Level và Stack.
 
 ---
 
 ### 1.4.10. Non-Memory-Mapped Registers là gì?
 
-Một hình trong tài liệu phân biệt:
+Có thể phân biệt:
 
 ```text
 Non-memory mapped registers
@@ -1808,12 +1819,12 @@ Memory mapped registers
 
 Các **processor core registers** được đặt phía **Non-memory mapped registers**.
 
-Tài liệu ghi:
+Nội dung ghi:
 
 - Các core register này **không có địa chỉ duy nhất để truy cập như một địa chỉ trong memory map**.
 - Vì vậy chúng **không thuộc processor memory map**.
 - Không thể truy cập chúng trong chương trình C bằng cách lấy một địa chỉ cố định rồi giải tham chiếu như với peripheral register.
-- Tài liệu chỉ ra rằng để truy cập trực tiếp các thanh ghi này cần sử dụng instruction phù hợp ở mức Assembly.
+- Để truy cập trực tiếp các thanh ghi này cần sử dụng instruction phù hợp ở mức Assembly.
 
 Có thể hình dung:
 
@@ -1840,7 +1851,7 @@ volatile uint32_t *reg = (uint32_t *)ADDRESS;
 
 ### 1.4.11. Memory-Mapped Registers là gì?
 
-Hình tài liệu đặt ở phía **Memory mapped registers** hai nhóm:
+Nhóm **Memory-mapped registers** gồm:
 
 ```text
 Processor-specific peripheral registers
@@ -1859,7 +1870,7 @@ Microcontroller-specific peripheral registers
 └── ...
 ```
 
-Theo tài liệu:
+
 
 > **Mỗi memory-mapped register có một địa chỉ trong processor memory map.**
 
@@ -1904,8 +1915,8 @@ Khái niệm **Memory-Mapped Register / Memory-Mapped I/O** đã được giới
 
 | Tiêu chí | Core Register | Memory-Mapped Register |
 |---|---|---|
-| Ví dụ trong tài liệu | `R0-R15`, `PSR`, `CONTROL`... | NVIC, MPU, SCB, RTC, I2C, TIMER... |
-| Có địa chỉ trong memory map | Không theo cách tài liệu mô tả | Có |
+| Ví dụ trong phần này | `R0-R15`, `PSR`, `CONTROL`... | NVIC, MPU, SCB, RTC, I2C, TIMER... |
+| Có địa chỉ trong memory map | Không theo cách nội dung mô tả | Có |
 | Truy cập bằng địa chỉ + giải tham chiếu trong C | Không | Có |
 | Thuộc processor core | Có | Thường là thanh ghi của khối/peripheral |
 
@@ -1927,9 +1938,9 @@ Peripheral Register
 
 ### 1.4.13. Quan hệ giữa PC và LR khi gọi hàm
 
-Đây là phần rất dễ được hỏi trong phỏng vấn.
+Đây là phần quan trọng cần nắm chắc.
 
-Theo hình:
+
 
 ```text
 Caller = fun1
@@ -2025,53 +2036,53 @@ Peripheral Registers
 
 ---
 
-### 1.4.15. Ý cần nhớ khi phỏng vấn
+### 1.4.15. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Các core register chính của Cortex-M là gì?”**, có thể trả lời:
+**Câu hỏi:** “Các core register chính của Cortex-M là gì?”
 
-> **Theo sơ đồ tài liệu, Cortex-M có các general-purpose register R0-R12, R13 là Stack Pointer, R14 là Link Register, R15 là Program Counter, cùng các special register như PSR, PRIMASK, FAULTMASK, BASEPRI và CONTROL.**
+> ** Cortex-M có các general-purpose register R0-R12, R13 là Stack Pointer, R14 là Link Register, R15 là Program Counter, cùng các special register như PSR, PRIMASK, FAULTMASK, BASEPRI và CONTROL.**
 
-Nếu hỏi **“R14/LR dùng để làm gì?”**:
+**Câu hỏi:** “R14/LR dùng để làm gì?”
 
-> **Trong mô hình gọi hàm của tài liệu, LR giữ địa chỉ quay về. Khi caller gọi callee, PC chuyển tới hàm được gọi còn LR giữ địa chỉ của lệnh tiếp theo để khi return có thể quay lại caller.**
+> **LR giữ địa chỉ quay về. Khi caller gọi callee, PC chuyển tới hàm được gọi còn LR giữ địa chỉ của lệnh tiếp theo để khi return có thể quay lại caller.**
 
-Nếu hỏi **“R15/PC dùng để làm gì?”**:
+**Câu hỏi:** “R15/PC dùng để làm gì?”
 
-> **PC là Program Counter, tức R15, chứa địa chỉ chương trình đang được processor dùng để điều khiển luồng thực thi. Khi gọi hàm PC chuyển tới địa chỉ callee, và hình tài liệu minh họa khi return thì PC nhận lại giá trị từ LR.**
+> **PC là Program Counter, tức R15, chứa địa chỉ chương trình đang được processor dùng để điều khiển luồng thực thi. Khi gọi hàm, PC chuyển tới địa chỉ callee; khi return, PC nhận lại địa chỉ quay về từ LR.**
 
-Nếu hỏi **“Core register có nằm trong memory map không?”**:
+**Câu hỏi:** “Core register có nằm trong memory map không?”
 
-> **Theo tài liệu, các core register như R0-R15 là non-memory-mapped register, không có địa chỉ riêng trong processor memory map như peripheral register.**
+> ** các core register như R0-R15 là non-memory-mapped register, không có địa chỉ riêng trong processor memory map như peripheral register.**
 
-Nếu hỏi **“Memory-mapped register là gì?”**:
+**Câu hỏi:** “Memory-mapped register là gì?”
 
-> **Là register có địa chỉ trong memory map. Tài liệu đưa ví dụ các register của NVIC, MPU, SCB hoặc peripheral của vi điều khiển như I2C, Timer, CAN, USB; chương trình C có thể truy cập chúng thông qua địa chỉ tương ứng.**
+> **Là register có địa chỉ trong memory map. Nội dung đưa ví dụ các register của NVIC, MPU, SCB hoặc peripheral của vi điều khiển như I2C, Timer, CAN, USB; chương trình C có thể truy cập chúng thông qua địa chỉ tương ứng.**
 
-Nếu hỏi **“R13 có gì đặc biệt?”**:
+**Câu hỏi:** “R13 có gì đặc biệt?”
 
-> **R13 là Stack Pointer và tài liệu cho thấy nó có hai phiên bản banked là PSP và MSP.**
+> **R13 là Stack Pointer và nội dung cho thấy nó có hai phiên bản banked là PSP và MSP.**
 
 ---
 
-### 1.4.16. Câu hỏi phỏng vấn tự kiểm tra
+### 1.4.16. Câu hỏi tự kiểm tra
 
 1. R0 đến R12 thuộc nhóm register nào?
 2. R0-R7 và R8-R12 được sơ đồ gọi là gì?
 3. R13 là register gì?
-4. Hai phiên bản Stack Pointer được tài liệu thể hiện là gì?
+4. Hai phiên bản Stack Pointer được nội dung thể hiện là gì?
 5. R14 là register gì?
 6. R15 là register gì?
 7. Khi caller gọi callee, LR giữ thông tin gì?
-8. Khi gọi hàm, PC thay đổi như thế nào theo hình?
-9. Khi hàm return, mối quan hệ `PC = LR` trong hình có ý nghĩa gì?
-10. Khi reset, tài liệu nói PC được nạp từ địa chỉ nào?
-11. `PSR` được tài liệu mô tả là loại register gì?
+8. Khi gọi hàm, PC thay đổi như thế nào?
+9. Khi hàm return, mối quan hệ `PC = LR` có ý nghĩa gì?
+10. Khi reset, nội dung nói PC được nạp từ địa chỉ nào?
+11. `PSR` được nội dung mô tả là loại register gì?
 12. `PRIMASK`, `FAULTMASK` và `BASEPRI` được nhóm thành loại register gì?
 13. `CONTROL` thuộc nhóm register nào?
-14. Processor core register có thuộc memory map không theo tài liệu?
+14. Processor core register có thuộc memory map không ?
 15. Peripheral register memory-mapped khác core register ở điểm nào?
-16. Hãy kể các ví dụ processor-specific peripheral register trong hình.
-17. Hãy kể các ví dụ microcontroller-specific peripheral register trong hình.
+16. Hãy kể các ví dụ processor-specific peripheral register.
+17. Hãy kể các ví dụ microcontroller-specific peripheral register.
 18. Vì sao có thể truy cập memory-mapped register trong C bằng địa chỉ?
 19. Hãy phân biệt ngắn gọn `SP`, `LR` và `PC`.
 20. Hãy mô tả luồng caller → callee → caller bằng `PC` và `LR`.
@@ -2139,7 +2150,7 @@ Peripheral Registers
 
 **Ý quan trọng nhất:**
 
-> **R0-R12 là các general-purpose register, R13 là Stack Pointer, R14 là Link Register và R15 là Program Counter. Các core register này được tài liệu xếp vào nhóm non-memory-mapped, khác với các register của peripheral được ánh xạ vào memory map và có thể truy cập bằng địa chỉ.**
+> **R0-R12 là các general-purpose register, R13 là Stack Pointer, R14 là Link Register và R15 là Program Counter. Các core register này được nội dung xếp vào nhóm non-memory-mapped, khác với các register của peripheral được ánh xạ vào memory map và có thể truy cập bằng địa chỉ.**
 
 [↑ Về mục lục](#muc-luc)
 
@@ -2179,14 +2190,14 @@ PC
 
 ### 1.5.2. Hai giá trị đầu tiên trong vùng vector
 
-Theo tài liệu, sau reset processor đọc hai vị trí bộ nhớ đầu tiên:
+ sau reset processor đọc hai vị trí bộ nhớ đầu tiên:
 
 ```text
 0x00000000
 0x00000004
 ```
 
-Ý nghĩa theo tài liệu:
+Ý nghĩa :
 
 ```text
 Địa chỉ 0x00000000
@@ -2210,7 +2221,7 @@ Memory Address        Nội dung
 
 ---
 
-### Bổ sung kỹ thuật — vì sao Vector Table ở `0x00000000` nhưng Main Flash thường ở `0x08000000`?
+#### Boot alias/remap: Vector Table tại `0x00000000` và Main Flash tại `0x08000000`
 
 Đây là điểm rất dễ gây nhầm khi ghép **Memory Map** với **Reset Sequence**.
 
@@ -2258,13 +2269,13 @@ SRAM
 
 Sau khi hệ thống đã chạy, Vector Table còn có thể được **relocate** bằng thanh ghi `VTOR` trên các core hỗ trợ tính năng này.
 
-> **Ý phỏng vấn:** `0x00000000` là **reset/boot view mà core nhìn thấy**, còn `0x08000000` là địa chỉ Main Flash điển hình của STM32. Cơ chế alias/remap nối hai phần này lại với nhau.
+> **Điểm cần nhớ:** `0x00000000` là **reset/boot view mà core nhìn thấy**, còn `0x08000000` là địa chỉ Main Flash điển hình của STM32. Cơ chế alias/remap nối hai phần này lại với nhau.
 
 ---
 
 ### 1.5.3. Bước 1 — Processor bắt đầu chuỗi reset
 
-Tài liệu mô tả bước đầu tiên bằng việc processor bắt đầu tại vùng địa chỉ:
+bước đầu tiên bằng việc processor bắt đầu tại vùng địa chỉ:
 
 ```text
 0x00000000
@@ -2290,7 +2301,7 @@ nạp địa chỉ Reset Handler vào PC
 
 ### 1.5.4. Bước 2 — Khởi tạo MSP
 
-Theo tài liệu:
+
 
 ```text
 MSP = value @ 0x00000000
@@ -2303,11 +2314,11 @@ MSP
 = Main Stack Pointer
 ```
 
-Tài liệu nhấn mạnh:
+Điểm quan trọng:
 
 > Processor trước tiên khởi tạo Stack Pointer.
 
-Ví dụ minh họa trong hình:
+Ví dụ minh họa:
 
 ```text
 Memory[0x00000000] = 0x20008000
@@ -2332,13 +2343,13 @@ Sơ đồ:
 MSP = 0x20008000
 ```
 
-Địa chỉ `0x20008000` trong hình chỉ là **giá trị minh họa** cho initial MSP.
+Địa chỉ `0x20008000` chỉ là **giá trị minh họa** cho initial MSP.
 
 ---
 
 ### 1.5.5. Tại sao phải khởi tạo MSP trước?
 
-Theo tài liệu, processor khởi tạo Main Stack Pointer trước khi đi tiếp tới Reset Handler.
+ processor khởi tạo Main Stack Pointer trước khi đi tiếp tới Reset Handler.
 
 Có thể hiểu luồng:
 
@@ -2362,7 +2373,7 @@ Chi tiết Stack hoạt động ra sao, MSP khác PSP thế nào và Stack frame
 
 ### 1.5.6. Bước 3 — Đọc địa chỉ Reset Handler
 
-Sau khi khởi tạo MSP, tài liệu mô tả processor đọc giá trị tại:
+Sau khi khởi tạo MSP, nội dung mô tả processor đọc giá trị tại:
 
 ```text
 0x00000004
@@ -2374,7 +2385,7 @@ Giá trị này chính là:
 địa chỉ của Reset Handler
 ```
 
-Theo tài liệu:
+
 
 ```text
 PC = value @ 0x00000004
@@ -2386,7 +2397,7 @@ Ví dụ minh họa:
 Memory[0x00000004] = 0x20001000
 ```
 
-thì hình minh họa:
+thì:
 
 ```text
 PC = 0x20001000
@@ -2399,7 +2410,7 @@ và:
 → địa chỉ bắt đầu của Reset Handler trong ví dụ
 ```
 
-Địa chỉ trên chỉ là **địa chỉ minh họa trong hình nguồn**, không nên ghi nhớ như một địa chỉ cố định cho mọi STM32.
+Địa chỉ trên chỉ là **địa chỉ minh họa trong sơ đồ**, không nên ghi nhớ như một địa chỉ cố định cho mọi STM32.
 
 ---
 
@@ -2429,7 +2440,7 @@ Sơ đồ:
 Reset_Handler
 ```
 
-Hình nguồn mô tả:
+Sơ đồ mô tả:
 
 ```text
 First instruction
@@ -2445,7 +2456,7 @@ tức là processor bắt đầu chạy các lệnh của Reset Handler.
 
 ### 1.5.8. Reset Handler là gì?
 
-Theo tài liệu:
+
 
 > **Reset Handler là một hàm C hoặc Assembly dùng để thực hiện các bước khởi tạo cần thiết sau reset.**
 
@@ -2478,7 +2489,7 @@ main()
 
 ### 1.5.9. Vector Table đưa processor tới Reset Handler như thế nào?
 
-Một hình trong tài liệu mô tả:
+Luồng thực thi:
 
 ```text
 Vector Table
@@ -2512,7 +2523,7 @@ Chi tiết đầy đủ của vector table và các entry exception/interrupt s�
 
 ### 1.5.10. Reset Handler làm gì trước `main()`?
 
-Theo hình tài liệu, Reset Handler có các trách nhiệm chính trước khi gọi `main()`:
+ Reset Handler có các trách nhiệm chính trước khi gọi `main()`:
 
 ```text
 Processor reset
@@ -2526,7 +2537,7 @@ Initialize C standard library
 main()
 ```
 
-Hình còn chỉ ra lời gọi:
+Bước khởi tạo thư viện C có thể gọi:
 
 ```c
 __libc_init_array();
@@ -2558,7 +2569,7 @@ Flash và SRAM
 
 ### 1.5.11. Luồng Reset Sequence hoàn chỉnh
 
-Ghép các hình và file lý thuyết lại:
+Luồng tổng hợp:
 
 ```text
                  RESET
@@ -2620,9 +2631,9 @@ Sơ đồ ngắn:
 
 ---
 
-### 1.5.13. Ví dụ theo hình minh họa
+### 1.5.13. Ví dụ minh họa
 
-Hình nguồn sử dụng ví dụ:
+Ví dụ:
 
 ```text
 Memory[0x00000000] = 0x20008000
@@ -2653,7 +2664,7 @@ Next instruction
 main()
 ```
 
-Hai giá trị `0x20008000` và `0x20001000` trong hình là **ví dụ minh họa cho cơ chế**, không phải giá trị bắt buộc của mọi chương trình STM32.
+Hai giá trị `0x20008000` và `0x20001000` chỉ là **ví dụ minh họa cho cơ chế**, không phải giá trị bắt buộc của mọi chương trình STM32.
 
 ---
 
@@ -2667,7 +2678,7 @@ Reset
 nhảy thẳng vào main()
 ```
 
-Theo tài liệu:
+
 
 ```text
 Reset
@@ -2687,52 +2698,52 @@ Vì vậy:
 
 ---
 
-### 1.5.15. Ý cần nhớ khi phỏng vấn
+### 1.5.15. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Cortex-M làm gì ngay sau reset?”**, có thể trả lời:
+**Câu hỏi:** “Cortex-M làm gì ngay sau reset?”
 
 > **Processor lấy initial MSP từ giá trị tại địa chỉ `0x00000000`, sau đó lấy địa chỉ Reset Handler từ `0x00000004`, nạp địa chỉ đó vào PC và bắt đầu chạy Reset Handler.**
 
-Nếu hỏi **“Giá trị tại `0x00000000` dùng làm gì?”**:
+**Câu hỏi:** “Giá trị tại `0x00000000` dùng làm gì?”
 
-> **Theo tài liệu, đó là initial value được nạp vào MSP — Main Stack Pointer.**
+> ** đó là initial value được nạp vào MSP — Main Stack Pointer.**
 
-Nếu hỏi **“Giá trị tại `0x00000004` là gì?”**:
+**Câu hỏi:** “Giá trị tại `0x00000004` là gì?”
 
 > **Đó là địa chỉ của Reset Handler, được processor đọc để đưa luồng thực thi tới Reset Handler.**
 
-Nếu hỏi **“Reset Handler làm gì?”**:
+**Câu hỏi:** “Reset Handler làm gì?”
 
-> **Reset Handler thực hiện các bước khởi tạo cần thiết trước khi gọi `main()`. Hình tài liệu minh họa việc khởi tạo data section, bss section, C standard library rồi gọi `main()`.**
+> **Reset Handler thực hiện các bước khởi tạo cần thiết trước khi gọi `main()`: khởi tạo data section, bss section, C standard library rồi gọi `main()`.**
 
-Nếu hỏi **“`main()` có phải lệnh đầu tiên chạy sau reset không?”**:
+**Câu hỏi:** “`main()` có phải lệnh đầu tiên chạy sau reset không?”
 
-> **Không. Theo tài liệu, processor chạy Reset Handler trước; Reset Handler thực hiện các bước khởi tạo rồi mới gọi `main()`.**
+> **Không.  processor chạy Reset Handler trước; Reset Handler thực hiện các bước khởi tạo rồi mới gọi `main()`.**
 
-Nếu hỏi **“MSP và PC liên quan gì tới Reset Sequence?”**:
+**Câu hỏi:** “MSP và PC liên quan gì tới Reset Sequence?”
 
 > **MSP được khởi tạo từ vector đầu tiên tại `0x00000000`, còn PC nhận địa chỉ Reset Handler từ vector tại `0x00000004`.**
 
 ---
 
-### 1.5.16. Câu hỏi phỏng vấn tự kiểm tra
+### 1.5.16. Câu hỏi tự kiểm tra
 
 1. Reset Sequence là gì?
-2. Hai địa chỉ đầu tiên mà tài liệu nhấn mạnh là gì?
+2. Hai địa chỉ đầu tiên mà nội dung nhấn mạnh là gì?
 3. Giá trị tại `0x00000000` được nạp vào thanh ghi nào?
 4. MSP viết tắt của gì?
-5. Tại sao tài liệu nói Stack Pointer được khởi tạo trước?
+5. Tại sao nội dung nói Stack Pointer được khởi tạo trước?
 6. Giá trị tại `0x00000004` đại diện cho gì?
 7. Thanh ghi nào nhận địa chỉ Reset Handler?
 8. Sau khi PC nhận địa chỉ Reset Handler thì processor làm gì?
 9. Reset Handler là gì?
-10. Reset Handler có thể được viết bằng ngôn ngữ nào theo tài liệu?
+10. Reset Handler có thể được viết bằng ngôn ngữ nào ?
 11. Reset Handler chạy trước hay sau `main()`?
 12. Vector table có vai trò gì trong quá trình reset?
-13. Hình tài liệu liệt kê những bước khởi tạo nào trước `main()`?
-14. `__libc_init_array()` xuất hiện ở bước nào trong hình?
+13. Những bước khởi tạo nào diễn ra trước `main()`?
+14. `__libc_init_array()` được gọi ở bước nào?
 15. `.data` và `.bss` được xử lý trước hay sau `main()`?
-16. Hai địa chỉ `0x20008000` và `0x20001000` trong hình có phải giá trị cố định cho mọi STM32 không?
+16. Hai địa chỉ `0x20008000` và `0x20001000` có phải giá trị cố định cho mọi STM32 không?
 17. Hãy mô tả Reset Sequence bằng MSP và PC.
 18. Hãy vẽ lại chuỗi `Reset → MSP → PC → Reset_Handler → main()`.
 
@@ -2809,7 +2820,7 @@ Vùng đặc thù của nhà sản xuất MCU
 
 Việc trao đổi này được thực hiện thông qua các **bus interface**.
 
-Theo tài liệu:
+
 
 > Các bus interface của Cortex-Mx dựa trên đặc tả **AMBA**.
 
@@ -2831,7 +2842,7 @@ Dữ liệu
 Tín hiệu điều khiển
 ```
 
-Trong phạm vi tài liệu nguồn của mục này, trọng tâm là:
+Trọng tâm của mục này là:
 
 ```text
 AMBA
@@ -2843,16 +2854,16 @@ AMBA
 
 ### 1.6.2. AMBA là gì?
 
-Theo hình tài liệu:
+
 
 ```text
 AMBA
 = Advanced Microcontroller Bus Architecture
 ```
 
-Tài liệu mô tả AMBA là một đặc tả do ARM thiết kế để quy định chuẩn giao tiếp **on-chip** bên trong một System-on-Chip.
+AMBA là một đặc tả do ARM thiết kế để quy định chuẩn giao tiếp **on-chip** bên trong một System-on-Chip.
 
-Có thể hiểu ở mức khái niệm:
+Có thể hiểu:
 
 ```text
 AMBA
@@ -2860,7 +2871,7 @@ AMBA
 → chuẩn hóa cách các khối trong chip giao tiếp với nhau
 ```
 
-Hình nguồn cho biết AMBA hỗ trợ nhiều bus protocol, trong đó mục này tập trung vào:
+Sơ đồ cho biết AMBA hỗ trợ nhiều bus protocol, trong đó mục này tập trung vào:
 
 ```text
 AHB-Lite
@@ -2871,7 +2882,7 @@ APB
 
 ### 1.6.3. AHB-Lite
 
-Theo tài liệu:
+
 
 ```text
 AHB-Lite
@@ -2890,7 +2901,7 @@ Có thể nhớ ngắn gọn:
 
 > **AHB-Lite là bus chính, hướng tới truy cập tốc độ cao trong hệ thống.**
 
-Trong hình kiến trúc bus, các đường:
+Trong kiến trúc bus, các đường:
 
 ```text
 PPB
@@ -2910,7 +2921,7 @@ AHB
 
 ### 1.6.4. APB
 
-Theo tài liệu:
+
 
 ```text
 APB
@@ -2930,7 +2941,7 @@ và các truy cập này đi thông qua:
 AHB-APB bridge
 ```
 
-Tài liệu cũng nhấn mạnh rằng APB được dùng cho giao tiếp tốc độ thấp hơn AHB.
+APB được dùng cho giao tiếp tốc độ thấp hơn AHB.
 
 Có thể nhớ:
 
@@ -2947,7 +2958,7 @@ APB
 
 ### 1.6.5. Tại sao cần AHB và APB?
 
-Theo cách tổ chức trong tài liệu:
+Theo cách tổ chức trong phần này:
 
 ```text
 Các khối cần tốc độ cao
@@ -2985,13 +2996,13 @@ Sơ đồ khái niệm:
 
 ### 1.6.6. AHB-APB Bridge
 
-Tài liệu mô tả APB được truy cập thông qua:
+APB được truy cập thông qua:
 
 ```text
 AHB-APB Bridge
 ```
 
-Vai trò ở mức khái niệm:
+Vai trò:
 
 ```text
 AHB side
@@ -3021,9 +3032,9 @@ Peripheral
 
 ---
 
-### 1.6.7. Các bus interface được thể hiện trong hình Cortex-M
+### 1.6.7. Các bus interface của Cortex-M
 
-Hình nguồn thể hiện bốn đường/interface quan trọng:
+Bốn đường/interface quan trọng gồm:
 
 ```text
 PPB
@@ -3049,7 +3060,7 @@ ARM Cortex-Mx Processor
 
 ### 1.6.8. I-CODE bus
 
-Theo hình:
+
 
 ```text
 I-CODE
@@ -3079,13 +3090,13 @@ Processor
 
 Điểm cần nhớ:
 
-> **I-CODE phục vụ việc lấy lệnh và đọc vector table từ CODE region theo hình tài liệu.**
+> **I-CODE phục vụ việc lấy lệnh và đọc vector table từ CODE region trong sơ đồ.**
 
 ---
 
 ### 1.6.9. D-CODE bus
 
-Theo hình:
+
 
 ```text
 D-CODE
@@ -3121,13 +3132,13 @@ D-CODE
 → data access
 ```
 
-trong vùng CODE theo sơ đồ nguồn.
+trong vùng CODE.
 
 ---
 
 ### 1.6.10. System bus
 
-Hình tài liệu thể hiện:
+
 
 ```text
 System
@@ -3161,13 +3172,13 @@ SRAM / Peripheral / External RAM / Device regions
 
 Điểm cần nhớ:
 
-> **System bus phục vụ các truy cập đọc/ghi tới các vùng hệ thống như SRAM và peripheral theo hình tài liệu.**
+> **System bus phục vụ các truy cập đọc/ghi tới các vùng hệ thống như SRAM và peripheral trong sơ đồ.**
 
 ---
 
 ### 1.6.11. PPB interface
 
-Hình tài liệu còn thể hiện đường:
+Ngoài ra còn có đường:
 
 ```text
 PPB
@@ -3186,7 +3197,7 @@ và nó nối tới vùng:
 PPB
 ```
 
-Ngoài ra hình còn thể hiện một vùng:
+Ngoài ra còn có một vùng:
 
 ```text
 MCU Vendor specific region
@@ -3194,7 +3205,7 @@ MCU Vendor specific region
 
 ở phía trên.
 
-Trong phạm vi nguồn hiện tại, tài liệu không giải thích chi tiết PPB là gì hoặc cấu trúc các register bên trong vùng đó, nên ở mục này chỉ cần ghi nhận:
+Ở đây chỉ cần nhận diện PPB như một vùng/interface riêng của processor; cấu trúc register chi tiết được trình bày ở phần System Control/NVIC.
 
 ```text
 PPB
@@ -3205,9 +3216,9 @@ Khái niệm các thanh ghi memory-mapped liên quan tới processor/peripheral 
 
 ---
 
-### 1.6.12. Sơ đồ tổng hợp từ tài liệu
+### 1.6.12. Sơ đồ tổng hợp
 
-Có thể diễn giải hình nguồn thành:
+Có thể diễn giải sơ đồ thành:
 
 ```text
                     ARM Cortex-Mx Processor
@@ -3253,7 +3264,7 @@ PPB
 
 ---
 
-### Bổ sung kỹ thuật — bus của Cortex-M và bus cụ thể của STM32
+#### Bus của Cortex-M và bus cụ thể của STM32
 
 Cần tách hai lớp kiến thức:
 
@@ -3278,7 +3289,7 @@ peripheral clock
 bus clock
 ```
 
-> **Cách nhớ:** phần hiện tại giải thích **đường truy cập dữ liệu/lệnh**; phần RCC sau này giải thích **các bus/peripheral được cấp clock như thế nào** trên STM32 cụ thể.
+> **Cách nhớ:** phần này giải thích **đường truy cập dữ liệu/lệnh**; phần RCC giải thích **cách các bus/peripheral được cấp clock** trên từng STM32 cụ thể.
 
 ---
 
@@ -3320,7 +3331,7 @@ nhưng hai phần liên quan trực tiếp tới nhau.
 
 | Tiêu chí | AHB-Lite | APB |
 |---|---|---|
-| Vai trò theo tài liệu | Main bus interface | Peripheral bus |
+| Vai trò  | Main bus interface | Peripheral bus |
 | Tốc độ tương đối | Cao hơn | Thấp hơn |
 | Đối tượng sử dụng | Giao tiếp chính, peripheral cần tốc độ cao | Nhiều peripheral không yêu cầu tốc độ cao |
 | Kết nối với nhau | Phía chính | Thường đi qua AHB-APB Bridge |
@@ -3339,7 +3350,7 @@ APB
 
 ### 1.6.15. Phân biệt I-CODE, D-CODE và System bus
 
-| Bus | Mục đích theo hình tài liệu |
+| Bus | Mục đích |
 |---|---|
 | `I-CODE` | Instruction fetch và vector table read từ CODE region |
 | `D-CODE` | Data access tới CODE region |
@@ -3415,49 +3426,49 @@ Peripheral
 
 ---
 
-### 1.6.17. Ý cần nhớ khi phỏng vấn
+### 1.6.17. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“AMBA là gì?”**, có thể trả lời:
+**Câu hỏi:** “AMBA là gì?”
 
-> **AMBA là đặc tả bus do ARM thiết kế để chuẩn hóa giao tiếp on-chip. Trong tài liệu này, hai protocol chính được nhắc tới là AHB-Lite và APB.**
+> **AMBA là đặc tả bus do ARM thiết kế để chuẩn hóa giao tiếp on-chip. Trong phần này, hai protocol chính được nhắc tới là AHB-Lite và APB.**
 
-Nếu hỏi **“AHB-Lite và APB khác nhau thế nào?”**:
+**Câu hỏi:** “AHB-Lite và APB khác nhau thế nào?”
 
 > **AHB-Lite được dùng cho main bus interface và các giao tiếp tốc độ cao hơn, còn APB được dùng cho nhiều peripheral không cần tốc độ cao và thường được nối với AHB qua AHB-APB Bridge.**
 
-Nếu hỏi **“I-CODE dùng để làm gì?”**:
+**Câu hỏi:** “I-CODE dùng để làm gì?”
 
-> **Theo hình tài liệu, I-CODE dùng cho instruction fetch và vector table read từ CODE region.**
+> ** I-CODE dùng cho instruction fetch và vector table read từ CODE region.**
 
-Nếu hỏi **“D-CODE dùng để làm gì?”**:
+**Câu hỏi:** “D-CODE dùng để làm gì?”
 
 > **D-CODE dùng để truy cập dữ liệu trong CODE region.**
 
-Nếu hỏi **“System bus dùng để làm gì?”**:
+**Câu hỏi:** “System bus dùng để làm gì?”
 
 > **System bus dùng cho các truy cập đọc/ghi tới các vùng như SRAM, peripheral, external RAM và device region.**
 
-Nếu hỏi **“AHB-APB Bridge có vai trò gì?”**:
+**Câu hỏi:** “AHB-APB Bridge có vai trò gì?”
 
 > **Nó làm cầu nối giữa phía AHB và phía APB để processor có thể truy cập các peripheral được kết nối trên APB.**
 
 ---
 
-### 1.6.18. Câu hỏi phỏng vấn tự kiểm tra
+### 1.6.18. Câu hỏi tự kiểm tra
 
 1. Bus Architecture dùng để giải quyết vấn đề gì?
-2. AMBA là gì theo tài liệu?
+2. AMBA là gì ?
 3. AMBA do ai thiết kế?
-4. Hai bus protocol được tài liệu nhắc tới là gì?
+4. Hai bus protocol được nội dung nhắc tới là gì?
 5. AHB-Lite được dùng chủ yếu cho loại giao tiếp nào?
 6. APB được dùng chủ yếu cho loại giao tiếp nào?
 7. Vì sao hệ thống cần cả AHB và APB?
 8. AHB-APB Bridge có vai trò gì?
 9. I-CODE bus dùng để làm gì?
-10. I-CODE đọc những gì từ CODE region theo hình?
+10. I-CODE đọc những gì từ CODE region?
 11. D-CODE bus dùng để làm gì?
 12. System bus truy cập những vùng nào?
-13. Các bus trong hình có độ rộng bao nhiêu bit?
+13. Các bus trong sơ đồ có độ rộng bao nhiêu bit?
 14. PPB xuất hiện ở đâu trong sơ đồ?
 15. Bus Architecture và Memory Map khác nhau ở câu hỏi mà chúng trả lời như thế nào?
 16. Hãy mô tả đường đi khi processor fetch instruction.
@@ -3480,7 +3491,7 @@ AMBA
     └── thường nối qua AHB-APB Bridge
 ```
 
-Các bus interface trong hình:
+Các bus interface:
 
 ```text
 I-CODE
@@ -3523,7 +3534,7 @@ Processor
 
 ### 1.7.1. Memory Map là gì?
 
-Theo tài liệu:
+
 
 > **Memory map mô tả cách các vùng bộ nhớ và các thanh ghi peripheral được ánh xạ vào không gian địa chỉ mà processor có thể truy cập.**
 
@@ -3556,11 +3567,11 @@ Nói ngắn gọn:
 
 ### 1.7.2. Không gian địa chỉ phụ thuộc vào Address Bus
 
-Tài liệu nêu:
+Nội dung nêu:
 
 > Phạm vi địa chỉ mà processor có thể truy cập phụ thuộc vào kích thước của address bus.
 
-Một hình nguồn thể hiện:
+Có thể biểu diễn:
 
 ```text
 32-bit address channel
@@ -3601,9 +3612,9 @@ Tổng phạm vi:
 
 ### 1.7.3. Bản đồ tổng thể 4 GB
 
-Theo sơ đồ tổng thể trong tài liệu, không gian địa chỉ được chia thành các vùng lớn:
+Không gian địa chỉ được chia thành các vùng lớn:
 
-| Vùng | Khoảng địa chỉ theo hình | Kích thước |
+| Vùng | Khoảng địa chỉ | Kích thước |
 |---|---:|---:|
 | Code | `0x00000000` → `0x1FFFFFFF` | 0.5 GB |
 | SRAM | `0x20000000` → `0x3FFFFFFF` | 0.5 GB |
@@ -3636,7 +3647,7 @@ Sơ đồ rút gọn:
 
 ### 1.7.4. Code Region
 
-Theo hình tài liệu:
+
 
 ```text
 Code Region
@@ -3644,7 +3655,7 @@ Code Region
 512 MB
 ```
 
-Tài liệu mô tả đây là vùng mà nhà sản xuất MCU có thể kết nối **CODE memory**, ví dụ:
+Đây là vùng mà nhà sản xuất MCU có thể kết nối **CODE memory**, ví dụ:
 
 ```text
 Embedded Flash
@@ -3654,7 +3665,7 @@ EEPROM
 ...
 ```
 
-Hình cũng ghi:
+
 
 > Processor mặc định lấy thông tin vector table từ vùng này ngay sau reset.
 
@@ -3673,7 +3684,7 @@ Có thể nhớ:
 
 ```text
 Code Region
-→ nơi chứa bộ nhớ chương trình theo mô hình tài liệu
+→ nơi chứa bộ nhớ chương trình
 → processor fetch thông tin vector table từ đây sau reset
 ```
 
@@ -3681,7 +3692,7 @@ Code Region
 
 ### 1.7.5. Quan hệ Code Region với I-CODE và D-CODE
 
-Ở phần Bus Architecture trước đó, tài liệu mô tả:
+Liên hệ với Bus Architecture:
 
 ```text
 I-CODE
@@ -3718,7 +3729,7 @@ D-CODE
 
 ### 1.7.6. SRAM Region
 
-Theo hình tài liệu:
+
 
 ```text
 SRAM Region
@@ -3726,12 +3737,12 @@ SRAM Region
 512 MB
 ```
 
-Tài liệu mô tả:
+Nội dung mô tả:
 
 - Đây là 512 MB tiếp theo sau CODE region.
 - Chủ yếu dùng để kết nối SRAM, thường là on-chip SRAM.
 - Có thể thực thi program code từ vùng này.
-- Phần đầu của vùng có liên quan tới bit-band theo sơ đồ nguồn.
+- Phần đầu của vùng có thể hỗ trợ bit-band tùy core/implementation.
 
 Có thể nhớ:
 
@@ -3739,14 +3750,14 @@ Có thể nhớ:
 SRAM Region
 → vùng dành chủ yếu cho SRAM
 → processor có thể đọc/ghi dữ liệu ở đây
-→ tài liệu cho phép thực thi code từ vùng này
+→ có thể thực thi code từ vùng này
 ```
 
 ---
 
 ### 1.7.7. Bit-Band trong SRAM Region — chỉ nhận diện
 
-Hình nguồn thể hiện:
+Sơ đồ thể hiện:
 
 ```text
 0x20000000
@@ -3786,7 +3797,7 @@ SRAM region
 0x24000000
 ```
 
-Ở mục Memory Map hiện tại **chưa học cơ chế bit-band hoạt động như thế nào**.
+Cơ chế bit-band được trình bày ngay sau đây.
 
 Chỉ cần nhận diện:
 
@@ -3795,13 +3806,13 @@ Bit-Band Region
 Bit-Band Alias
 ```
 
-và địa chỉ của chúng theo sơ đồ tài liệu.
+và các địa chỉ tương ứng.
 
 ---
 
 ### 1.7.8. Peripheral Region
 
-Theo hình:
+
 
 ```text
 Peripheral Region
@@ -3809,12 +3820,12 @@ Peripheral Region
 512 MB
 ```
 
-Tài liệu mô tả:
+Nội dung mô tả:
 
 - Chủ yếu dành cho các on-chip peripherals.
 - Phần 1 MB đầu có thể là vùng bit-addressable nếu tính năng bit-band tùy chọn được hỗ trợ.
 - Đây là vùng **Execute Never (XN)**.
-- Cố thực thi code từ vùng này sẽ gây fault exception theo hình tài liệu.
+- Cố thực thi code từ vùng này sẽ gây fault exception trong sơ đồ.
 
 Có thể nhớ:
 
@@ -3868,12 +3879,12 @@ Peripheral region
 0x44000000
 ```
 
-Phần **Bổ sung kỹ thuật** ngay sau đây giải thích cơ chế và công thức ánh xạ bit-band ở mức cần cho phỏng vấn.
+Cơ chế và công thức ánh xạ bit-band được trình bày ngay sau đây.
 
 
 ---
 
-### Bổ sung kỹ thuật — Bit-band thực sự hoạt động như thế nào?
+#### Cơ chế Bit-band
 
 Bit-band cho phép phần mềm thao tác **một bit** trong một vùng nhớ gốc thông qua một **word riêng trong alias region**.
 
@@ -3931,7 +3942,7 @@ CPU đọc/ghi alias word để đọc/đổi bit đó
 
 ### 1.7.10. External RAM Region
 
-Theo hình tài liệu:
+
 
 ```text
 External RAM Region
@@ -3939,7 +3950,7 @@ External RAM Region
 1 GB
 ```
 
-Tài liệu mô tả:
+Nội dung mô tả:
 
 - Dành cho memory on-chip hoặc off-chip.
 - Có thể thực thi code trong vùng này.
@@ -3957,7 +3968,7 @@ External RAM
 
 ### 1.7.11. External Device Region
 
-Theo hình:
+
 
 ```text
 External Device Region
@@ -3965,7 +3976,7 @@ External Device Region
 1 GB
 ```
 
-Tài liệu mô tả:
+Nội dung mô tả:
 
 - Dành cho external devices và/hoặc shared memory.
 - Đây là vùng **Execute Never (XN)**.
@@ -3982,7 +3993,7 @@ External Device
 
 ### 1.7.12. Private Peripheral Bus và System Region
 
-Sơ đồ tổng thể của tài liệu đặt phần cuối của không gian địa chỉ từ:
+Sơ đồ tổng thể của nội dung đặt phần cuối của không gian địa chỉ từ:
 
 ```text
 0xE0000000
@@ -4015,7 +4026,7 @@ System
 0xFFFFFFFF
 ```
 
-Bên trong vùng PPB, hình tổng thể còn minh họa các khối như:
+Bên trong vùng PPB có các khối như:
 
 ```text
 ITM
@@ -4033,46 +4044,37 @@ Trong phạm vi mục này chỉ cần nhận diện rằng:
 
 ---
 
-### 1.7.13. Lưu ý về một điểm không nhất quán trong hình nguồn
+### 1.7.13. Phân biệt External Device và PPB
 
-Một hình riêng có tiêu đề **Private Peripheral Bus Region** nhưng lại gắn khoảng:
+Trong Memory Map của Cortex-M:
 
 ```text
 0xA0000000 → 0xDFFFFFFF
+→ External Device Region
+
+0xE0000000 trở lên
+→ PPB / System Region
 ```
 
-trong khi sơ đồ tổng thể của cùng bộ tài liệu đặt khoảng đó là:
-
-```text
-External Device Region
-```
-
-và đặt PPB từ:
-
-```text
-0xE0000000
-```
-
-trở lên.
-
-Vì nguồn hình ảnh không nhất quán ở điểm này, tài liệu này:
-
-- Dùng **sơ đồ Memory Map tổng thể** làm nguồn cho địa chỉ vùng PPB.
-- Chỉ lấy từ hình riêng ý nghĩa rằng vùng PPB có thể chứa các khối như:
+Vùng PPB chứa các khối hệ thống của processor như:
 
 ```text
 NVIC
 System timer
 System Control Block
+ITM
+DWT
+FPB
+...
 ```
 
-và được hình mô tả là vùng **Execute Never**.
+Các vùng system/private peripheral không được dùng như vùng thực thi chương trình thông thường.
 
 ---
 
 ### 1.7.14. Memory Map và Peripheral Register
 
-File `readme.txt` đưa ra ví dụ với ADC:
+Ví dụ với ADC:
 
 ```text
 ADC có dữ liệu
@@ -4082,7 +4084,7 @@ dữ liệu nằm trong một thanh ghi của ADC
 CPU cần đọc thanh ghi đó
 ```
 
-Tài liệu mô tả CPU thực hiện:
+CPU thực hiện:
 
 ```text
 CPU tạo địa chỉ của thanh ghi ADC
@@ -4108,7 +4110,7 @@ ADC register
  Memory
 ```
 
-File nguồn tóm tắt:
+Luồng dữ liệu có thể tóm tắt:
 
 ```text
 ADC → CPU → Memory
@@ -4164,7 +4166,7 @@ Peripheral Register
 
 ### 1.7.16. Memory Map không có nghĩa MCU có thật 4 GB RAM
 
-Hình tài liệu ghi processor có:
+Processor có:
 
 ```text
 up to 4GB of addressable memory
@@ -4184,7 +4186,7 @@ hoặc
 4 GB Flash
 ```
 
-Trong phạm vi nguồn, các vùng 512 MB hoặc 1 GB thể hiện **phạm vi được dành trong bản đồ địa chỉ** cho từng loại tài nguyên.
+Các vùng 512 MB hoặc 1 GB là **phạm vi được dành trong bản đồ địa chỉ** cho từng loại tài nguyên.
 
 Có thể nhớ:
 
@@ -4198,7 +4200,7 @@ dung lượng bộ nhớ vật lý thực tế
 
 ### 1.7.17. Tóm tắt các vùng chính
 
-| Vùng | Base address | Vai trò chính theo tài liệu |
+| Vùng | Base address | Vai trò chính  |
 |---|---:|---|
 | Code | `0x00000000` | Code memory, vector table |
 | SRAM | `0x20000000` | SRAM / data memory |
@@ -4233,7 +4235,7 @@ System/PPB  → 0xE0000000
 +----------------------------------+ 0xA0000000
 | External RAM                     |
 | Có thể chứa/excute code theo     |
-| hình tài liệu                    |
+| sơ đồ                           |
 +----------------------------------+ 0x60000000
 | Peripheral                       |
 | XN                               |
@@ -4260,57 +4262,57 @@ Memory / Peripheral phản hồi
 
 ---
 
-### 1.7.19. Ý cần nhớ khi phỏng vấn
+### 1.7.19. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Memory Map là gì?”**, có thể trả lời:
+**Câu hỏi:** “Memory Map là gì?”
 
 > **Memory Map là cách processor chia không gian địa chỉ thành các vùng dành cho code, SRAM, peripheral, external memory và system resources. Nó cho biết một địa chỉ cụ thể tương ứng với loại tài nguyên nào.**
 
-Nếu hỏi **“Cortex-M có không gian địa chỉ bao nhiêu?”**:
+**Câu hỏi:** “Cortex-M có không gian địa chỉ bao nhiêu?”
 
-> **Theo tài liệu, processor có kênh địa chỉ 32-bit nên có tối đa 4 GB không gian địa chỉ, từ `0x00000000` đến `0xFFFFFFFF`.**
+> ** processor có kênh địa chỉ 32-bit nên có tối đa 4 GB không gian địa chỉ, từ `0x00000000` đến `0xFFFFFFFF`.**
 
-Nếu hỏi **“Code, SRAM và Peripheral bắt đầu ở đâu?”**:
+**Câu hỏi:** “Code, SRAM và Peripheral bắt đầu ở đâu?”
 
-> **Theo sơ đồ nguồn: Code bắt đầu tại `0x00000000`, SRAM tại `0x20000000`, và Peripheral tại `0x40000000`.**
+> **Theo sơ đồ: Code bắt đầu tại `0x00000000`, SRAM tại `0x20000000`, và Peripheral tại `0x40000000`.**
 
-Nếu hỏi **“Peripheral Region dùng để làm gì?”**:
+**Câu hỏi:** “Peripheral Region dùng để làm gì?”
 
-> **Đây là vùng chủ yếu dành cho on-chip peripheral. Hình tài liệu mô tả vùng này là Execute Never, vì vậy không dùng để thực thi code.**
+> **Đây là vùng chủ yếu dành cho on-chip peripheral và là vùng Execute Never, vì vậy không dùng để thực thi code.**
 
-Nếu hỏi **“Memory Map liên quan gì đến peripheral register?”**:
+**Câu hỏi:** “Memory Map liên quan gì đến peripheral register?”
 
-> **Mỗi peripheral register có thể được gắn với một địa chỉ trong không gian địa chỉ. CPU đưa địa chỉ đó lên bus để truy cập đúng register; file nguồn minh họa bằng việc CPU đọc dữ liệu từ ADC register rồi chuyển dữ liệu vào memory.**
+> **Mỗi peripheral register có thể được gắn với một địa chỉ trong không gian địa chỉ. CPU đưa địa chỉ đó lên bus để truy cập đúng register; nội dung minh họa bằng việc CPU đọc dữ liệu từ ADC register rồi chuyển dữ liệu vào memory.**
 
-Nếu hỏi **“4 GB addressable memory có nghĩa STM32 có 4 GB RAM không?”**:
+**Câu hỏi:** “4 GB addressable memory có nghĩa STM32 có 4 GB RAM không?”
 
 > **Không. 4 GB là không gian địa chỉ mà processor có thể biểu diễn; từng MCU thực tế chỉ triển khai một phần trong các vùng đó.**
 
 ---
 
-### 1.7.20. Câu hỏi phỏng vấn tự kiểm tra
+### 1.7.20. Câu hỏi tự kiểm tra
 
 1. Memory Map là gì?
 2. Kích thước address bus ảnh hưởng tới điều gì?
-3. Kênh địa chỉ trong hình có độ rộng bao nhiêu bit?
+3. Kênh địa chỉ có độ rộng bao nhiêu bit?
 4. 32-bit address space cho tối đa bao nhiêu không gian địa chỉ?
 5. Không gian địa chỉ bắt đầu và kết thúc ở đâu?
 6. Code Region bắt đầu tại địa chỉ nào?
-7. Code Region có kích thước bao nhiêu theo hình?
-8. Processor dùng Code Region cho những loại memory nào theo tài liệu?
+7. Code Region có kích thước bao nhiêu?
+8. Processor dùng Code Region cho những loại memory nào ?
 9. Vector table liên quan gì tới Code Region?
 10. SRAM Region bắt đầu tại địa chỉ nào?
 11. Peripheral Region bắt đầu tại địa chỉ nào?
-12. Peripheral Region được hình mô tả là Execute Never nghĩa là gì ở mức khái niệm?
+12. Peripheral Region là Execute Never có nghĩa là gì?
 13. External RAM Region nằm trong khoảng nào?
 14. External Device Region nằm trong khoảng nào?
 15. System/PPB region bắt đầu từ vùng địa chỉ nào theo sơ đồ tổng thể?
-16. Bit-Band Region của SRAM bắt đầu tại đâu theo hình?
+16. Bit-Band Region của SRAM bắt đầu tại đâu?
 17. Bit-Band Alias của SRAM bắt đầu tại đâu?
 18. Bit-Band Region của Peripheral bắt đầu tại đâu?
 19. Bit-Band Alias của Peripheral bắt đầu tại đâu?
 20. Memory Map và Bus Architecture khác nhau ở điểm nào?
-21. CPU đọc ADC register bằng địa chỉ như thế nào theo `readme.txt`?
+21. CPU đọc ADC register bằng địa chỉ như thế nào?
 22. Vì sao 4 GB address space không có nghĩa MCU có 4 GB bộ nhớ vật lý?
 23. Hãy kể các base address chính: Code, SRAM, Peripheral, External RAM, External Device và PPB/System.
 
@@ -4388,7 +4390,7 @@ CPU nhận dữ liệu
 
 ### 1.8.1. Hai loại bộ nhớ chính cần phân biệt
 
-Theo tài liệu nguồn, hai loại bộ nhớ quan trọng được đặt cạnh nhau là:
+Hai loại bộ nhớ chính cần phân biệt là:
 
 ```text
 Code memory
@@ -4414,14 +4416,14 @@ Hai vùng này có đặc điểm và mục đích sử dụng khác nhau.
 
 ### 1.8.2. Flash Memory là gì?
 
-Theo tài liệu:
+
 
 - Flash là bộ nhớ **không mất dữ liệu khi mất nguồn** — non-volatile.
 - Dùng để lưu:
   - firmware;
   - hằng số;
   - mã chương trình.
-- Tài liệu mô tả Flash về bản chất thuộc nhóm ROM nhưng trong thực tế có thể xóa và ghi lại để nạp chương trình.
+- Flash là bộ nhớ không mất dữ liệu, có thể xóa và lập trình lại theo quy trình của MCU.
 - Khi chương trình đang chạy, Flash chủ yếu được CPU đọc để lấy lệnh hoặc dữ liệu.
 - Muốn ghi lại Flash phải đi qua thủ tục đặc biệt như:
 
@@ -4447,7 +4449,7 @@ Flash vẫn giữ nội dung
 
 ### 1.8.3. SRAM là gì?
 
-Theo tài liệu:
+
 
 ```text
 SRAM
@@ -4464,7 +4466,7 @@ SRAM
   - biến cục bộ trên Stack;
   - Heap;
   - context của task.
-- Tài liệu nguồn ghi “mất nguồn hoặc reset”. Tuy nhiên cần tách hai trường hợp:
+- Cần phân biệt hai trường hợp:
   - **Mất nguồn:** SRAM là volatile nên không được kỳ vọng giữ dữ liệu.
   - **Reset:** không nên kết luận rằng toàn bộ SRAM luôn bị phần cứng xóa sạch. Sau reset, startup code thường **khởi tạo lại `.data` và `.bss`**, còn nội dung những vùng RAM khác phụ thuộc loại reset, dòng MCU và thiết kế hệ thống.
 
@@ -4483,7 +4485,7 @@ Reset
         ↓
 startup code tái khởi tạo .data / .bss
         ↓
-không nên dựa vào dữ liệu RAM cũ nếu tài liệu MCU không bảo đảm
+không nên dựa vào dữ liệu RAM cũ nếu đặc tả của MCU không bảo đảm
 ```
 
 ---
@@ -4493,10 +4495,10 @@ không nên dựa vào dữ liệu RAM cũ nếu tài liệu MCU không bảo đ
 | Tiêu chí | Flash | SRAM |
 |---|---|---|
 | Khả năng giữ dữ liệu khi mất nguồn | Có | Không |
-| Vai trò chính theo tài liệu | Firmware, code, hằng số | Dữ liệu đọc/ghi khi chạy |
+| Vai trò chính  | Firmware, code, hằng số | Dữ liệu đọc/ghi khi chạy |
 | CPU sử dụng khi chạy | Chủ yếu đọc | Đọc và ghi |
 | Ghi dữ liệu mới | Cần thủ tục đặc biệt | Có thể đọc/ghi trực tiếp trong quá trình chạy |
-| Thành phần điển hình trong hình | Vector Table, `.text`, `.rodata`, bản sao khởi tạo `.data` | `.data`, `.bss`, Heap, Stack |
+| Thành phần điển hình | Vector Table, `.text`, `.rodata`, bản sao khởi tạo `.data` | `.data`, `.bss`, Heap, Stack |
 
 Cách nhớ:
 
@@ -4510,9 +4512,9 @@ SRAM
 
 ---
 
-### 1.8.5. Bố cục Flash trong hình tài liệu
+### 1.8.5. Bố cục Flash
 
-Hình nguồn mô tả Code Memory bắt đầu tại:
+Code Memory bắt đầu tại:
 
 ```text
 0x08000000
@@ -4552,7 +4554,7 @@ Vector Table
 
 ### 1.8.6. Vector Table trong Flash
 
-Hình nguồn đặt:
+Sơ đồ đặt:
 
 ```text
 Vector Table
@@ -4581,7 +4583,7 @@ Chi tiết vector table sẽ tiếp tục xuất hiện ở phần Interrupt/Exc
 
 ### 1.8.7. `.text` là gì trong sơ đồ?
 
-Hình nguồn đặt:
+Sơ đồ đặt:
 
 ```text
 .text
@@ -4589,7 +4591,7 @@ Hình nguồn đặt:
 
 trong Flash.
 
-Ở mức tài liệu này, có thể hiểu:
+Có thể hiểu:
 
 ```text
 .text
@@ -4620,7 +4622,7 @@ Flash / .text
 
 ### 1.8.8. `.rodata` là gì?
 
-Hình nguồn đặt:
+Sơ đồ đặt:
 
 ```text
 .rodata
@@ -4628,7 +4630,7 @@ Hình nguồn đặt:
 
 trong Flash, phía trên `.text`.
 
-Tài liệu `Flash & SRAM.txt` giải thích rằng các hằng số không cần đặt trong SRAM nếu chúng không thay đổi:
+Các hằng số không cần đặt trong SRAM nếu chúng không thay đổi:
 
 ```text
 const / read-only data
@@ -4636,7 +4638,7 @@ const / read-only data
 → không cần dùng SRAM để chứa một bản đọc/ghi
 ```
 
-Nếu chuyển các hằng số từ Flash sang SRAM mỗi lần reset thì theo tài liệu sẽ:
+Nếu chuyển các hằng số từ Flash sang SRAM mỗi lần reset sẽ:
 
 - tốn SRAM;
 - tốn thời gian khởi tạo do phải copy.
@@ -4653,9 +4655,9 @@ Do đó trong sơ đồ:
 
 ### 1.8.9. `.data` đặc biệt ở điểm nào?
 
-Đây là phần quan trọng nhất của hình.
+Đây là điểm quan trọng nhất.
 
-Hình thể hiện `.data` xuất hiện **cả ở Flash và SRAM**:
+`.data` xuất hiện **cả ở Flash và SRAM**:
 
 ```text
 FLASH                         SRAM
@@ -4686,7 +4688,7 @@ Các biến này cần:
 2. Có thể thay đổi trong quá trình chạy
 ```
 
-Do đó tài liệu minh họa:
+Do đó:
 
 ```text
 Giá trị khởi tạo
@@ -4713,7 +4715,7 @@ Yêu cầu 2
 → biến phải sửa được khi chương trình chạy
 ```
 
-Theo bố cục tài liệu:
+Theo bố cục bộ nhớ:
 
 ```text
 Flash
@@ -4733,7 +4735,7 @@ Flash .data
 SRAM .data
 ```
 
-Hình nguồn gọi quá trình này là:
+Quá trình này là:
 
 ```text
 Transferring of .data section to RAM
@@ -4742,9 +4744,9 @@ Transferring of .data section to RAM
 
 ---
 
-### 1.8.11. `_etext`, `_sdata`, `_edata` trong hình
+### 1.8.11. `_etext`, `_sdata`, `_edata`
 
-Hình minh họa ba boundary symbol:
+Ba boundary symbol chính:
 
 ```text
 _etext
@@ -4783,7 +4785,7 @@ Flash
                  _edata
 ```
 
-Trong phạm vi hình nguồn, chỉ cần hiểu đây là các **boundary** dùng để xác định vùng dữ liệu cần copy.
+Đây là các **boundary symbol** dùng để xác định vùng dữ liệu cần copy.
 
 Chi tiết cách linker tạo các symbol này sẽ được học ở phần **Linker Script**.
 
@@ -4791,7 +4793,7 @@ Chi tiết cách linker tạo các symbol này sẽ được học ở phần **
 
 ### 1.8.12. `.bss` nằm ở đâu?
 
-Hình nguồn đặt `.bss` trong SRAM:
+`.bss` nằm trong SRAM:
 
 ```text
 SRAM
@@ -4807,7 +4809,7 @@ SRAM
 +-----------------------------+
 ```
 
-Theo hình nguồn:
+Theo sơ đồ:
 
 ```text
 .bss
@@ -4847,13 +4849,13 @@ Initialize .bss
 main()
 ```
 
-Hình Flash/SRAM hiện tại không thể hiện một bản `.bss` cần copy từ Flash như `.data`.
+`.bss` không cần một bản dữ liệu khởi tạo trong Flash như `.data`; startup code chỉ cần zero-initialize vùng này.
 
 ---
 
 ### 1.8.13. Heap và Stack trong SRAM
 
-Hình nguồn đặt cả:
+Cả hai vùng sau đều nằm trong SRAM:
 
 ```text
 Heap
@@ -4897,7 +4899,7 @@ Phần Stack sẽ được triển khai kỹ ở mục **1.9. Stack cơ bản tr
 
 ### 1.8.14. Tại sao biến đọc/ghi đặt trong SRAM?
 
-Tài liệu giải thích:
+Nội dung giải thích:
 
 > Các biến của chương trình là dữ liệu đọc/ghi vì giá trị của chúng có thể thay đổi trong quá trình chạy.
 
@@ -4926,7 +4928,7 @@ Giá trị `counter` thay đổi trong thời gian chạy, nên bản runtime c�
 
 ### 1.8.15. Vì sao `const` thường không cần chiếm SRAM?
 
-Theo tài liệu:
+
 
 ```text
 const
@@ -4934,14 +4936,14 @@ const
 → CPU chỉ cần đọc
 ```
 
-Nếu vẫn đặt một bản `const` trong SRAM thì tài liệu nêu hai chi phí:
+Nếu vẫn đặt một bản `const` trong SRAM thì có hai chi phí:
 
 ```text
 1. Tốn RAM
 2. Tốn thời gian khởi tạo vì phải copy khi reset
 ```
 
-Do đó hình bố trí:
+Do đó:
 
 ```text
 .rodata
@@ -4956,7 +4958,7 @@ Có thể nhớ:
 
 ### 1.8.16. Quá trình từ Reset tới dữ liệu sẵn sàng trong SRAM
 
-Kết hợp hình Flash/SRAM với phần Reset Sequence đã học:
+Kết hợp với Reset Sequence:
 
 ```text
 RESET
@@ -4979,7 +4981,7 @@ main()
 
 ```text
 .text / .rodata
-→ vẫn ở Flash theo sơ đồ nguồn
+→ vẫn ở Flash
 
 .data
 → đã có bản runtime trong SRAM
@@ -5058,7 +5060,7 @@ SRAM Region
 → dành cho data memory
 ```
 
-Hình Flash/SRAM của STM32 minh họa cụ thể hơn:
+Bố cục STM32 có thể biểu diễn cụ thể hơn:
 
 ```text
 Flash base
@@ -5082,7 +5084,7 @@ Flash / SRAM layout
 
 ### 1.8.19. Phân biệt các section cần nhớ
 
-| Section / vùng | Nằm ở đâu theo hình | Nội dung |
+| Section / vùng | Vị trí | Nội dung |
 |---|---|---|
 | Vector Table | Flash | Vector dùng bởi processor |
 | `.text` | Flash | Mã chương trình |
@@ -5112,56 +5114,56 @@ Stack
 
 ---
 
-### 1.8.20. Ý cần nhớ khi phỏng vấn
+### 1.8.20. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Flash và SRAM khác nhau như thế nào?”**, có thể trả lời:
+**Câu hỏi:** “Flash và SRAM khác nhau như thế nào?”
 
 > **Flash là bộ nhớ non-volatile dùng để giữ firmware và dữ liệu chỉ đọc; SRAM là bộ nhớ volatile dùng cho dữ liệu đọc/ghi trong lúc chương trình chạy như `.data`, `.bss`, Heap và Stack.**
 
-Nếu hỏi **“Tại sao `.data` xuất hiện cả ở Flash và SRAM?”**:
+**Câu hỏi:** “Tại sao `.data` xuất hiện cả ở Flash và SRAM?”
 
 > **Vì biến `.data` cần có giá trị khởi tạo tồn tại trong firmware nhưng đồng thời phải thay đổi được khi chạy. Giá trị ban đầu được lưu trong Flash, sau reset startup code copy nó sang SRAM để chương trình sử dụng.**
 
-Nếu hỏi **“`.bss` chứa gì?”**:
+**Câu hỏi:** “`.bss` chứa gì?”
 
-> **Theo hình tài liệu, `.bss` chứa các biến global và static chưa khởi tạo và nằm trong SRAM. Reset Handler thực hiện bước khởi tạo `.bss` trước khi vào `main()`.**
+> ** `.bss` chứa các biến global và static chưa khởi tạo và nằm trong SRAM. Reset Handler thực hiện bước khởi tạo `.bss` trước khi vào `main()`.**
 
-Nếu hỏi **“Tại sao `const` thường được giữ trong Flash?”**:
+**Câu hỏi:** “Tại sao `const` thường được giữ trong Flash?”
 
-> **Vì dữ liệu `const` không thay đổi và CPU chỉ cần đọc. Theo tài liệu, đưa chúng vào SRAM sẽ tốn RAM và còn tốn thời gian copy lúc startup.**
+> **Vì dữ liệu `const` không thay đổi và CPU chỉ cần đọc.  đưa chúng vào SRAM sẽ tốn RAM và còn tốn thời gian copy lúc startup.**
 
-Nếu hỏi **“Stack và Heap nằm ở đâu?”**:
+**Câu hỏi:** “Stack và Heap nằm ở đâu?”
 
-> **Theo sơ đồ nguồn, cả Stack và Heap đều nằm trong SRAM.**
+> **Theo sơ đồ, cả Stack và Heap đều nằm trong SRAM.**
 
-Nếu hỏi **“`_sdata` và `_edata` dùng để làm gì?”**:
+**Câu hỏi:** “`_sdata` và `_edata` dùng để làm gì?”
 
-> **Trong hình chúng là các boundary xác định vùng `.data` trong SRAM để startup code biết phạm vi cần khởi tạo/copy; chi tiết cách linker tạo các symbol này sẽ học ở phần Linker Script.**
+> **Đây là các boundary xác định vùng `.data` trong SRAM để startup code biết phạm vi cần khởi tạo/copy; cách linker tạo các symbol này được trình bày ở phần Linker Script.**
 
 ---
 
-### 1.8.21. Câu hỏi phỏng vấn tự kiểm tra
+### 1.8.21. Câu hỏi tự kiểm tra
 
 1. Flash là volatile hay non-volatile?
 2. SRAM là volatile hay non-volatile?
-3. Firmware thường được lưu ở đâu theo tài liệu?
-4. Dữ liệu chỉ đọc thường nằm ở section nào trong hình?
+3. Firmware thường được lưu ở đâu ?
+4. Dữ liệu chỉ đọc thường nằm ở section nào?
 5. `.text` nằm ở Flash hay SRAM?
 6. `.data` chứa loại biến nào?
 7. Tại sao `.data` có bản trong cả Flash và SRAM?
 8. Khi startup, `.data` được chuyển theo hướng nào?
 9. `.bss` chứa loại biến nào?
-10. `.bss` nằm ở Flash hay SRAM theo hình?
+10. `.bss` nằm ở Flash hay SRAM?
 11. Stack nằm ở đâu?
 12. Heap nằm ở đâu?
-13. Tại sao dữ liệu `const` không cần một bản SRAM theo giải thích của tài liệu?
+13. Tại sao dữ liệu `const` không cần một bản SRAM theo giải thích của nội dung?
 14. Vì sao biến cần thay đổi trong lúc chạy phù hợp với SRAM?
-15. Vector Table nằm ở đâu trong sơ đồ nguồn?
+15. Vector Table nằm ở đâu trong sơ đồ?
 16. `_sdata` và `_edata` đại diện cho điều gì ở mức khái niệm?
 17. Phần Reset Handler liên quan thế nào tới `.data` và `.bss`?
 18. Hãy mô tả luồng `Flash .data → SRAM .data → main()`.
 19. Hãy phân biệt `.text`, `.rodata`, `.data` và `.bss`.
-20. Flash base và SRAM base trong hình lần lượt là gì?
+20. Flash base và SRAM base lần lượt là gì?
 
 ---
 
@@ -5225,9 +5227,9 @@ main()
 
 ### 1.9.1. Stack Memory là gì?
 
-Theo tài liệu, **Stack Memory** là một phần của bộ nhớ chính, thường nằm trong RAM, được dành cho việc lưu trữ dữ liệu tạm thời trong lúc chương trình chạy.
+**Stack Memory** là một phần của bộ nhớ chính, thường nằm trong RAM, dùng để lưu dữ liệu tạm thời trong lúc chương trình chạy.
 
-Nguồn mô tả Stack có thể thuộc:
+Stack có thể nằm trong:
 
 ```text
 Internal RAM
@@ -5267,7 +5269,7 @@ POP → A
 
 ### 1.9.2. Stack được dùng để lưu những gì?
 
-Theo các slide nguồn, Stack thường được dùng để lưu tạm:
+Stack thường được dùng để lưu tạm:
 
 - Giá trị của các thanh ghi processor.
 - Biến cục bộ của hàm.
@@ -5295,7 +5297,7 @@ Stack
 
 ### 1.9.3. Stack nằm ở đâu trong SRAM?
 
-Một hình trong tài liệu chia SRAM thành các vùng khái niệm:
+SRAM có thể được tổ chức khái niệm thành các vùng:
 
 ```text
 RAM_START
@@ -5346,7 +5348,7 @@ SP
 = R13
 ```
 
-Theo tài liệu:
+
 
 - `PUSH` và `POP` làm thay đổi Stack Pointer.
 - Stack cũng có thể được truy cập bằng các lệnh load/store như `LDR`/`STR` ở mức Assembly.
@@ -5367,7 +5369,7 @@ SP là một trong các core register đã học ở mục **1.4 Core Registers*
 
 ### 1.9.5. Bốn mô hình hoạt động của Stack
 
-Tài liệu liệt kê bốn mô hình:
+Có bốn mô hình Stack:
 
 ```text
 1. Full Ascending
@@ -5392,7 +5394,7 @@ Ascending / Descending
 
 ### 1.9.6. Full Ascending Stack
 
-Theo file nguồn:
+
 
 ```text
 Full Ascending
@@ -5419,7 +5421,7 @@ Sơ đồ khái niệm:
 
 ### 1.9.7. Full Descending Stack
 
-Theo tài liệu:
+
 
 ```text
 Full Descending
@@ -5432,7 +5434,7 @@ có đặc điểm:
 - Khi `POP`, lấy dữ liệu tại SP rồi SP tăng.
 - Stack mở rộng theo hướng địa chỉ giảm.
 
-File nguồn ghi:
+Nội dung ghi:
 
 > **Đây là mô hình mặc định của ARM Cortex-M.**
 
@@ -5464,7 +5466,7 @@ Descending
 
 ### 1.9.8. Empty Ascending Stack
 
-Theo tài liệu:
+
 
 - SP trỏ tới ô trống kế tiếp.
 - Khi `PUSH`, dữ liệu được ghi vào ô SP rồi SP tăng.
@@ -5483,7 +5485,7 @@ Ascending
 
 ### 1.9.9. Empty Descending Stack
 
-Theo tài liệu:
+
 
 - SP trỏ tới ô trống kế tiếp.
 - Khi `PUSH`, SP giảm trước rồi mới ghi dữ liệu.
@@ -5520,7 +5522,7 @@ ARM Cortex-M
 
 ### 1.9.11. Ví dụ PUSH/POP trên Full Descending Stack
 
-Một slide nguồn minh họa chuỗi thao tác:
+Ví dụ chuỗi thao tác:
 
 ```text
 PUSH LR
@@ -5554,7 +5556,7 @@ giá trị được PUSH sau
 
 ### 1.9.12. Stack có thể được đặt ở đâu trong RAM?
 
-Các slide cho thấy Stack có thể được bố trí ở những vị trí khác nhau trong RAM tùy thiết kế/linker script.
+Stack có thể được bố trí ở những vị trí khác nhau trong RAM tùy thiết kế/linker script.
 
 Ví dụ 1:
 
@@ -5586,7 +5588,7 @@ RAM
 +-------------------+
 ```
 
-Một slide minh họa symbol:
+Một symbol thường dùng là:
 
 ```text
 _estack
@@ -5602,7 +5604,7 @@ và mô tả nó là linker symbol dùng để chỉ **cuối RAM làm điểm b
 
 ### 1.9.13. Vì sao Stack thường bắt đầu ở địa chỉ cao?
 
-Do Cortex-M sử dụng Full Descending Stack theo tài liệu:
+Do Cortex-M sử dụng Full Descending Stack:
 
 ```text
 PUSH
@@ -5643,7 +5645,7 @@ RAM_END / _estack
 
 ### 1.9.14. MSP và PSP
 
-Tài liệu về **Banked Stack Pointers** giới thiệu:
+Các **Banked Stack Pointer** gồm:
 
 ```text
 MSP
@@ -5671,28 +5673,33 @@ Có thể hình dung:
          MSP         PSP
 ```
 
-#### Lưu ý về cách diễn đạt trong nguồn
+#### Cách hiểu thống nhất
 
-Trong ZIP có hai cách diễn đạt:
+Cortex-M có hai Stack Pointer banked:
 
-- File `Banked stack pointer registers.txt` gọi `SP`, `MSP`, `PSP` là “3 stack pointers”.
-- Slide `MSP, PSP summary` lại ghi Cortex-M có **2 stack pointer registers**, là `MSP` và `PSP`.
+```text
+MSP
+→ Main Stack Pointer
 
-Để giữ hai nguồn nhất quán, tài liệu này dùng cách biểu diễn:
+PSP
+→ Process Stack Pointer
+```
+
+`SP / R13` biểu diễn Stack Pointer đang được chọn tại thời điểm thực thi:
 
 ```text
 MSP và PSP
 → hai banked Stack Pointer
 
 SP / R13
-→ Stack Pointer hiện đang được chọn
+→ Stack Pointer hiện hành
 ```
 
 ---
 
 ### 1.9.15. MSP — Main Stack Pointer
 
-Theo nguồn:
+
 
 - Sau reset, **MSP được chọn làm current Stack Pointer mặc định**.
 - MSP được processor khởi tạo tự động từ giá trị ở:
@@ -5711,7 +5718,7 @@ value @ 0x00000000
 MSP
 ```
 
-Nguồn cũng mô tả:
+
 
 ```text
 Handler mode
@@ -5726,7 +5733,7 @@ Handler mode
 
 ### 1.9.16. PSP — Process Stack Pointer
 
-Theo tài liệu:
+
 
 ```text
 PSP
@@ -5740,7 +5747,7 @@ Thread mode có thể chọn PSP bằng bit:
 CONTROL.SPSEL
 ```
 
-Nguồn nhấn mạnh:
+
 
 > Nếu muốn sử dụng PSP, chương trình phải khởi tạo PSP tới một địa chỉ Stack hợp lệ.
 
@@ -5776,11 +5783,11 @@ Handler mode
 └── MSP
 ```
 
-Theo tài liệu:
+
 
 - Thread mode có thể đổi current SP sang PSP bằng `CONTROL.SPSEL`.
 - Handler mode luôn dùng MSP.
-- Thay đổi `SPSEL` trong Handler mode không có ý nghĩa theo file nguồn và thao tác ghi sẽ bị bỏ qua.
+- Thay đổi `SPSEL` trong Handler mode không có ý nghĩa; thao tác ghi bị bỏ qua.
 
 Sơ đồ:
 
@@ -5800,7 +5807,7 @@ Sơ đồ:
 
 ### 1.9.18. Tại sao Thread mode dùng PSP lại hữu ích?
 
-File `Question.txt` đưa ra hai ý chính.
+Hai lợi ích chính:
 
 #### 1. Phân tách Stack ứng dụng và Stack hệ thống
 
@@ -5820,11 +5827,11 @@ Stack ứng dụng
 Stack xử lý exception
 ```
 
-Nguồn giải thích rằng sự tách biệt này giúp Stack của ứng dụng không “đụng” trực tiếp vào Stack dành cho ngắt/exception.
+Sự tách biệt này giúp Stack của ứng dụng độc lập với Stack dành cho ngắt/exception.
 
 #### 2. Hỗ trợ RTOS / đa nhiệm
 
-Theo file nguồn:
+
 
 ```text
 Task A → PSP riêng
@@ -5836,7 +5843,7 @@ ISR → MSP
 
 Khi chuyển task, kernel có thể thay đổi PSP để chuyển sang Stack của task khác.
 
-Ở mức hiện tại chỉ cần biết ý tưởng:
+Ý chính:
 
 > **PSP giúp tách Stack của từng task/application khỏi Stack hệ thống dùng cho exception.**
 
@@ -5846,7 +5853,7 @@ FreeRTOS chi tiết sẽ được học sau nếu cần.
 
 ### 1.9.19. Thay đổi Stack Pointer
 
-Một slide trong nguồn ghi rằng ở Assembly có thể truy cập MSP và PSP bằng các instruction:
+Trong Assembly có thể truy cập MSP và PSP bằng các instruction:
 
 ```text
 MRS
@@ -5855,7 +5862,7 @@ MSR
 
 và trong C có thể cần mã mức thấp/naked function nếu muốn trực tiếp thay đổi Stack Pointer.
 
-Ở mức Intern, không cần nhớ cú pháp Assembly cụ thể trong mục này.
+Không cần ghi nhớ cú pháp Assembly cụ thể; cần hiểu vai trò của các thanh ghi và luồng chuyển Stack.
 
 Điểm cần nhớ:
 
@@ -5869,7 +5876,7 @@ MSP / PSP
 
 ### 1.9.20. AAPCS là gì?
 
-Bộ tài liệu Stack còn có phần:
+Một khái niệm liên quan là:
 
 ```text
 AAPCS
@@ -5878,7 +5885,7 @@ AAPCS
 
 Đây là chuẩn quy định **cách các hàm gọi nhau trên ARM**.
 
-Nguồn mô tả nó như một “hợp đồng” giữa:
+Có thể xem đây là một “hợp đồng” giữa:
 
 ```text
 Caller
@@ -5943,9 +5950,9 @@ giữa hai hàm.
 
 ---
 
-### 1.9.22. Truyền tham số theo AAPCS trong tài liệu
+### 1.9.22. Truyền tham số theo AAPCS
 
-File nguồn nêu:
+Quy tắc cơ bản:
 
 ```text
 4 tham số đầu
@@ -5969,27 +5976,24 @@ Caller
       Callee
 ```
 
-#### Lưu ý về một hình nguồn
+#### Lưu ý về quy ước thanh ghi
 
-Một slide minh họa bốn tham số nhưng nhãn register trên hình bị ghi thành:
-
-```text
-R0, R1, R3, R4
-```
-
-trong khi file AAPCS dạng text và các slide giải thích khác ghi rõ:
+Theo AAPCS, bốn tham số đầu tiên được truyền qua:
 
 ```text
-R0-R3
+R0
+R1
+R2
+R3
 ```
 
-Tài liệu này giữ quy tắc **R0-R3** vì đó là nội dung được nguồn text mô tả trực tiếp; hình trên được xem là không nhất quán về nhãn.
+Các tham số vượt quá khả năng truyền qua nhóm thanh ghi này có thể được truyền qua Stack.
 
 ---
 
 ### 1.9.23. Caller-saved Registers
 
-Theo slide AAPCS:
+Theo AAPCS:
 
 ```text
 R0
@@ -6011,13 +6015,13 @@ sau khi gọi hàm?
        └── caller tự lưu trước khi call
 ```
 
-Callee có thể sử dụng các register này mà không phải khôi phục lại đúng giá trị cũ theo cách mô tả của nguồn.
+Callee có thể sử dụng các register này mà không phải khôi phục lại đúng giá trị cũ, trừ khi caller cần bảo toàn chúng.
 
 ---
 
 ### 1.9.24. Callee-saved Registers
 
-Theo tài liệu:
+
 
 ```text
 R4 → R11
@@ -6049,7 +6053,7 @@ Có thể nhớ:
 
 ```text
 R0-R3, R12, LR
-→ caller-saved theo slide
+→ caller-saved
 
 R4-R11
 → callee-saved
@@ -6058,9 +6062,9 @@ R4-R11
 
 ---
 
-### Bổ sung kỹ thuật — nuance AAPCS và căn chỉnh Stack
+#### Lưu ý về AAPCS và căn chỉnh Stack
 
-Phần slide dùng cách nhớ đơn giản:
+Cách nhớ đơn giản:
 
 ```text
 R0-R3, R12, LR
@@ -6075,7 +6079,7 @@ Khi đối chiếu AAPCS32 chính thức, cần thêm hai lưu ý:
 1. **`r9` có vai trò phụ thuộc nền tảng.** AAPCS32 yêu cầu callee bảo toàn `r4-r8`, `r10`, `r11` và `SP`; `r9` được bảo toàn trong các PCS variant coi `r9` là một biến callee-saved. Vì vậy câu “R4-R11 luôn callee-saved” chỉ nên dùng như cách nhớ đơn giản.
 2. **Stack phải được căn chỉnh.** AAPCS yêu cầu `SP` luôn ít nhất word-aligned; tại public interface, Stack phải **8-byte aligned** (`SP mod 8 = 0`).
 
-Cách trả lời an toàn khi phỏng vấn Intern:
+Cách diễn đạt ngắn gọn:
 
 > **R0-R3 và R12 là các scratch/argument register nên caller không được kỳ vọng chúng được giữ nguyên qua một lời gọi hàm. R4-R11 thường được dùng làm callee-saved, nhưng r9 có thể có vai trò platform-specific; Stack phải tuân thủ alignment của ABI.**
 
@@ -6090,21 +6094,21 @@ nên một hàm **không phải leaf function** thường phải bảo toàn `LR
 
 ---
 
-### 1.9.25. Giá trị trả về theo tài liệu AAPCS
+### 1.9.25. Giá trị trả về theo AAPCS
 
-Các slide nguồn mô tả kết quả trả về qua:
+Kết quả trả về bắt đầu qua:
 
 ```text
 R0
 ```
 
-và có slide nói `R0`/`R1` có thể được dùng để gửi result về caller.
+và `R0`/`R1` có thể được dùng để gửi result về caller tùy kiểu/kích thước giá trị trả về.
 
 Ở mức này nên nhớ:
 
 ```text
 Giá trị trả về
-→ bắt đầu từ R0 theo ví dụ nguồn
+→ bắt đầu từ R0
 ```
 
 Việc chính xác cần bao nhiêu register phụ thuộc kiểu dữ liệu/kích thước kết quả và sẽ không đi sâu trong mục Stack cơ bản.
@@ -6113,7 +6117,7 @@ Việc chính xác cần bao nhiêu register phụ thuộc kiểu dữ liệu/k�
 
 ### 1.9.26. Luồng gọi hàm theo AAPCS
 
-Có thể tóm tắt tài liệu thành:
+Có thể tóm tắt:
 
 ```text
 1. Caller đặt tham số vào R0-R3
@@ -6158,7 +6162,7 @@ Caller
 
 ### 1.9.27. Stack trong Interrupt và Exception
 
-Một nhóm slide nguồn mô tả **Stack activities during interrupt and exception**.
+**Stack activities during interrupt and exception** diễn ra như sau.
 
 Khi exception xảy ra, processor tự động lưu một nhóm register để tạo:
 
@@ -6166,7 +6170,7 @@ Khi exception xảy ra, processor tự động lưu một nhóm register để t
 Stack Frame
 ```
 
-Nguồn liệt kê:
+Các thanh ghi được lưu gồm:
 
 ```text
 R0
@@ -6197,7 +6201,7 @@ Handler mode
 
 ### 1.9.28. Vì sao Hardware tự động Stacking?
 
-Slide nguồn giải thích rằng việc tự động lưu context cho phép một hàm C thông thường được dùng làm exception/interrupt handler mà không phải tự xử lý toàn bộ quy ước lưu các caller-saved register ngay từ đầu.
+Việc tự động lưu context cho phép một hàm C thông thường được dùng làm exception/interrupt handler mà không phải tự lưu toàn bộ caller-saved register ngay từ đầu.
 
 Có thể hiểu:
 
@@ -6221,7 +6225,7 @@ Mục tiêu:
 
 ### 1.9.29. Stack Frame khi Exception
 
-Theo hình `Analyzing stack frame`, một Stack Frame không có FPU chứa tám word:
+Một basic Stack Frame không có FPU chứa tám word:
 
 ```text
 xPSR
@@ -6242,7 +6246,7 @@ Tổng cộng:
 = 32 byte
 ```
 
-Trong hình Full Descending:
+Với Full Descending Stack:
 
 ```text
 SP trước exception
@@ -6271,7 +6275,7 @@ Sơ đồ:
 Địa chỉ thấp
 ```
 
-Hình nguồn ghi rõ:
+Trường hợp minh họa:
 
 ```text
 Stack Frame (No FPU)
@@ -6283,7 +6287,7 @@ nên cấu trúc này đang nói tới trường hợp minh họa **không có F
 
 ### 1.9.30. Un-stacking khi thoát Exception
 
-Khi handler kết thúc, slide mô tả processor tự động:
+Khi handler kết thúc, processor tự động:
 
 ```text
 Un-stacking
@@ -6329,7 +6333,7 @@ R0-R3
 R12
 ```
 
-Vì vậy ở mức khái niệm, Stack Frame có thể giúp xác định:
+Stack Frame có thể giúp xác định:
 
 ```text
 PC
@@ -6351,7 +6355,7 @@ xPSR
 
 ### 1.9.32. Khởi tạo Stack
 
-Nguồn `Stack initialization` nhấn mạnh:
+Nguyên tắc khởi tạo Stack:
 
 > Trước khi `main()` chạy, Stack Pointer đã phải được khởi tạo.
 
@@ -6369,13 +6373,13 @@ Reset Handler
 main()
 ```
 
-Nguồn cũng nói sau khi vào `main()` chương trình có thể cấu hình lại Stack Pointer nếu thiết kế cần.
+Sau khi vào `main()`, chương trình có thể cấu hình lại Stack Pointer nếu thiết kế cần.
 
 ---
 
-### 1.9.33. Các lưu ý khi thiết kế Stack theo tài liệu
+### 1.9.33. Các lưu ý khi thiết kế Stack
 
-Slide `Stack initialization tips` đưa ra các ý:
+Các lưu ý khi khởi tạo Stack:
 
 1. Ước lượng lượng Stack cần trong tình huống xấu nhất của ứng dụng.
 2. Biết mô hình Stack mà processor sử dụng:
@@ -6438,69 +6442,69 @@ Full Descending
 
 ---
 
-### 1.9.35. Ý cần nhớ khi phỏng vấn
+### 1.9.35. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Stack là gì?”**, có thể trả lời:
+**Câu hỏi:** “Stack là gì?”
 
 > **Stack là vùng RAM dùng để lưu dữ liệu tạm thời theo nguyên tắc LIFO, như biến cục bộ, register cần bảo toàn, return information và context khi xảy ra exception/interrupt.**
 
-Nếu hỏi **“Cortex-M dùng Stack model nào?”**:
+**Câu hỏi:** “Cortex-M dùng Stack model nào?”
 
-> **Theo tài liệu, Cortex-M sử dụng Full Descending Stack: SP trỏ vào phần tử đang ở đỉnh Stack và Stack phát triển về địa chỉ thấp hơn.**
+> ** Cortex-M sử dụng Full Descending Stack: SP trỏ vào phần tử đang ở đỉnh Stack và Stack phát triển về địa chỉ thấp hơn.**
 
-Nếu hỏi **“MSP và PSP khác nhau thế nào?”**:
+**Câu hỏi:** “MSP và PSP khác nhau thế nào?”
 
 > **MSP là Main Stack Pointer, được chọn mặc định sau reset và Handler mode luôn dùng MSP. PSP là Process Stack Pointer mà Thread mode có thể chọn sử dụng, thường hữu ích để tách Stack ứng dụng/task khỏi Stack hệ thống.**
 
-Nếu hỏi **“MSP được khởi tạo khi nào?”**:
+**Câu hỏi:** “MSP được khởi tạo khi nào?”
 
-> **Sau reset, processor tự động lấy initial MSP từ entry đầu tại địa chỉ `0x00000000` theo tài liệu.**
+> **Sau reset, processor tự động lấy initial MSP từ entry đầu tại địa chỉ `0x00000000` .**
 
-Nếu hỏi **“AAPCS liên quan Stack như thế nào?”**:
+**Câu hỏi:** “AAPCS liên quan Stack như thế nào?”
 
-> **AAPCS quy định cách caller và callee sử dụng register và Stack khi gọi hàm, ví dụ bốn tham số đầu đi qua R0-R3, các tham số dư có thể đặt trên Stack và R4-R11 là nhóm callee phải bảo toàn nếu sử dụng theo tài liệu.**
+> **AAPCS quy định cách caller và callee sử dụng register và Stack khi gọi hàm, ví dụ bốn tham số đầu đi qua R0-R3, các tham số dư có thể đặt trên Stack và R4-R11 là nhóm callee phải bảo toàn nếu sử dụng .**
 
-Nếu hỏi **“Exception entry lưu những register nào?”**:
+**Câu hỏi:** “Exception entry lưu những register nào?”
 
-> **Theo slide nguồn, hardware tự động stacking R0-R3, R12, LR, PC và xPSR để tạo Stack Frame trước khi handler chạy.**
+> ** hardware tự động stacking R0-R3, R12, LR, PC và xPSR để tạo Stack Frame trước khi handler chạy.**
 
-Nếu hỏi **“Stack Frame khi exception có ích gì cho debug?”**:
+**Câu hỏi:** “Stack Frame khi exception có ích gì cho debug?”
 
 > **Nó giữ PC, LR và các register tại thời điểm exception, nên debugger có thể dùng chúng để phân tích vị trí và trạng thái chương trình khi fault xảy ra.**
 
 ---
 
-### 1.9.36. Câu hỏi phỏng vấn tự kiểm tra
+### 1.9.36. Câu hỏi tự kiểm tra
 
 1. Stack Memory là gì?
 2. Stack thường nằm trong loại bộ nhớ nào?
 3. LIFO nghĩa là gì?
 4. Stack thường lưu những loại dữ liệu nào?
 5. SP là register nào?
-6. Cortex-M sử dụng Stack model nào theo tài liệu?
+6. Cortex-M sử dụng Stack model nào ?
 7. Full và Empty khác nhau ở điểm nào?
 8. Ascending và Descending khác nhau ở điểm nào?
 9. Khi PUSH trên Full Descending Stack thì SP tăng hay giảm?
 10. Khi POP trên Full Descending Stack thì SP tăng hay giảm?
-11. `_estack` được hình nguồn dùng để biểu diễn gì?
+11. `_estack` được sơ đồ dùng để biểu diễn gì?
 12. MSP viết tắt của gì?
 13. PSP viết tắt của gì?
 14. Stack Pointer mặc định sau reset là MSP hay PSP?
 15. Thread mode có thể dùng những Stack Pointer nào?
 16. Handler mode dùng Stack Pointer nào?
-17. Bit nào trong `CONTROL` được tài liệu nhắc tới để chọn PSP?
+17. Bit nào trong `CONTROL` được nội dung nhắc tới để chọn PSP?
 18. Vì sao phải khởi tạo PSP tới địa chỉ Stack hợp lệ trước khi dùng?
 19. Dùng PSP cho Thread mode có lợi gì?
-20. RTOS có thể sử dụng PSP như thế nào theo tài liệu?
+20. RTOS có thể sử dụng PSP như thế nào ?
 21. AAPCS là gì?
 22. Caller và Callee là gì?
-23. Bốn tham số đầu của hàm được truyền qua những register nào theo nguồn text?
+23. Bốn tham số đầu của hàm được truyền qua những register nào theo quy tắc?
 24. Nếu có nhiều hơn bốn tham số thì phần dư có thể được đặt ở đâu?
-25. Những register nào được slide gọi là caller-saved?
+25. Những register nào thuộc nhóm caller-saved?
 26. Những register nào được gọi là callee-saved?
 27. Khi callee sử dụng R4-R11 thì phải làm gì?
 28. Khi exception xảy ra, hardware tự động lưu những register nào?
-29. Một basic exception Stack Frame không FPU trong hình có bao nhiêu word?
+29. Một basic exception Stack Frame không FPU có bao nhiêu word?
 30. Stacking và un-stacking xảy ra khi nào?
 31. PC trong exception Stack Frame có ích gì khi debug?
 32. MSP được processor khởi tạo từ vị trí nào trong vector table?
@@ -6553,7 +6557,7 @@ Tham số dư
 → Stack
 
 R0-R3, R12, LR
-→ caller-saved theo slide
+→ caller-saved
 
 R4-R11
 → callee-saved
@@ -6596,15 +6600,15 @@ Thread tiếp tục
 <a id="muc-01-10"></a>
 ## 1.10. Startup Code
 
-### 1.10.1. Phạm vi của tài liệu Startup Code hiện có
+### 1.10.1. Vai trò của Startup Code
 
-Tài liệu nguồn `Startup_Code.docx` tập trung vào một câu hỏi chính:
+Một yêu cầu quan trọng của Startup Code là:
 
 > **Tại sao không được đặt Vector Table vào vùng `.data` đã khởi tạo trong RAM?**
 
-Nguồn không trình bày toàn bộ nội dung của một file `startup.s` hay `startup.c`.
+Startup Code hoàn chỉnh thường bao gồm Vector Table, `Reset_Handler`, khởi tạo dữ liệu runtime và các handler mặc định.
 
-Vì vậy mục này chỉ triển khai các ý mà tài liệu hiện tại hỗ trợ:
+Luồng khởi động cốt lõi:
 
 ```text
 Reset
@@ -6620,13 +6624,13 @@ Do đó:
 Vector Table không thể phụ thuộc vào .data trong RAM
 ```
 
-Các phần như weak handler, toàn bộ danh sách vector, cú pháp Assembly của startup file hoặc implementation cụ thể của vendor **không có trong `Startup_Code.docx` gốc**. Phần **Bổ sung kỹ thuật** ở cuối mục sẽ mở rộng những khái niệm cần thiết ở mức Intern và ghi rõ đó là phần bổ sung ngoài phạm vi file nguồn này.
+Các khái niệm weak handler, danh sách vector, cú pháp Assembly và triển khai cụ thể theo vendor được tách thành các tiểu mục riêng để giữ luồng khởi động rõ ràng.
 
 ---
 
 ### 1.10.2. Startup Code nằm ở đâu trong luồng khởi động?
 
-Có thể nối tài liệu này với các phần đã học:
+Liên hệ với các phần trước:
 
 ```text
 RESET
@@ -6654,7 +6658,7 @@ main()
 
 ### 1.10.3. Hai word đầu của Vector Table được CPU dùng khi nào?
 
-Theo tài liệu:
+
 
 > Ngay khi reset, CPU đọc **2 word đầu của Vector Table**.
 
@@ -6693,7 +6697,7 @@ khi code startup bắt đầu chạy
 
 ### 1.10.4. Địa chỉ Vector Table trong ví dụ STM32F1
 
-Nguồn ghi:
+
 
 ```text
 STM32F1:
@@ -6702,7 +6706,7 @@ Flash được map ở 0x08000000
 
 và mô tả CPU đọc Vector Table tại địa chỉ cố định trong quá trình reset.
 
-Ở mức tài liệu hiện tại, cần nhớ mối quan hệ:
+Mối quan hệ cần nhớ:
 
 ```text
 Flash
@@ -6715,13 +6719,13 @@ CPU
 → đọc nó trước khi chạy code
 ```
 
-Mục này không mở rộng thêm cơ chế remap hoặc các trường hợp boot khác vì nguồn chưa mô tả.
+Cơ chế remap/boot alias đã được trình bày ở phần Reset Sequence.
 
 ---
 
 ### 1.10.5. `.data` trong SRAM tồn tại khi nào?
 
-Tài liệu nhấn mạnh:
+Điểm quan trọng:
 
 > Vùng dữ liệu đã khởi tạo `.data` trong RAM chỉ được copy từ Flash xuống bởi `Reset_Handler` **sau khi CPU đã lấy được Vector Table và nhảy vào Reset_Handler**.
 
@@ -6779,7 +6783,7 @@ SRAM
 .data runtime values
 ```
 
-Startup Code hiện tại không mô tả chi tiết vòng lặp copy, nhưng xác nhận rõ:
+Trong Startup Code, `Reset_Handler` thực hiện việc copy `.data` từ Flash xuống RAM.
 
 > **Reset_Handler là phần thực hiện việc copy `.data` từ Flash xuống RAM.**
 
@@ -6787,7 +6791,7 @@ Startup Code hiện tại không mô tả chi tiết vòng lặp copy, nhưng x�
 
 ### 1.10.7. Tại sao không thể đặt Vector Table vào `.data`?
 
-Đây là câu hỏi chính của tài liệu nguồn.
+Đây là một ràng buộc quan trọng của quá trình khởi động.
 
 Giả sử Vector Table được đặt vào:
 
@@ -6818,7 +6822,7 @@ nhưng Vector Table lại ở .data trong SRAM
 Reset_Handler chưa thể chạy
 ```
 
-Kết quả theo tài liệu:
+Kết quả:
 
 ```text
 CPU không tìm được SP / Reset
@@ -6857,13 +6861,13 @@ Có thể biểu diễn rõ hơn:
               KHÔNG BOOT
 ```
 
-Đây chính là lý do tài liệu yêu cầu Vector Table không phụ thuộc vào vùng `.data` runtime trong RAM.
+Vì vậy Vector Table không được phụ thuộc vào vùng `.data` runtime trong RAM.
 
 ---
 
 ### 1.10.9. Thứ tự đúng
 
-Theo nội dung nguồn, thứ tự đúng phải là:
+Thứ tự đúng:
 
 ```text
 Flash đã chứa Vector Table
@@ -6902,7 +6906,7 @@ Phần **1.5 Reset Sequence** trả lời:
 CPU làm gì ngay sau reset?
 ```
 
-Phần **1.10 Startup Code** hiện tại bổ sung:
+Phần **1.10 Startup Code** làm rõ:
 
 ```text
 Tại sao dữ liệu mà CPU cần ngay lúc reset
@@ -6954,7 +6958,7 @@ Flash
 SRAM
 ```
 
-Trong phạm vi tài liệu hiện tại:
+Trong luồng startup:
 
 ```text
 Reset_Handler
@@ -6965,7 +6969,7 @@ Reset_Handler
 
 ### 1.10.12. Vì sao Vector Table phải có sẵn trước code?
 
-Theo nguồn:
+
 
 > Việc CPU đọc hai word đầu của Vector Table xảy ra **trước khi bất kỳ code nào chạy**.
 
@@ -7002,7 +7006,7 @@ tạo Vector Table
 CPU đọc Vector Table
 ```
 
-Đúng theo tài liệu:
+Đúng:
 
 ```text
 CPU đọc Vector Table
@@ -7062,35 +7066,35 @@ Reset_Handler chạy
 
 ---
 
-### 1.10.15. Ý cần nhớ khi phỏng vấn
+### 1.10.15. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Tại sao Vector Table không được đặt trong `.data` ở RAM?”**, có thể trả lời:
+**Câu hỏi:** “Tại sao Vector Table không được đặt trong `.data` ở RAM?”
 
 > **Vì CPU cần đọc initial Stack Pointer và địa chỉ Reset_Handler từ Vector Table ngay khi reset, trước khi bất kỳ code nào chạy. Trong khi `.data` trong SRAM chỉ được Reset_Handler copy từ Flash xuống sau đó. Nếu Vector Table phụ thuộc vào `.data` trong RAM thì CPU chưa thể lấy SP và Reset_Handler để boot.**
 
-Nếu hỏi **“`.data` được chuẩn bị khi nào?”**:
+**Câu hỏi:** “`.data` được chuẩn bị khi nào?”
 
-> **Theo tài liệu, `.data` trong RAM được Reset_Handler copy từ Flash xuống sau khi CPU đã đọc Vector Table và nhảy vào Reset_Handler.**
+> ** `.data` trong RAM được Reset_Handler copy từ Flash xuống sau khi CPU đã đọc Vector Table và nhảy vào Reset_Handler.**
 
-Nếu hỏi **“CPU dùng gì từ Vector Table ngay sau reset?”**:
+**Câu hỏi:** “CPU dùng gì từ Vector Table ngay sau reset?”
 
 > **Hai word đầu: initial Stack Pointer và địa chỉ Reset_Handler.**
 
-Nếu hỏi **“Startup Code có liên hệ thế nào với Flash và SRAM?”**:
+**Câu hỏi:** “Startup Code có liên hệ thế nào với Flash và SRAM?”
 
-> **Trong nội dung nguồn hiện tại, Reset_Handler thuộc luồng startup và thực hiện việc copy `.data` từ Flash xuống SRAM để tạo bản dữ liệu runtime.**
+> **Trong nội dung phần này, Reset_Handler thuộc luồng startup và thực hiện việc copy `.data` từ Flash xuống SRAM để tạo bản dữ liệu runtime.**
 
 ---
 
-### 1.10.16. Câu hỏi phỏng vấn tự kiểm tra
+### 1.10.16. Câu hỏi tự kiểm tra
 
-1. Startup Code trong tài liệu hiện tại tập trung vào vấn đề gì?
+1. Startup Code trong phần này hiện tại tập trung vào vấn đề gì?
 2. CPU đọc bao nhiêu word đầu của Vector Table ngay khi reset?
 3. Word đầu tiên của Vector Table dùng để làm gì?
 4. Word thứ hai dùng để làm gì?
 5. Việc đọc Vector Table xảy ra trước hay sau khi code bắt đầu chạy?
 6. `.data` trong SRAM được tạo/copy khi nào?
-7. Ai thực hiện việc copy `.data` từ Flash xuống SRAM theo nguồn?
+7. Ai thực hiện việc copy `.data` từ Flash xuống SRAM?
 8. Vì sao Vector Table không thể phụ thuộc vào `.data` trong SRAM?
 9. Điều gì xảy ra nếu CPU không lấy được initial SP và Reset_Handler?
 10. Hãy mô tả vòng phụ thuộc sai nếu Vector Table nằm trong `.data`.
@@ -7098,7 +7102,7 @@ Nếu hỏi **“Startup Code có liên hệ thế nào với Flash và SRAM?”
 12. Startup Code liên hệ thế nào với Reset Sequence?
 13. Startup Code liên hệ thế nào với Flash/SRAM?
 14. Tại sao Vector Table phải tồn tại trước khi Reset_Handler chạy?
-15. Hãy trả lời câu phỏng vấn: “Tại sao không đặt Vector Table vào `.data`?”
+15. Hãy trả lời: “Tại sao không đặt Vector Table vào `.data`?”
 
 ---
 
@@ -7152,9 +7156,9 @@ không có SP / Reset_Handler
 
 ---
 
-### Bổ sung kỹ thuật — Startup Code hoàn chỉnh ở mức Intern
+### 1.10.18. Startup Code hoàn chỉnh
 
-> **Phần dưới đây là bổ sung để hoàn thiện lộ trình. `Startup_Code.docx` gốc chỉ tập trung vào quan hệ Vector Table ↔ `.data`; các ý dưới đây nối nó với Reset Sequence, Flash/SRAM và Linker Script đã học.**
+> Startup Code liên kết trực tiếp Reset Sequence, Vector Table, Flash/SRAM và Linker Script thành một chuỗi khởi động hoàn chỉnh.
 
 Một startup file STM32 điển hình thường có các thành phần khái niệm sau:
 
@@ -7280,7 +7284,7 @@ mà không phải sửa trực tiếp startup file trong nhiều project.
 Startup code không tự biết `.data` và `.bss` nằm ở đâu. Nó sử dụng các symbol do linker/linker script tạo ra:
 
 ```text
-_sidata → nguồn initial values của .data trong Flash
+_sidata → địa chỉ chứa initial values của .data trong Flash
 _sdata  → đầu .data trong SRAM
 _edata  → cuối .data trong SRAM
 _sbss   → đầu .bss
@@ -7300,9 +7304,9 @@ Startup Code
 main()
 ```
 
-### Câu trả lời phỏng vấn nên nhớ
+### 1.10.19. Cách diễn đạt ngắn gọn
 
-Nếu hỏi **“Startup code làm gì trước `main()`?”**:
+**Câu hỏi:** “Startup code làm gì trước `main()`?”
 
 > **Sau khi hardware lấy MSP và Reset vector, `Reset_Handler` chuẩn bị môi trường runtime: copy `.data` từ Flash sang RAM, zero `.bss`, thực hiện các bước system/C runtime initialization cần thiết rồi gọi `main()`. Startup file cũng thường chứa Vector Table và các handler mặc định.**
 
@@ -7316,7 +7320,7 @@ Nếu hỏi **“Startup code làm gì trước `main()`?”**:
 
 ### 1.11.1. Từ file `.c` đến object file `.o`
 
-Theo hình tài liệu:
+
 
 ```text
 main.c
@@ -7366,7 +7370,7 @@ led.o
 
 ### 1.11.2. Section là gì?
 
-Theo tài liệu hình đầu tiên, một object file ở định dạng ELF có thể chứa nhiều loại section:
+Một object file ở định dạng ELF có thể chứa nhiều loại section:
 
 ```text
 .text
@@ -7379,7 +7383,7 @@ Some special sections
 
 Mỗi section chứa một loại nội dung khác nhau.
 
-Sơ đồ từ tài liệu:
+Sơ đồ:
 
 ```text
 main.o
@@ -7396,7 +7400,7 @@ main.o
 
 ### 1.11.3. `.text`
 
-Theo hình:
+
 
 ```text
 .text
@@ -7425,7 +7429,7 @@ sau khi biên dịch, phần instruction tương ứng sẽ được đặt tron
 
 ### 1.11.4. `.data`
 
-Theo hình:
+
 
 ```text
 .data
@@ -7463,7 +7467,7 @@ Phần trước về Flash/SRAM đã cho thấy:
 
 ### 1.11.5. `.bss`
 
-Theo hình:
+
 
 ```text
 .bss
@@ -7497,7 +7501,7 @@ và linker sẽ ghép các phần `.bss` phù hợp vào section `.bss` cuối c
 
 ### 1.11.6. `.rodata`
 
-Theo hình:
+
 
 ```text
 .rodata
@@ -7517,7 +7521,7 @@ Phần Flash/SRAM trước đó đã liên hệ `.rodata` với Flash vì dữ l
 
 ### 1.11.7. User-defined sections
 
-Hình đầu tiên còn có:
+Ngoài các section chuẩn còn có:
 
 ```text
 User defined sections
@@ -7538,13 +7542,13 @@ yêu cầu một số code/data
 User-defined section
 ```
 
-Trong phạm vi nguồn hiện tại, tài liệu chưa chỉ ra cú pháp cụ thể để khai báo section tự định nghĩa. Phần bổ sung cuối mục tập trung vào cú pháp linker script tối thiểu; user-defined section nâng cao vẫn chưa cần học sâu.
+Cú pháp khai báo user-defined section phụ thuộc compiler/linker; phần này tập trung vào cách linker script gom và đặt các section trong bộ nhớ.
 
 ---
 
 ### 1.11.8. Special sections
 
-Hình cũng đề cập:
+Ngoài ra còn có:
 
 ```text
 Some special sections
@@ -7554,7 +7558,7 @@ với mô tả:
 
 > compiler có thể thêm một số section đặc biệt chứa dữ liệu đặc biệt.
 
-Nguồn hiện tại không liệt kê chi tiết tên từng special section, nên ở đây chỉ cần nhận diện rằng:
+Ngoài các section quen thuộc, ELF còn có thể chứa các special section phục vụ compiler, linker và runtime:
 
 ```text
 ELF object
@@ -7566,7 +7570,7 @@ ELF object
 
 ### 1.11.9. Linker làm gì?
 
-Hình thứ hai mô tả:
+
 
 > Linker dùng để merge các section cùng loại của nhiều object file và resolve các undefined symbol.
 
@@ -7594,7 +7598,7 @@ final.elf
 └── .rodata
 ```
 
-Hai nhiệm vụ chính theo hình:
+Hai nhiệm vụ chính:
 
 ```text
 1. Merge similar sections
@@ -7605,7 +7609,7 @@ Hai nhiệm vụ chính theo hình:
 
 ### 1.11.10. Merge các section giống nhau
 
-Theo hình thứ ba:
+
 
 ```text
 .text
@@ -7652,48 +7656,42 @@ Ví dụ:
 
 ---
 
-### 1.11.11. Một điểm không nhất quán trong hình nguồn
+### 1.11.11. Quy tắc ghép section
 
-Trong hình merge section, phần `.bss` được ghi:
+Linker gom các input section cùng loại từ nhiều object file vào output section tương ứng.
 
-```text
-.bss(main.o), .data(led.o)
-```
-
-trong khi logic của sơ đồ và các phần còn lại đều đang mô tả việc **merge section cùng loại**.
-
-Do đó, trong tài liệu này:
-
-- Mình giữ nguyên việc ghi nhận rằng hình nguồn có dòng trên.
-- Không tự coi đó là quy tắc linker.
-- Chỉ rút ra ý được hỗ trợ nhất quán bởi toàn bộ hình:
+Ví dụ:
 
 ```text
-Linker merge các section cùng loại
-từ nhiều object file
+.text(main.o)
++
+.text(led.o)
+        ↓
+      .text
 ```
 
-Nói cách khác, điểm cần học là:
+Tương tự:
 
 ```text
-.bss từ các object
-→ được gom về output section .bss
+.data(*)   → .data
+.bss(*)    → .bss
+.rodata(*) → .rodata
 ```
 
-nhưng dòng nhãn cụ thể trong hình có dấu hiệu không nhất quán.
+Quy tắc bố trí cụ thể được điều khiển bởi linker script.
 
 ---
 
 ### 1.11.12. Resolve undefined symbols là gì?
 
-Hình thứ hai nói linker còn có nhiệm vụ:
+Linker còn có nhiệm vụ:
 
 ```text
 resolve all undefined symbols
 of different object files
 ```
 
-Có thể hiểu ở mức khái niệm:
+Có thể hiểu:
 
 ```text
 main.o
@@ -7749,7 +7747,7 @@ resolve led_on
 
 ### 1.11.13. Locator làm gì?
 
-Hình thứ hai dùng thuật ngữ:
+Thuật ngữ sử dụng là:
 
 ```text
 Linker and Locator
@@ -7775,7 +7773,7 @@ Locator
 
 ### 1.11.14. Linker Script là gì?
 
-Theo nội dung hình:
+
 
 ```text
 Linker Script
@@ -7785,7 +7783,7 @@ Linker Script
 
 Có thể hiểu:
 
-> **Linker Script là tài liệu cấu hình cho linker/locator biết các section cuối cùng phải được bố trí ở đâu trong không gian bộ nhớ.**
+> **Linker Script là tệp cấu hình cho linker biết các section cuối cùng phải được bố trí ở đâu trong không gian bộ nhớ.**
 
 Sơ đồ:
 
@@ -7805,9 +7803,9 @@ final.elf
 
 ---
 
-### 1.11.15. Address Relocation trong hình
+### 1.11.15. Address Relocation
 
-Hình thứ ba ghi:
+
 
 ```text
 Merging and address relocation
@@ -7815,7 +7813,7 @@ Merging and address relocation
 
 Điều này cho thấy sau khi ghép section, linker/locator còn phải xử lý địa chỉ.
 
-Có thể hiểu ở mức khái niệm:
+Có thể hiểu:
 
 ```text
 .text
@@ -7845,7 +7843,7 @@ Việc section cụ thể nằm ở Flash hay SRAM và tại địa chỉ nào �
 
 ### 1.11.16. final ELF
 
-Hình thứ ba cho kết quả:
+Kết quả là:
 
 ```text
 final.elf
@@ -7979,7 +7977,7 @@ và:
 initialize .bss
 ```
 
-Trong hình Flash/SRAM trước đó đã xuất hiện các symbol:
+Các symbol biên thường gặp:
 
 ```text
 _etext
@@ -7987,7 +7985,7 @@ _sdata
 _edata
 ```
 
-Mục Linker Script hiện tại giải thích được nền tảng:
+Linker Script quyết định vị trí section và tạo các symbol biên phục vụ startup code:
 
 ```text
 Linker Script
@@ -7995,7 +7993,7 @@ Linker Script
 → từ đó linker có thể tạo các boundary/symbol liên quan
 ```
 
-Nguồn hình hiện tại chưa mô tả cú pháp cụ thể để khai báo `_sdata`, `_edata`. Phần **Bổ sung kỹ thuật** cuối mục sẽ đưa một linker script rút gọn để thấy các symbol này được tạo và được startup code sử dụng như thế nào.
+Một linker script rút gọn ở cuối mục cho thấy cách tạo `_sdata`, `_edata` và cách startup code sử dụng các symbol này.
 
 ---
 
@@ -8036,55 +8034,55 @@ main.o                    led.o
 
 ---
 
-### 1.11.21. Ý cần nhớ khi phỏng vấn
+### 1.11.21. Điểm cần nhớ
 
-Nếu nhà tuyển dụng hỏi **“Linker làm gì?”**, có thể trả lời:
+**Câu hỏi:** “Linker làm gì?”
 
-> **Linker ghép các section cùng loại từ nhiều object file, resolve các undefined symbol và tạo chương trình cuối. Trong tài liệu này locator dùng linker script để quyết định cách merge và địa chỉ của các section.**
+> **Linker ghép các section cùng loại từ nhiều object file, resolve các undefined symbol và tạo chương trình cuối. Linker script quyết định cách merge và địa chỉ của các section.**
 
-Nếu hỏi **“Linker Script dùng để làm gì?”**:
+**Câu hỏi:** “Linker Script dùng để làm gì?”
 
 > **Linker Script mô tả cách bố trí các section và gán địa chỉ cho chúng trong bộ nhớ. Nó giúp linker/locator biết `.text`, `.data`, `.bss`, `.rodata` và các section khác phải được đặt ở đâu.**
 
-Nếu hỏi **“Mỗi file `.o` có những section nào?”**:
+**Câu hỏi:** “Mỗi file `.o` có những section nào?”
 
-> **Theo hình, một object file ELF có thể có `.text`, `.data`, `.bss`, `.rodata`, cùng user-defined sections và special sections.**
+> **Một object file ELF có thể có `.text`, `.data`, `.bss`, `.rodata`, cùng user-defined sections và special sections.**
 
-Nếu hỏi **“`.text`, `.data`, `.bss`, `.rodata` chứa gì?”**:
+**Câu hỏi:** “`.text`, `.data`, `.bss`, `.rodata` chứa gì?”
 
-> **Theo tài liệu: `.text` chứa code/instruction, `.data` chứa initialized data, `.bss` chứa uninitialized data, còn `.rodata` chứa read-only data.**
+> ** `.text` chứa code/instruction, `.data` chứa initialized data, `.bss` chứa uninitialized data, còn `.rodata` chứa read-only data.**
 
-Nếu hỏi **“final ELF được tạo như thế nào?”**:
+**Câu hỏi:** “final ELF được tạo như thế nào?”
 
 > **Các object file được đưa vào linker; linker merge các section cùng loại, resolve symbol, locator dùng linker script để gán địa chỉ và kết quả là final ELF.**
 
 ---
 
-### 1.11.22. Câu hỏi phỏng vấn tự kiểm tra
+### 1.11.22. Câu hỏi tự kiểm tra
 
 1. File `.c` sau khi biên dịch tạo ra file gì?
-2. Một object file ELF có thể chứa những section nào theo hình?
+2. Một object file ELF có thể chứa những section nào?
 3. `.text` chứa gì?
 4. `.data` chứa gì?
 5. `.bss` chứa gì?
 6. `.rodata` chứa gì?
-7. User-defined section dùng để làm gì theo nguồn?
+7. User-defined section dùng để làm gì?
 8. Special section là gì ở mức khái niệm?
 9. Linker có nhiệm vụ chính gì?
 10. Merge similar sections nghĩa là gì?
 11. Undefined symbol là gì ở mức khái niệm?
 12. Linker resolve symbol giữa các object file như thế nào?
-13. Locator là gì theo tài liệu?
+13. Locator là gì ?
 14. Locator dùng gì để biết cách bố trí section?
 15. Linker Script dùng để làm gì?
-16. Address relocation nghĩa là gì ở mức khái niệm?
+16. Address relocation nghĩa là gì?
 17. final ELF là gì?
 18. `.text(main.o)` và `.text(led.o)` cuối cùng được xử lý thế nào?
 19. Linker Script liên hệ thế nào với Flash và SRAM?
 20. Linker Script liên hệ thế nào với Startup Code?
 21. Vì sao boundary symbol như `_sdata`, `_edata` cần thông tin từ linker?
 22. Hãy mô tả luồng `main.c + led.c → object files → linker → final.elf`.
-23. Hình nguồn có điểm không nhất quán nào ở dòng `.bss`?
+23. Sơ đồ có điểm không nhất quán nào ở dòng `.bss`?
 
 ---
 
@@ -8151,9 +8149,9 @@ Linker Script
 
 ---
 
-### Bổ sung kỹ thuật — Linker Script tối thiểu cần đọc được
+### 1.11.24. Linker Script tối thiểu cần đọc được
 
-> **Phần dưới đây mở rộng từ ba hình linker/section để biến mục 1.11 thành kiến thức Linker Script thực sự ở mức Intern. Không cần học thuộc cú pháp; mục tiêu là nhìn một file `.ld` và hiểu nó đang đặt cái gì vào Flash/RAM.**
+> Mục tiêu là đọc được một file `.ld` cơ bản và hiểu section nào được đặt vào Flash hoặc RAM; không cần học thuộc toàn bộ cú pháp.
 
 Một ví dụ rút gọn:
 
@@ -8327,7 +8325,7 @@ Startup Code
 main()
 ```
 
-#### ELF, BIN và HEX khác nhau ở mức nào?
+#### ELF, BIN và HEX khác nhau như thế nào?
 
 Sau khi link:
 
@@ -8348,14 +8346,1605 @@ Công cụ như `objcopy` có thể tạo thêm:
 
 Vì vậy khi debug bằng GDB/ST-Link, file ELF rất hữu ích vì còn symbol/debug info; còn khi nạp firmware, tool có thể dùng ELF/HEX/BIN tùy workflow.
 
-### Câu trả lời phỏng vấn nên nhớ
+### 1.11.25. Cách diễn đạt ngắn gọn
 
-Nếu hỏi **“Linker Script quan trọng gì trong embedded?”**:
+**Câu hỏi:** “Linker Script quan trọng gì trong embedded?”
 
 > **Linker Script mô tả bản đồ bộ nhớ thực của firmware: Flash/RAM bắt đầu ở đâu, section nào nằm ở đâu, Stack boundary ở đâu và các linker symbol nào được startup code sử dụng. Nó là cầu nối giữa object sections và memory map thật của MCU.**
 
-Nếu hỏi **“Tại sao `.data` vừa ở Flash vừa ở RAM?”**:
+**Câu hỏi:** “Tại sao `.data` vừa ở Flash vừa ở RAM?”
 
 > **Linker đặt runtime address của `.data` ở RAM nhưng lưu initial image của nó trong Flash. Startup code dùng linker symbols để copy initial values từ LMA trong Flash tới VMA trong RAM trước khi vào `main()`.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="chuong-02"></a>
+# 2. RCC + Clock
+
+> Phạm vi của chương này tập trung vào STM32F101xx, STM32F102xx và STM32F103xx thuộc các nhóm low-, medium-, high- và XL-density. STM32F105xx/STM32F107xx connectivity line có clock tree riêng với nhiều PLL hơn, vì vậy không áp dụng trực tiếp toàn bộ công thức cấu hình của phần này.
+
+<a id="muc-02-01"></a>
+## 2.1. RCC là gì?
+
+`RCC` là viết tắt của:
+
+```text
+Reset and Clock Control
+```
+
+RCC chịu trách nhiệm chính cho hai nhóm chức năng:
+
+```text
+RCC
+├── Clock Control
+│   ├── bật/tắt các nguồn clock
+│   ├── chọn SYSCLK
+│   ├── cấu hình PLL
+│   ├── cấu hình AHB/APB prescaler
+│   ├── cấp clock cho peripheral
+│   └── theo dõi trạng thái clock
+│
+└── Reset Control
+    ├── reset peripheral trên APB1
+    ├── reset peripheral trên APB2
+    └── reset Backup domain
+```
+
+Các thanh ghi quan trọng:
+
+| Thanh ghi | Vai trò chính |
+|---|---|
+| `RCC_CR` | Bật/tắt HSI, HSE, PLL; đọc các cờ `RDY`; bật CSS |
+| `RCC_CFGR` | Chọn SYSCLK, cấu hình PLL, AHB/APB/ADC prescaler, MCO |
+| `RCC_CIR` | Cờ/ngắt liên quan tới trạng thái nguồn clock và CSS |
+| `RCC_AHBENR` | Bật clock các peripheral trên AHB |
+| `RCC_APB2ENR` | Bật clock các peripheral trên APB2 |
+| `RCC_APB1ENR` | Bật clock các peripheral trên APB1 |
+| `RCC_APB2RSTR` | Reset các peripheral trên APB2 |
+| `RCC_APB1RSTR` | Reset các peripheral trên APB1 |
+| `RCC_BDCR` | Clock/Reset của Backup domain và RTC |
+| `RCC_CSR` | Điều khiển LSI và các cờ reset |
+
+Có thể hình dung:
+
+```text
+Clock source
+    ↓
+   RCC
+    ↓
+Clock Tree
+    ↓
+CPU / Bus / Peripheral
+```
+
+---
+
+<a id="muc-02-02"></a>
+## 2.2. Các nguồn Clock: HSI / HSE / LSI / LSE
+
+STM32F10xxx có bốn nguồn clock thường gặp:
+
+```text
+High-speed
+├── HSI
+└── HSE
+
+Low-speed
+├── LSI
+└── LSE
+```
+
+### HSI — High-Speed Internal
+
+HSI là bộ dao động RC tốc độ cao nằm bên trong MCU.
+
+Đối với STM32F10xxx trong phạm vi chương này:
+
+```text
+HSI = 8 MHz
+```
+
+HSI có thể được dùng:
+
+```text
+HSI
+├── trực tiếp làm SYSCLK
+└── chia 2 làm đầu vào PLL
+```
+
+Ưu điểm:
+
+- Không cần linh kiện dao động ngoài.
+- Khởi động nhanh.
+- Chi phí phần cứng thấp.
+
+Hạn chế:
+
+- Độ chính xác thấp hơn crystal/resonator ngoài.
+- Tần số chịu ảnh hưởng bởi nhiệt độ và điện áp.
+- Có thể tinh chỉnh bằng `HSITRIM`.
+
+Các bit quan trọng trong `RCC_CR`:
+
+```text
+HSION
+→ bật HSI
+
+HSIRDY
+→ HSI đã ổn định
+
+HSICAL
+→ giá trị hiệu chuẩn
+
+HSITRIM
+→ tinh chỉnh HSI
+```
+
+Sau system reset:
+
+```text
+SYSCLK = HSI
+```
+
+Do đó MCU luôn có một nguồn clock nội bộ để bắt đầu chạy trước khi phần mềm cấu hình clock khác.
+
+### HSE — High-Speed External
+
+HSE là nguồn clock tốc độ cao từ bên ngoài.
+
+Có hai cách sử dụng:
+
+```text
+HSE
+├── Crystal / ceramic resonator
+└── External clock bypass
+```
+
+Với crystal/resonator:
+
+```text
+4 MHz → 16 MHz
+```
+
+Với HSE bypass, một tín hiệu clock bên ngoài được đưa trực tiếp vào `OSC_IN`.
+
+Các bit quan trọng trong `RCC_CR`:
+
+```text
+HSEON
+→ bật HSE
+
+HSERDY
+→ HSE đã ổn định
+
+HSEBYP
+→ chọn chế độ external clock bypass
+```
+
+HSE thường được dùng khi cần clock chính xác hơn HSI.
+
+### LSI — Low-Speed Internal
+
+LSI là bộ dao động RC tốc độ thấp bên trong MCU.
+
+Tần số danh định:
+
+```text
+xấp xỉ 40 kHz
+```
+
+Khoảng tần số thực tế có thể rộng hơn do đặc tính RC.
+
+Ứng dụng chính:
+
+```text
+LSI
+├── Independent Watchdog — IWDG
+└── có thể cấp RTC / Auto-Wakeup
+```
+
+Các bit liên quan nằm trong `RCC_CSR`:
+
+```text
+LSION
+LSIRDY
+```
+
+### LSE — Low-Speed External
+
+LSE là nguồn dao động ngoài tốc độ thấp:
+
+```text
+32.768 kHz
+```
+
+Ứng dụng chính:
+
+```text
+LSE
+→ RTC
+```
+
+LSE phù hợp cho RTC vì:
+
+- tần số thấp;
+- tiêu thụ năng lượng thấp;
+- độ chính xác tốt;
+- có thể tiếp tục hoạt động trong Backup domain khi nguồn chính bị tắt nếu `VBAT` vẫn còn.
+
+Các bit liên quan nằm trong `RCC_BDCR`:
+
+```text
+LSEON
+LSERDY
+LSEBYP
+```
+
+### So sánh nhanh
+
+| Nguồn | Loại | Tần số điển hình | Mục đích chính |
+|---|---|---:|---|
+| HSI | Internal RC | 8 MHz | SYSCLK, đầu vào PLL |
+| HSE | External | 4–16 MHz với crystal | SYSCLK, đầu vào PLL |
+| LSI | Internal RC | ~40 kHz | IWDG, RTC/AWU |
+| LSE | External crystal | 32.768 kHz | RTC |
+
+---
+
+<a id="muc-02-03"></a>
+## 2.3. Clock Tree
+
+Clock Tree mô tả đường đi của clock từ nguồn dao động tới CPU, bus và peripheral.
+
+Sơ đồ rút gọn:
+
+```text
+              HSI 8 MHz
+                 │
+                 ├───────────────┐
+                 │               │
+                 │            HSI / 2
+                 │               │
+                 │               ↓
+                 │              PLL
+                 │               │
+HSE ─────────────┼───────────────┤
+                 │               │
+                 └──────┬────────┘
+                        ↓
+                      SYSCLK
+                        │
+                  AHB Prescaler
+                        │
+                        ↓
+                       HCLK
+                        │
+           ┌────────────┴────────────┐
+           ↓                         ↓
+    APB1 Prescaler             APB2 Prescaler
+           ↓                         ↓
+         PCLK1                     PCLK2
+           │                         │
+           ↓                         ↓
+    APB1 Peripheral            APB2 Peripheral
+```
+
+Đường clock chính:
+
+```text
+Clock source
+    ↓
+SYSCLK
+    ↓
+AHB Prescaler
+    ↓
+HCLK
+    ↓
+APB1 / APB2 Prescaler
+    ↓
+PCLK1 / PCLK2
+    ↓
+Peripheral
+```
+
+Ngoài ra còn có các nhánh riêng:
+
+```text
+PCLK2
+  ↓
+ADC Prescaler
+  ↓
+ADCCLK
+
+PCLK1 / PCLK2
+  ↓
+Timer clock logic
+  ↓
+TIMxCLK
+
+PLLCLK
+  ↓
+USB Prescaler
+  ↓
+USBCLK
+
+HCLK
+  ├── Core / AHB / Memory / DMA
+  └── HCLK / 8 → một lựa chọn clock cho SysTick
+```
+
+Clock Tree cần được đọc theo ba câu hỏi:
+
+```text
+1. Nguồn clock ban đầu là gì?
+2. Clock đã đi qua bộ nhân/chia nào?
+3. Peripheral cuối cùng nhận tần số bao nhiêu?
+```
+
+---
+
+<a id="muc-02-04"></a>
+## 2.4. PLL
+
+`PLL` là viết tắt của:
+
+```text
+Phase-Locked Loop
+```
+
+PLL được dùng để nhân tần số clock đầu vào.
+
+Đối với STM32F10xxx trong phạm vi chương này, đầu vào PLL có thể là:
+
+```text
+HSI / 2
+hoặc
+HSE
+hoặc
+HSE / 2
+```
+
+Sơ đồ:
+
+```text
+HSI / 2 ───┐
+           ├──→ PLL ──→ PLLCLK
+HSE ───────┤
+HSE / 2 ───┘
+```
+
+Tần số đầu ra có dạng:
+
+```text
+PLLCLK = PLL input × PLLMUL
+```
+
+`PLLMUL` cho phép hệ số:
+
+```text
+×2 → ×16
+```
+
+Ví dụ:
+
+```text
+HSE = 8 MHz
+PLLMUL = ×9
+
+PLLCLK = 8 MHz × 9
+       = 72 MHz
+```
+
+Các bit cấu hình chính trong `RCC_CFGR`:
+
+```text
+PLLSRC
+→ chọn HSI/2 hoặc HSE
+
+PLLXTPRE
+→ HSE hoặc HSE/2 trước PLL
+
+PLLMUL
+→ hệ số nhân PLL
+```
+
+Các bit trạng thái/điều khiển trong `RCC_CR`:
+
+```text
+PLLON
+→ bật PLL
+
+PLLRDY
+→ PLL đã khóa và ổn định
+```
+
+Điểm quan trọng:
+
+```text
+Cấu hình PLL
+→ phải thực hiện khi PLL đang tắt
+```
+
+Sau khi PLL được bật:
+
+```text
+PLLON = 1
+    ↓
+chờ PLLRDY = 1
+    ↓
+PLL mới sẵn sàng để chọn làm SYSCLK
+```
+
+Giới hạn cần nhớ:
+
+```text
+PLLCLK ≤ 72 MHz
+```
+
+Khi HSI/2 được dùng làm đầu vào PLL, tần số hệ thống tối đa đạt được thấp hơn trường hợp HSE phù hợp.
+
+---
+
+<a id="muc-02-05"></a>
+## 2.5. SYSCLK / HCLK / PCLK1 / PCLK2
+
+### SYSCLK
+
+`SYSCLK` là system clock.
+
+Nguồn có thể là:
+
+```text
+SYSCLK
+├── HSI
+├── HSE
+└── PLLCLK
+```
+
+Chọn nguồn bằng:
+
+```text
+RCC_CFGR.SW
+```
+
+Kiểm tra nguồn thực sự đang được dùng bằng:
+
+```text
+RCC_CFGR.SWS
+```
+
+Sau reset:
+
+```text
+SYSCLK = HSI = 8 MHz
+```
+
+### HCLK
+
+`HCLK` là clock của AHB domain:
+
+```text
+HCLK = SYSCLK / AHB Prescaler
+```
+
+HCLK cấp clock cho:
+
+```text
+Cortex-M3 core
+AHB bus
+Memory
+DMA
+```
+
+Giới hạn:
+
+```text
+HCLK ≤ 72 MHz
+```
+
+### PCLK1
+
+`PCLK1` là clock của APB1:
+
+```text
+PCLK1 = HCLK / APB1 Prescaler
+```
+
+Giới hạn:
+
+```text
+PCLK1 ≤ 36 MHz
+```
+
+APB1 thường chứa các peripheral như:
+
+```text
+TIM2-TIM7
+I2C1/I2C2
+SPI2/SPI3
+USART2/USART3
+...
+```
+
+Khả năng có mặt của từng peripheral phụ thuộc từng mã MCU.
+
+### PCLK2
+
+`PCLK2` là clock của APB2:
+
+```text
+PCLK2 = HCLK / APB2 Prescaler
+```
+
+Giới hạn:
+
+```text
+PCLK2 ≤ 72 MHz
+```
+
+APB2 thường chứa:
+
+```text
+AFIO
+GPIOA-G
+ADC
+SPI1
+USART1
+TIM1 / TIM8
+...
+```
+
+### Quan hệ tổng quát
+
+```text
+SYSCLK
+   │
+   ↓ AHB Prescaler
+ HCLK
+   │
+   ├───────↓ APB1 Prescaler
+   │      PCLK1
+   │
+   └───────↓ APB2 Prescaler
+          PCLK2
+```
+
+### Clock khác cần nhận diện
+
+```text
+FCLK
+→ Cortex-M3 free-running clock
+
+SysTick
+→ có thể dùng HCLK
+  hoặc HCLK / 8
+
+ADCCLK
+→ PCLK2 / 2
+  PCLK2 / 4
+  PCLK2 / 6
+  PCLK2 / 8
+
+ADCCLK ≤ 14 MHz
+```
+
+---
+
+<a id="muc-02-06"></a>
+## 2.6. Prescaler và cách tính tần số
+
+Prescaler là bộ chia tần số.
+
+### AHB Prescaler
+
+`HPRE` trong `RCC_CFGR`:
+
+```text
+SYSCLK
+  ↓ HPRE
+HCLK
+```
+
+Các hệ số chia:
+
+```text
+/1
+/2
+/4
+/8
+/16
+/64
+/128
+/256
+/512
+```
+
+Công thức:
+
+```text
+HCLK = SYSCLK / HPRE
+```
+
+### APB1 Prescaler
+
+`PPRE1`:
+
+```text
+HCLK
+  ↓ PPRE1
+PCLK1
+```
+
+Các hệ số:
+
+```text
+/1
+/2
+/4
+/8
+/16
+```
+
+Công thức:
+
+```text
+PCLK1 = HCLK / PPRE1
+```
+
+Điều kiện:
+
+```text
+PCLK1 ≤ 36 MHz
+```
+
+### APB2 Prescaler
+
+`PPRE2`:
+
+```text
+HCLK
+  ↓ PPRE2
+PCLK2
+```
+
+Các hệ số:
+
+```text
+/1
+/2
+/4
+/8
+/16
+```
+
+Công thức:
+
+```text
+PCLK2 = HCLK / PPRE2
+```
+
+Điều kiện:
+
+```text
+PCLK2 ≤ 72 MHz
+```
+
+### ADC Prescaler
+
+`ADCPRE`:
+
+```text
+PCLK2
+  ↓
+/2, /4, /6 hoặc /8
+  ↓
+ADCCLK
+```
+
+Điều kiện:
+
+```text
+ADCCLK ≤ 14 MHz
+```
+
+### Ví dụ: hệ thống 72 MHz từ HSE 8 MHz
+
+Giả sử:
+
+```text
+HSE = 8 MHz
+
+PLL input = HSE
+PLLMUL = ×9
+```
+
+Ta có:
+
+```text
+PLLCLK = 8 × 9
+       = 72 MHz
+```
+
+Chọn:
+
+```text
+SYSCLK = PLLCLK
+HPRE   = /1
+PPRE1  = /2
+PPRE2  = /1
+ADCPRE = /6
+```
+
+Kết quả:
+
+```text
+SYSCLK = 72 MHz
+
+HCLK
+= 72 / 1
+= 72 MHz
+
+PCLK1
+= 72 / 2
+= 36 MHz
+
+PCLK2
+= 72 / 1
+= 72 MHz
+
+ADCCLK
+= 72 / 6
+= 12 MHz
+```
+
+Sơ đồ:
+
+```text
+HSE 8 MHz
+    ↓
+PLL ×9
+    ↓
+72 MHz SYSCLK
+    ↓ HPRE /1
+72 MHz HCLK
+   ┌───────────────┐
+   ↓               ↓
+PPRE1 /2        PPRE2 /1
+   ↓               ↓
+36 MHz           72 MHz
+PCLK1            PCLK2
+                    ↓ ADCPRE /6
+                  12 MHz
+                  ADCCLK
+```
+
+---
+
+<a id="muc-02-07"></a>
+## 2.7. Peripheral Clock Enable và Peripheral Reset
+
+Peripheral không tự động nhận clock chỉ vì CPU đang chạy.
+
+RCC có các thanh ghi để bật clock riêng cho từng peripheral.
+
+### AHB
+
+```text
+RCC_AHBENR
+```
+
+Ví dụ các khối:
+
+```text
+DMA1
+DMA2
+SRAM interface
+CRC
+FSMC
+SDIO
+```
+
+### APB2
+
+```text
+RCC_APB2ENR
+```
+
+Ví dụ:
+
+```text
+AFIO
+GPIOA
+GPIOB
+GPIOC
+...
+ADC1
+ADC2
+SPI1
+USART1
+TIM1
+...
+```
+
+Ví dụ bật GPIOA:
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+```
+
+Ý nghĩa:
+
+```text
+IOPAEN = 0
+→ clock GPIOA bị tắt
+
+IOPAEN = 1
+→ clock GPIOA được bật
+```
+
+Đối với STM32F1, GPIO nằm trên APB2.
+
+### APB1
+
+```text
+RCC_APB1ENR
+```
+
+Ví dụ:
+
+```text
+TIM2
+TIM3
+TIM4
+TIM5
+I2C1
+I2C2
+SPI2
+SPI3
+USART2
+USART3
+...
+```
+
+### Vì sao phải bật Clock trước?
+
+Khi peripheral clock không hoạt động, các thanh ghi của peripheral có thể không đọc được như bình thường; một số trường hợp giá trị đọc về có thể là `0`.
+
+Quy trình:
+
+```text
+1. Bật peripheral clock
+2. Cấu hình peripheral register
+3. Cho peripheral hoạt động
+```
+
+Không nên đảo thành:
+
+```text
+cấu hình peripheral
+→ rồi mới bật clock
+```
+
+### Peripheral Reset
+
+RCC còn có thể reset riêng từng peripheral.
+
+APB2:
+
+```text
+RCC_APB2RSTR
+```
+
+APB1:
+
+```text
+RCC_APB1RSTR
+```
+
+Ví dụ khái niệm:
+
+```text
+set RESET bit
+    ↓
+peripheral được reset
+    ↓
+clear RESET bit
+    ↓
+peripheral trở lại trạng thái hoạt động
+```
+
+Ví dụ:
+
+```c
+RCC->APB2RSTR |= RCC_APB2RSTR_IOPARST;
+RCC->APB2RSTR &= ~RCC_APB2RSTR_IOPARST;
+```
+
+Reset peripheral hữu ích khi cần đưa một khối phần cứng về trạng thái reset mà không reset toàn MCU.
+
+---
+
+<a id="muc-02-08"></a>
+## 2.8. Clock của Timer
+
+Timer trên STM32F1 có một quy tắc đặc biệt.
+
+### Trường hợp APB Prescaler = 1
+
+Nếu:
+
+```text
+APB Prescaler = /1
+```
+
+thì:
+
+```text
+TIMxCLK = PCLKx
+```
+
+Ví dụ:
+
+```text
+PCLK2 = 72 MHz
+PPRE2 = /1
+
+TIM1CLK = 72 MHz
+```
+
+### Trường hợp APB Prescaler khác 1
+
+Nếu:
+
+```text
+APB Prescaler = /2, /4, /8 hoặc /16
+```
+
+thì:
+
+```text
+TIMxCLK = 2 × PCLKx
+```
+
+Ví dụ:
+
+```text
+HCLK = 72 MHz
+PPRE1 = /2
+
+PCLK1 = 36 MHz
+
+TIM2CLK
+= 2 × PCLK1
+= 72 MHz
+```
+
+Quy tắc tổng quát:
+
+```text
+if APB prescaler == 1:
+    TIMxCLK = PCLKx
+else:
+    TIMxCLK = 2 × PCLKx
+```
+
+Bảng:
+
+| APB Prescaler | `PCLKx` | `TIMxCLK` |
+|---|---:|---:|
+| `/1` | `HCLK` | `PCLKx` |
+| `/2` | `HCLK/2` | `2 × PCLKx` |
+| `/4` | `HCLK/4` | `2 × PCLKx` |
+| `/8` | `HCLK/8` | `2 × PCLKx` |
+| `/16` | `HCLK/16` | `2 × PCLKx` |
+
+Đây là nguyên nhân rất phổ biến khiến phép tính Timer/PWM sai nếu chỉ lấy `PCLK1` hoặc `PCLK2` làm timer clock.
+
+---
+
+<a id="muc-02-09"></a>
+## 2.9. Clock của các Peripheral quan trọng
+
+Clock của peripheral quyết định trực tiếp các thông số thời gian.
+
+### ADC
+
+ADC nhận clock từ:
+
+```text
+PCLK2
+  ↓
+ADC Prescaler
+  ↓
+ADCCLK
+```
+
+Các lựa chọn:
+
+```text
+/2
+/4
+/6
+/8
+```
+
+Giới hạn:
+
+```text
+ADCCLK ≤ 14 MHz
+```
+
+Ví dụ:
+
+```text
+PCLK2 = 72 MHz
+ADCPRE = /6
+
+ADCCLK = 12 MHz
+```
+
+### USB
+
+USB cần:
+
+```text
+USBCLK = 48 MHz
+```
+
+Nguồn USB clock lấy từ PLL thông qua USB prescaler.
+
+Hai cách điển hình:
+
+```text
+PLLCLK = 72 MHz
+USB prescaler = /1.5
+→ USBCLK = 48 MHz
+```
+
+hoặc:
+
+```text
+PLLCLK = 48 MHz
+USB prescaler = /1
+→ USBCLK = 48 MHz
+```
+
+### SysTick
+
+SysTick có thể dùng:
+
+```text
+HCLK
+```
+
+hoặc:
+
+```text
+HCLK / 8
+```
+
+Sai cấu hình clock hệ thống có thể làm các hàm delay hoặc hệ thống thời gian dựa trên SysTick sai theo.
+
+### RTC
+
+Nguồn RTC có thể chọn:
+
+```text
+LSE
+LSI
+HSE / 128
+```
+
+LSE thường phù hợp khi cần thời gian chính xác và duy trì bằng `VBAT`.
+
+### IWDG
+
+IWDG dùng:
+
+```text
+LSI
+```
+
+Khi IWDG đã được khởi động, LSI được giữ hoạt động để cung cấp clock cho watchdog.
+
+### UART / SPI / I2C / Timer
+
+Các peripheral này phụ thuộc vào clock bus tương ứng và bộ chia nội bộ của chính peripheral.
+
+Có thể hình dung:
+
+```text
+Bus Clock
+    ↓
+Peripheral divider / baud generator / prescaler
+    ↓
+Tốc độ hoạt động thực tế
+```
+
+Do đó nếu xác định sai `PCLK1`, `PCLK2` hoặc `TIMxCLK`, các thông số sau có thể sai:
+
+```text
+UART baud rate
+SPI SCK
+I2C timing
+Timer period
+PWM frequency
+delay
+ADC timing
+```
+
+---
+
+<a id="muc-02-10"></a>
+## 2.10. Quy trình cấu hình Clock
+
+Ví dụ mục tiêu:
+
+```text
+HSE = 8 MHz
+SYSCLK = 72 MHz
+HCLK = 72 MHz
+PCLK1 = 36 MHz
+PCLK2 = 72 MHz
+ADCCLK = 12 MHz
+```
+
+### Bước 1 — MCU bắt đầu bằng HSI
+
+Sau reset:
+
+```text
+SYSCLK = HSI = 8 MHz
+```
+
+Đây là trạng thái an toàn để bắt đầu cấu hình hệ thống clock.
+
+### Bước 2 — Cấu hình Flash latency
+
+Khi tăng SYSCLK, Flash phải có số wait state phù hợp.
+
+Đối với STM32F10xxx:
+
+```text
+0 < SYSCLK ≤ 24 MHz
+→ 0 wait state
+
+24 MHz < SYSCLK ≤ 48 MHz
+→ 1 wait state
+
+48 MHz < SYSCLK ≤ 72 MHz
+→ 2 wait states
+```
+
+Với 72 MHz:
+
+```text
+FLASH_ACR.LATENCY = 2 wait states
+```
+
+Prefetch buffer nên được giữ bật khi chạy tần số cao và phải được giữ bật nếu dùng AHB prescaler khác `/1`.
+
+### Bước 3 — Bật HSE
+
+```text
+RCC_CR.HSEON = 1
+```
+
+Chờ:
+
+```text
+RCC_CR.HSERDY = 1
+```
+
+Không nên sử dụng HSE làm nguồn hệ thống trước khi nó ổn định.
+
+### Bước 4 — Cấu hình Prescaler
+
+Với ví dụ 72 MHz:
+
+```text
+HPRE  = /1
+PPRE1 = /2
+PPRE2 = /1
+ADCPRE = /6
+```
+
+Kết quả dự kiến:
+
+```text
+HCLK  = 72 MHz
+PCLK1 = 36 MHz
+PCLK2 = 72 MHz
+ADCCLK = 12 MHz
+```
+
+### Bước 5 — Cấu hình PLL
+
+Khi PLL đang tắt:
+
+```text
+PLLSRC   = HSE
+PLLXTPRE = HSE không chia
+PLLMUL   = ×9
+```
+
+Ta có:
+
+```text
+PLLCLK = 8 × 9
+       = 72 MHz
+```
+
+### Bước 6 — Bật PLL
+
+```text
+RCC_CR.PLLON = 1
+```
+
+Chờ:
+
+```text
+RCC_CR.PLLRDY = 1
+```
+
+### Bước 7 — Chuyển SYSCLK sang PLL
+
+Thiết lập:
+
+```text
+RCC_CFGR.SW = PLL
+```
+
+Sau đó kiểm tra:
+
+```text
+RCC_CFGR.SWS = PLL
+```
+
+Chỉ khi `SWS` xác nhận PLL đang được dùng thì có thể coi quá trình chuyển SYSCLK hoàn tất.
+
+### Bước 8 — Bật clock cho peripheral cần dùng
+
+Ví dụ:
+
+```text
+GPIOA
+→ RCC_APB2ENR.IOPAEN
+
+USART2
+→ RCC_APB1ENR.USART2EN
+
+DMA1
+→ RCC_AHBENR.DMA1EN
+```
+
+### Bước 9 — Kiểm tra Clock Tree thực tế
+
+Sau cấu hình, phải tự tính lại:
+
+```text
+SYSCLK
+HCLK
+PCLK1
+PCLK2
+TIMxCLK
+ADCCLK
+USBCLK nếu dùng
+```
+
+Không nên chỉ nhìn vào giá trị `SYSCLK`.
+
+### Luồng hoàn chỉnh
+
+```text
+Reset
+  ↓
+HSI 8 MHz
+  ↓
+cấu hình Flash latency
+  ↓
+bật HSE
+  ↓
+chờ HSERDY
+  ↓
+cấu hình AHB/APB/ADC prescaler
+  ↓
+cấu hình PLL khi PLL đang OFF
+  ↓
+bật PLL
+  ↓
+chờ PLLRDY
+  ↓
+SW = PLL
+  ↓
+chờ SWS = PLL
+  ↓
+bật clock cho peripheral
+```
+
+### Các lỗi thường gặp
+
+#### Không chờ `HSERDY`
+
+```text
+HSEON = 1
+→ chuyển nguồn ngay
+```
+
+Cách đúng:
+
+```text
+HSEON = 1
+→ chờ HSERDY
+→ mới sử dụng HSE
+```
+
+#### Không chờ `PLLRDY`
+
+```text
+PLLON = 1
+→ chọn PLL ngay
+```
+
+Cách đúng:
+
+```text
+PLLON = 1
+→ chờ PLLRDY
+→ mới chọn PLL
+```
+
+#### Cấu hình PLL khi PLL đang chạy
+
+Các tham số như:
+
+```text
+PLLSRC
+PLLXTPRE
+PLLMUL
+```
+
+phải được cấu hình khi PLL đang tắt.
+
+#### Vượt giới hạn APB1
+
+Sai:
+
+```text
+HCLK = 72 MHz
+PPRE1 = /1
+
+PCLK1 = 72 MHz
+```
+
+Vì:
+
+```text
+PCLK1 tối đa = 36 MHz
+```
+
+Cách phù hợp:
+
+```text
+PPRE1 = /2
+→ PCLK1 = 36 MHz
+```
+
+#### Tính sai Timer clock
+
+Sai:
+
+```text
+PCLK1 = 36 MHz
+→ TIM2CLK = 36 MHz
+```
+
+Nếu `PPRE1 != /1`:
+
+```text
+TIM2CLK = 2 × PCLK1
+        = 72 MHz
+```
+
+#### Quên bật Peripheral Clock
+
+Ví dụ:
+
+```text
+cấu hình GPIOA
+nhưng IOPAEN = 0
+```
+
+Peripheral có thể không hoạt động đúng vì clock của nó chưa được cấp.
+
+#### Tăng SYSCLK nhưng không cấu hình Flash latency phù hợp
+
+Khi SYSCLK tăng, Flash cần số wait state tương ứng.
+
+Với 72 MHz:
+
+```text
+2 wait states
+```
+
+phải được thiết lập trước khi chạy ở tần số đó.
+
+---
+
+### Clock Security System — CSS
+
+CSS dùng để phát hiện lỗi HSE.
+
+Nếu HSE hỏng khi đang được dùng trực tiếp hoặc gián tiếp làm SYSCLK:
+
+```text
+HSE failure
+    ↓
+CSS phát hiện lỗi
+    ↓
+chuyển SYSCLK sang HSI
+    ↓
+HSE bị tắt
+    ↓
+PLL cũng bị tắt nếu đang dùng HSE làm đầu vào
+    ↓
+NMI được tạo
+```
+
+CSS phù hợp với hệ thống cần xử lý tình huống mất external clock.
+
+---
+
+### MCO — Microcontroller Clock Output
+
+MCO cho phép đưa một clock bên trong MCU ra chân ngoài để đo bằng oscilloscope hoặc logic analyzer.
+
+Có thể chọn:
+
+```text
+SYSCLK
+HSI
+HSE
+PLLCLK / 2
+```
+
+MCO hữu ích khi kiểm tra:
+
+```text
+Clock source có hoạt động không?
+Tần số thực tế có đúng không?
+PLL có tạo đúng clock không?
+```
+
+---
+
+<a id="muc-02-11"></a>
+## 2.11. Câu hỏi tự kiểm tra
+
+1. RCC viết tắt của gì?
+2. RCC có hai nhóm chức năng chính nào?
+3. HSI của STM32F10xxx trong phạm vi này có tần số bao nhiêu?
+4. HSI có thể đi vào PLL theo đường nào?
+5. HSE crystal nằm trong khoảng tần số nào?
+6. HSE và HSI khác nhau về phần cứng và độ chính xác như thế nào?
+7. LSI thường được dùng cho peripheral nào?
+8. LSE có tần số bao nhiêu và thường dùng cho gì?
+9. Ba nguồn nào có thể được chọn làm SYSCLK?
+10. Sau reset, nguồn nào được chọn làm SYSCLK?
+11. `SYSCLK`, `HCLK`, `PCLK1`, `PCLK2` khác nhau như thế nào?
+12. `HCLK` được tính từ `SYSCLK` bằng gì?
+13. `PCLK1` tối đa bao nhiêu MHz?
+14. `PCLK2` tối đa bao nhiêu MHz?
+15. PLL của STM32F1 nhận những nguồn đầu vào nào?
+16. Vì sao phải cấu hình PLL trước khi bật `PLLON`?
+17. `PLLRDY` dùng để kiểm tra điều gì?
+18. `SW` và `SWS` trong `RCC_CFGR` khác nhau như thế nào?
+19. Tại sao phải chờ `HSERDY` trước khi dùng HSE?
+20. Với HSE 8 MHz và PLL ×9, `PLLCLK` bằng bao nhiêu?
+21. Nếu `SYSCLK = 72 MHz` và `HPRE = /1`, `HCLK` bằng bao nhiêu?
+22. Nếu `HCLK = 72 MHz` và `PPRE1 = /2`, `PCLK1` bằng bao nhiêu?
+23. Nếu `PCLK1 = 36 MHz` và APB1 prescaler khác `/1`, `TIM2CLK` bằng bao nhiêu?
+24. Nếu `PCLK2 = 72 MHz` và `ADCPRE = /6`, `ADCCLK` bằng bao nhiêu?
+25. Vì sao GPIOA phải được bật clock trước khi cấu hình?
+26. GPIO trên STM32F1 nằm trên bus nào?
+27. `RCC_APB2ENR` và `RCC_APB2RSTR` khác nhau thế nào?
+28. USB cần clock bao nhiêu MHz?
+29. SysTick có thể dùng những nguồn clock nào trong Clock Tree?
+30. CSS làm gì khi HSE bị lỗi?
+31. MCO có tác dụng gì?
+32. Với `SYSCLK = 72 MHz`, Flash cần bao nhiêu wait state?
+33. Hãy mô tả đầy đủ đường đi `HSE → PLL → SYSCLK → HCLK → PCLK1/PCLK2`.
+34. Hãy mô tả trình tự cấu hình hệ thống từ HSI sau reset sang PLL 72 MHz.
+35. Vì sao không thể chỉ nhìn `PCLK1` để xác định Timer clock?
+
+---
+
+## 2.12. Tóm tắt
+
+```text
+Clock sources
+├── HSI = 8 MHz
+├── HSE = external high-speed
+├── LSI ≈ 40 kHz
+└── LSE = 32.768 kHz
+```
+
+Clock hệ thống:
+
+```text
+HSI / HSE / PLL
+       ↓
+     SYSCLK
+       ↓
+  AHB Prescaler
+       ↓
+      HCLK
+       ↓
+ ┌─────┴─────┐
+ ↓           ↓
+APB1        APB2
+ ↓           ↓
+PCLK1       PCLK2
+```
+
+Giới hạn chính:
+
+```text
+HCLK  ≤ 72 MHz
+PCLK2 ≤ 72 MHz
+PCLK1 ≤ 36 MHz
+ADCCLK ≤ 14 MHz
+```
+
+Timer:
+
+```text
+APB prescaler = /1
+→ TIMxCLK = PCLKx
+
+APB prescaler != /1
+→ TIMxCLK = 2 × PCLKx
+```
+
+Ví dụ 72 MHz:
+
+```text
+HSE 8 MHz
+  ↓ PLL ×9
+SYSCLK 72 MHz
+  ↓ HPRE /1
+HCLK 72 MHz
+  ├── PPRE1 /2 → PCLK1 36 MHz → TIMxCLK 72 MHz
+  └── PPRE2 /1 → PCLK2 72 MHz → TIMxCLK 72 MHz
+```
+
+Trình tự cấu hình:
+
+```text
+HSI sau reset
+  ↓
+Flash latency
+  ↓
+HSEON → HSERDY
+  ↓
+Prescaler
+  ↓
+PLL config
+  ↓
+PLLON → PLLRDY
+  ↓
+SW = PLL
+  ↓
+SWS = PLL
+  ↓
+Peripheral Clock Enable
+```
+
+**Điểm cần nhớ:**
+
+> **RCC không chỉ tạo clock cho CPU mà còn quyết định clock của toàn bộ bus và peripheral. Khi phân tích một peripheral, luôn xác định nguồn clock, prescaler của bus, clock thực tế của peripheral và bit Clock Enable tương ứng.**
 
 [↑ Về mục lục](#muc-luc)
