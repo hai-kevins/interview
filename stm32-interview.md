@@ -17,8 +17,8 @@
    - 1.7. Memory Map
    - 1.8. Flash và SRAM
    - 1.9. Stack cơ bản trên Cortex-M
-   - **1.10. Startup Code** ← đang triển khai
-   - 1.11. Linker Script và các section
+   - 1.10. Startup Code
+   - **1.11. Linker Script và các section** ← đang triển khai
 2. **RCC + Clock**
 3. **GPIO**
 4. **Interrupt + NVIC + EXTI**
@@ -6914,5 +6914,847 @@ không có SP / Reset_Handler
 **Ý quan trọng nhất:**
 
 > **Vector Table phải tồn tại và truy cập được ngay khi reset, vì CPU cần nó để lấy initial Stack Pointer và địa chỉ Reset_Handler. `.data` trong SRAM chỉ được tạo sau đó bởi Reset_Handler, nên Vector Table không thể phụ thuộc vào `.data`.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-11"></a>
+## 1.11. Linker Script và các section
+
+### 1.11.1. Từ file `.c` đến object file `.o`
+
+Theo hình tài liệu:
+
+```text
+main.c
+  ↓
+main.o
+
+led.c
+  ↓
+led.o
+```
+
+Mỗi file nguồn sau khi biên dịch tạo ra một **object file** riêng.
+
+Ví dụ:
+
+```text
+main.c → main.o
+led.c  → led.o
+```
+
+Mỗi object file có thể chứa nhiều section khác nhau, ví dụ:
+
+```text
+.text
+.data
+.bss
+.rodata
+```
+
+Có thể hình dung:
+
+```text
+main.o
+├── .text
+├── .data
+├── .bss
+└── .rodata
+
+led.o
+├── .text
+├── .data
+├── .bss
+└── .rodata
+```
+
+---
+
+### 1.11.2. Section là gì?
+
+Theo tài liệu hình đầu tiên, một object file ở định dạng ELF có thể chứa nhiều loại section:
+
+```text
+.text
+.data
+.bss
+.rodata
+User defined sections
+Some special sections
+```
+
+Mỗi section chứa một loại nội dung khác nhau.
+
+Sơ đồ từ tài liệu:
+
+```text
+main.o
+│
+├── .text
+├── .data
+├── .bss
+├── .rodata
+├── User defined sections
+└── Some special sections
+```
+
+---
+
+### 1.11.3. `.text`
+
+Theo hình:
+
+```text
+.text
+→ chứa code / instructions
+```
+
+Có thể nhớ:
+
+```text
+.text
+→ mã máy của chương trình
+```
+
+Ví dụ:
+
+```c
+void led_on(void)
+{
+    // code
+}
+```
+
+sau khi biên dịch, phần instruction tương ứng sẽ được đặt trong section `.text` của object file.
+
+---
+
+### 1.11.4. `.data`
+
+Theo hình:
+
+```text
+.data
+→ chứa initialized data
+```
+
+Có thể hiểu:
+
+```text
+.data
+→ dữ liệu đã có giá trị khởi tạo
+```
+
+Ví dụ khái niệm:
+
+```c
+int counter = 10;
+```
+
+Phần trước về Flash/SRAM đã cho thấy:
+
+```text
+.data initial values
+→ lưu trong Flash
+
+.data runtime
+→ được copy sang SRAM khi startup
+```
+
+Ở mục Linker Script này, trọng tâm là:
+
+> **Object file nào cũng có thể đóng góp một phần `.data`, và linker sẽ ghép các phần đó lại.**
+
+---
+
+### 1.11.5. `.bss`
+
+Theo hình:
+
+```text
+.bss
+→ contains data which are uninitialized
+```
+
+Tức là:
+
+```text
+.bss
+→ dữ liệu chưa khởi tạo
+```
+
+Ví dụ:
+
+```c
+int counter;
+static int state;
+```
+
+Khi build nhiều object file:
+
+```text
+main.o  → có thể có .bss
+led.o   → có thể có .bss
+```
+
+và linker sẽ ghép các phần `.bss` phù hợp vào section `.bss` cuối cùng.
+
+---
+
+### 1.11.6. `.rodata`
+
+Theo hình:
+
+```text
+.rodata
+→ contains read-only data
+```
+
+Có thể nhớ:
+
+```text
+.rodata
+→ dữ liệu chỉ đọc
+```
+
+Phần Flash/SRAM trước đó đã liên hệ `.rodata` với Flash vì dữ liệu này không cần thay đổi trong thời gian chạy.
+
+---
+
+### 1.11.7. User-defined sections
+
+Hình đầu tiên còn có:
+
+```text
+User defined sections
+```
+
+và mô tả:
+
+> chứa data/code mà lập trình viên yêu cầu đưa vào section do người dùng tự định nghĩa.
+
+Điều này có nghĩa về mặt khái niệm:
+
+```text
+Programmer
+   ↓
+yêu cầu một số code/data
+được đặt vào section riêng
+   ↓
+User-defined section
+```
+
+Trong phạm vi nguồn hiện tại, tài liệu chưa chỉ ra cú pháp cụ thể để khai báo section tự định nghĩa, nên chưa triển khai thêm.
+
+---
+
+### 1.11.8. Special sections
+
+Hình cũng đề cập:
+
+```text
+Some special sections
+```
+
+với mô tả:
+
+> compiler có thể thêm một số section đặc biệt chứa dữ liệu đặc biệt.
+
+Nguồn hiện tại không liệt kê chi tiết tên từng special section, nên ở đây chỉ cần nhận diện rằng:
+
+```text
+ELF object
+→ ngoài các section quen thuộc
+  còn có thể chứa special sections
+```
+
+---
+
+### 1.11.9. Linker làm gì?
+
+Hình thứ hai mô tả:
+
+> Linker dùng để merge các section cùng loại của nhiều object file và resolve các undefined symbol.
+
+Có thể hình dung:
+
+```text
+main.o
+├── .text
+├── .data
+├── .bss
+└── .rodata
+
+led.o
+├── .text
+├── .data
+├── .bss
+└── .rodata
+
+        ↓ linker
+
+final.elf
+├── .text
+├── .data
+├── .bss
+└── .rodata
+```
+
+Hai nhiệm vụ chính theo hình:
+
+```text
+1. Merge similar sections
+2. Resolve undefined symbols
+```
+
+---
+
+### 1.11.10. Merge các section giống nhau
+
+Theo hình thứ ba:
+
+```text
+.text
+← .text(main.o)
+← .text(led.o)
+
+.data
+← .data(main.o)
+← .data(led.o)
+
+.bss
+← các phần .bss tương ứng
+
+.rodata
+← .rodata(main.o)
+← .rodata(led.o)
+```
+
+Có thể hiểu:
+
+```text
+Các input section
+từ từng object file
+
+        ↓
+
+Linker merge
+
+        ↓
+
+Output section
+trong final ELF
+```
+
+Ví dụ:
+
+```text
+.text(main.o)
++
+.text(led.o)
+        ↓
+     .text
+```
+
+---
+
+### 1.11.11. Một điểm không nhất quán trong hình nguồn
+
+Trong hình merge section, phần `.bss` được ghi:
+
+```text
+.bss(main.o), .data(led.o)
+```
+
+trong khi logic của sơ đồ và các phần còn lại đều đang mô tả việc **merge section cùng loại**.
+
+Do đó, trong tài liệu này:
+
+- Mình giữ nguyên việc ghi nhận rằng hình nguồn có dòng trên.
+- Không tự coi đó là quy tắc linker.
+- Chỉ rút ra ý được hỗ trợ nhất quán bởi toàn bộ hình:
+
+```text
+Linker merge các section cùng loại
+từ nhiều object file
+```
+
+Nói cách khác, điểm cần học là:
+
+```text
+.bss từ các object
+→ được gom về output section .bss
+```
+
+nhưng dòng nhãn cụ thể trong hình có dấu hiệu không nhất quán.
+
+---
+
+### 1.11.12. Resolve undefined symbols là gì?
+
+Hình thứ hai nói linker còn có nhiệm vụ:
+
+```text
+resolve all undefined symbols
+of different object files
+```
+
+Có thể hiểu ở mức khái niệm:
+
+```text
+main.o
+→ gọi một symbol
+→ nhưng chưa có phần định nghĩa trong main.o
+
+led.o
+→ chứa định nghĩa symbol đó
+
+linker
+→ nối hai phần lại
+```
+
+Ví dụ:
+
+```c
+// main.c
+void led_on(void);
+
+int main(void)
+{
+    led_on();
+}
+```
+
+```c
+// led.c
+void led_on(void)
+{
+}
+```
+
+Sau khi biên dịch:
+
+```text
+main.o
+→ biết có symbol led_on
+→ chưa có body trong main.o
+
+led.o
+→ chứa định nghĩa led_on
+```
+
+Linker:
+
+```text
+main.o + led.o
+        ↓
+resolve led_on
+```
+
+---
+
+### 1.11.13. Locator làm gì?
+
+Hình thứ hai dùng thuật ngữ:
+
+```text
+Linker and Locator
+```
+
+và mô tả:
+
+> Locator là một phần của linker và dùng linker script để hiểu bạn muốn merge các section như thế nào và gán địa chỉ nào cho từng section.
+
+Có thể tóm tắt:
+
+```text
+Linker
+→ ghép section
+→ resolve symbol
+
+Locator
+→ dựa vào linker script
+→ gán địa chỉ cho section
+```
+
+---
+
+### 1.11.14. Linker Script là gì?
+
+Theo nội dung hình:
+
+```text
+Linker Script
+→ mô tả cách merge các section
+→ mô tả địa chỉ được gán cho các section
+```
+
+Có thể hiểu:
+
+> **Linker Script là tài liệu cấu hình cho linker/locator biết các section cuối cùng phải được bố trí ở đâu trong không gian bộ nhớ.**
+
+Sơ đồ:
+
+```text
+Object files
+   ↓
+Linker
+   ↓
+Linker Script
+   ↓
+Merge sections
++
+Address relocation
+   ↓
+final.elf
+```
+
+---
+
+### 1.11.15. Address Relocation trong hình
+
+Hình thứ ba ghi:
+
+```text
+Merging and address relocation
+```
+
+Điều này cho thấy sau khi ghép section, linker/locator còn phải xử lý địa chỉ.
+
+Có thể hiểu ở mức khái niệm:
+
+```text
+.text
+.data
+.bss
+.rodata
+```
+
+không chỉ cần được ghép lại mà còn phải được đặt vào địa chỉ thích hợp trong chương trình cuối.
+
+Ví dụ khái niệm:
+
+```text
+.text
+→ vùng code
+
+.data / .bss
+→ vùng data
+
+.rodata
+→ vùng read-only
+```
+
+Việc section cụ thể nằm ở Flash hay SRAM và tại địa chỉ nào được quyết định bởi cách bố trí trong linker script.
+
+---
+
+### 1.11.16. final ELF
+
+Hình thứ ba cho kết quả:
+
+```text
+final.elf
+```
+
+Đây là executable sau khi linker/locator thực hiện:
+
+```text
+merge
++
+symbol resolution
++
+address relocation
+```
+
+Sơ đồ tổng thể:
+
+```text
+main.c
+  ↓
+main.o
+  ┐
+  │
+led.c
+  ↓
+led.o
+  │
+  ┘
+   ↓
+Linker + Locator
+   ↓
+Linker Script
+   ↓
+final.elf
+```
+
+---
+
+### 1.11.17. Liên hệ với Build Process
+
+Có thể nối mục này với kiến thức C trước đó:
+
+```text
+Source
+  ↓ Compile
+Object files
+  ↓ Link
+Executable / ELF
+```
+
+Ở đây phần Link được mở rộng thành:
+
+```text
+Object files
+   ↓
+merge sections
+   ↓
+resolve symbols
+   ↓
+assign addresses
+   ↓
+final ELF
+```
+
+---
+
+### 1.11.18. Liên hệ với Flash và SRAM
+
+Phần **1.8 Flash và SRAM** đã cho thấy:
+
+```text
+Flash
+├── Vector Table
+├── .text
+├── .rodata
+└── initial values của .data
+
+SRAM
+├── .data runtime
+├── .bss
+├── Heap
+└── Stack
+```
+
+Linker Script là nơi giúp mô tả cách các section cuối cùng được bố trí vào các vùng bộ nhớ đó.
+
+Có thể hình dung:
+
+```text
+.text
+.rodata
+        ↓
+Linker Script
+        ↓
+Flash region
+
+.data
+.bss
+        ↓
+Linker Script
+        ↓
+SRAM region
+```
+
+Riêng `.data` có liên hệ kép:
+
+```text
+Load image
+→ giá trị khởi tạo nằm trong Flash
+
+Runtime
+→ được copy sang SRAM
+```
+
+Chi tiết này đã được triển khai ở mục Flash/SRAM.
+
+---
+
+### 1.11.19. Liên hệ với Startup Code
+
+Startup Code cần biết các boundary của section để thực hiện công việc như:
+
+```text
+copy .data
+Flash → SRAM
+```
+
+và:
+
+```text
+initialize .bss
+```
+
+Trong hình Flash/SRAM trước đó đã xuất hiện các symbol:
+
+```text
+_etext
+_sdata
+_edata
+```
+
+Mục Linker Script hiện tại giải thích được nền tảng:
+
+```text
+Linker Script
+→ quyết định vị trí section
+→ từ đó linker có thể tạo các boundary/symbol liên quan
+```
+
+Nguồn hình hiện tại chưa mô tả cú pháp cụ thể để khai báo `_sdata`, `_edata`, nên chưa đi sâu hơn.
+
+---
+
+### 1.11.20. Sơ đồ tổng hợp
+
+```text
+main.c                    led.c
+  │                         │
+  ↓                         ↓
+main.o                    led.o
+  │                         │
+  ├── .text                 ├── .text
+  ├── .data                 ├── .data
+  ├── .bss                  ├── .bss
+  └── .rodata               └── .rodata
+        \                   /
+         \                 /
+          \               /
+           ↓             ↓
+              Linker
+                │
+                ├── merge similar sections
+                ├── resolve symbols
+                │
+                ↓
+             Locator
+                │
+                └── dùng Linker Script
+                    để gán địa chỉ
+                ↓
+             final.elf
+                │
+                ├── .text
+                ├── .data
+                ├── .bss
+                └── .rodata
+```
+
+---
+
+### 1.11.21. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Linker làm gì?”**, có thể trả lời:
+
+> **Linker ghép các section cùng loại từ nhiều object file, resolve các undefined symbol và tạo chương trình cuối. Trong tài liệu này locator dùng linker script để quyết định cách merge và địa chỉ của các section.**
+
+Nếu hỏi **“Linker Script dùng để làm gì?”**:
+
+> **Linker Script mô tả cách bố trí các section và gán địa chỉ cho chúng trong bộ nhớ. Nó giúp linker/locator biết `.text`, `.data`, `.bss`, `.rodata` và các section khác phải được đặt ở đâu.**
+
+Nếu hỏi **“Mỗi file `.o` có những section nào?”**:
+
+> **Theo hình, một object file ELF có thể có `.text`, `.data`, `.bss`, `.rodata`, cùng user-defined sections và special sections.**
+
+Nếu hỏi **“`.text`, `.data`, `.bss`, `.rodata` chứa gì?”**:
+
+> **Theo tài liệu: `.text` chứa code/instruction, `.data` chứa initialized data, `.bss` chứa uninitialized data, còn `.rodata` chứa read-only data.**
+
+Nếu hỏi **“final ELF được tạo như thế nào?”**:
+
+> **Các object file được đưa vào linker; linker merge các section cùng loại, resolve symbol, locator dùng linker script để gán địa chỉ và kết quả là final ELF.**
+
+---
+
+### 1.11.22. Câu hỏi phỏng vấn tự kiểm tra
+
+1. File `.c` sau khi biên dịch tạo ra file gì?
+2. Một object file ELF có thể chứa những section nào theo hình?
+3. `.text` chứa gì?
+4. `.data` chứa gì?
+5. `.bss` chứa gì?
+6. `.rodata` chứa gì?
+7. User-defined section dùng để làm gì theo nguồn?
+8. Special section là gì ở mức khái niệm?
+9. Linker có nhiệm vụ chính gì?
+10. Merge similar sections nghĩa là gì?
+11. Undefined symbol là gì ở mức khái niệm?
+12. Linker resolve symbol giữa các object file như thế nào?
+13. Locator là gì theo tài liệu?
+14. Locator dùng gì để biết cách bố trí section?
+15. Linker Script dùng để làm gì?
+16. Address relocation nghĩa là gì ở mức khái niệm?
+17. final ELF là gì?
+18. `.text(main.o)` và `.text(led.o)` cuối cùng được xử lý thế nào?
+19. Linker Script liên hệ thế nào với Flash và SRAM?
+20. Linker Script liên hệ thế nào với Startup Code?
+21. Vì sao boundary symbol như `_sdata`, `_edata` cần thông tin từ linker?
+22. Hãy mô tả luồng `main.c + led.c → object files → linker → final.elf`.
+23. Hình nguồn có điểm không nhất quán nào ở dòng `.bss`?
+
+---
+
+### 1.11.23. Tóm tắt
+
+```text
+Source files
+main.c
+led.c
+   ↓
+Compile
+   ↓
+Object files
+main.o
+led.o
+   ↓
+mỗi object có:
+.text
+.data
+.bss
+.rodata
+...
+```
+
+Linker:
+
+```text
+merge similar sections
++
+resolve undefined symbols
+```
+
+Locator:
+
+```text
+dùng Linker Script
+→ quyết định cách bố trí
+→ gán địa chỉ
+```
+
+Kết quả:
+
+```text
+final.elf
+├── .text
+├── .data
+├── .bss
+├── .rodata
+└── ...
+```
+
+Liên hệ bộ nhớ:
+
+```text
+Linker Script
+→ quyết định section nằm ở đâu
+→ Flash / SRAM
+```
+
+**Ý quan trọng nhất:**
+
+> **Mỗi object file có các section riêng như `.text`, `.data`, `.bss`, `.rodata`. Linker ghép các section tương ứng và resolve symbol; locator dùng linker script để gán địa chỉ cho các section, từ đó tạo ra file ELF cuối cùng có bố cục bộ nhớ xác định.**
 
 [↑ Về mục lục](#muc-luc)
