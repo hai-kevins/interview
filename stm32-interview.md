@@ -8,224 +8,224 @@
 ## Mục lục
 
 1. **STM32 architecture / memory map**
-   - 1.1. Processor Core vs Processor vs Microcontroller
-   - 1.2. Operation Modes
-   - 1.3. Access Level
-   - 1.4. Core Registers
-   - 1.5. Reset Sequence
-   - 1.6. Bus Architecture
-   - 1.7. Memory Map
-   - 1.8. Flash và SRAM
-   - 1.9. Stack cơ bản trên Cortex-M
-   - 1.10. Startup Code
-   - 1.11. Linker Script và các section
+    - 1.1. Processor Core vs Processor vs Microcontroller
+    - 1.2. Operation Modes
+    - 1.3. Access Level
+    - 1.4. Core Registers
+    - 1.5. Reset Sequence
+    - 1.6. Bus Architecture
+    - 1.7. Memory Map
+    - 1.8. Flash và SRAM
+    - 1.9. Stack cơ bản trên Cortex-M
+    - 1.10. Startup Code
+    - 1.11. Linker Script và các section
 2. **RCC + Clock**
-   - 2.1. RCC là gì?
-   - 2.2. Các nguồn Clock: HSI / HSE / LSI / LSE
-   - 2.3. Clock Tree
-   - 2.4. PLL
-   - 2.5. SYSCLK / HCLK / PCLK1 / PCLK2
-   - 2.6. Prescaler và cách tính tần số
-   - 2.7. Peripheral Clock Enable và Peripheral Reset
-   - 2.8. Clock của Timer
-   - 2.9. Clock của các Peripheral quan trọng
-   - 2.10. Quy trình cấu hình Clock
-   - 2.11. Câu hỏi tự kiểm tra
+    - 2.1. RCC là gì?
+    - 2.2. Các nguồn Clock: HSI / HSE / LSI / LSE
+    - 2.3. Clock Tree
+    - 2.4. PLL
+    - 2.5. SYSCLK / HCLK / PCLK1 / PCLK2
+    - 2.6. Prescaler và cách tính tần số
+    - 2.7. Peripheral Clock Enable và Peripheral Reset
+    - 2.8. Clock của Timer
+    - 2.9. Clock của các Peripheral quan trọng
+    - 2.10. Quy trình cấu hình Clock
+    - 2.11. Câu hỏi tự kiểm tra
 3. **GPIO**
-   - 3.1. GPIO là gì? Port và Pin
-   - 3.2. Bật Clock cho GPIO
-   - 3.3. Cấu trúc một GPIO Pin
-   - 3.4. Các chế độ Input
-   - 3.5. Các chế độ Output
-   - 3.6. Push-Pull và Open-Drain
-   - 3.7. Pull-Up / Pull-Down / Floating
-   - 3.8. Output Speed: 2 / 10 / 50 MHz
-   - 3.9. CRL / CRH và MODE / CNF
-   - 3.10. IDR / ODR
-   - 3.11. BSRR / BRR và thao tác Atomic
-   - 3.12. Alternate Function
-   - 3.13. AFIO và Pin Remapping
-   - 3.14. Analog Mode
-   - 3.15. GPIO cho UART / SPI / I2C / Timer / ADC
-   - 3.16. GPIO Locking
-   - 3.17. Quy trình cấu hình GPIO
-   - 3.18. Câu hỏi tự kiểm tra
+    - 3.1. GPIO là gì? Port và Pin
+    - 3.2. Bật Clock cho GPIO
+    - 3.3. Cấu trúc một GPIO Pin
+    - 3.4. Các chế độ Input
+    - 3.5. Các chế độ Output
+    - 3.6. Push-Pull và Open-Drain
+    - 3.7. Pull-Up / Pull-Down / Floating
+    - 3.8. Output Speed: 2 / 10 / 50 MHz
+    - 3.9. CRL / CRH và MODE / CNF
+    - 3.10. IDR / ODR
+    - 3.11. BSRR / BRR và thao tác Atomic
+    - 3.12. Alternate Function
+    - 3.13. AFIO và Pin Remapping
+    - 3.14. Analog Mode
+    - 3.15. GPIO cho UART / SPI / I2C / Timer / ADC
+    - 3.16. GPIO Locking
+    - 3.17. Quy trình cấu hình GPIO
+    - 3.18. Câu hỏi tự kiểm tra
 4. **Interrupt + NVIC + EXTI**
-   - 4.1. Interrupt là gì? Polling và Interrupt
-   - 4.2. Exception và Interrupt
-   - 4.3. Vector Table và ISR / Handler
-   - 4.4. Luồng xử lý Interrupt trên Cortex-M3
-   - 4.5. NVIC là gì?
-   - 4.6. Enable / Disable / Pending / Active
-   - 4.7. Interrupt Priority
-   - 4.8. Preemption và Nested Interrupt
-   - 4.9. Priority Grouping
-   - 4.10. EXTI là gì?
-   - 4.11. EXTI Line và GPIO Mapping
-   - 4.12. Rising Edge / Falling Edge
-   - 4.13. IMR / EMR / RTSR / FTSR / SWIER / PR
-   - 4.14. AFIO_EXTICR
-   - 4.15. GPIO → AFIO → EXTI → NVIC
-   - 4.16. Shared IRQ: EXTI5_9 và EXTI10_15
-   - 4.17. Clear Pending Flag
-   - 4.18. Quy trình cấu hình EXTI Interrupt
-   - 4.19. Quy ước thiết kế ISR
-   - 4.20. Ví dụ Button → EXTI → ISR
-   - 4.21. Câu hỏi tự kiểm tra
+    - 4.1. Interrupt là gì? Polling và Interrupt
+    - 4.2. Exception và Interrupt
+    - 4.3. Vector Table và ISR / Handler
+    - 4.4. Luồng xử lý Interrupt trên Cortex-M3
+    - 4.5. NVIC là gì?
+    - 4.6. Enable / Disable / Pending / Active
+    - 4.7. Interrupt Priority
+    - 4.8. Preemption và Nested Interrupt
+    - 4.9. Priority Grouping
+    - 4.10. EXTI là gì?
+    - 4.11. EXTI Line và GPIO Mapping
+    - 4.12. Rising Edge / Falling Edge
+    - 4.13. IMR / EMR / RTSR / FTSR / SWIER / PR
+    - 4.14. AFIO_EXTICR
+    - 4.15. GPIO → AFIO → EXTI → NVIC
+    - 4.16. Shared IRQ: EXTI5_9 và EXTI10_15
+    - 4.17. Clear Pending Flag
+    - 4.18. Quy trình cấu hình EXTI Interrupt
+    - 4.19. Quy ước thiết kế ISR
+    - 4.20. Ví dụ Button → EXTI → ISR
+    - 4.21. Câu hỏi tự kiểm tra
 5. **Timer + PWM**
-   - 5.1. Timer là gì?
-   - 5.2. Các loại Timer trên STM32F1
-   - 5.3. Timer Clock
-   - 5.4. Counter: CNT
-   - 5.5. Prescaler: PSC
-   - 5.6. Auto-Reload Register: ARR
-   - 5.7. Up / Down / Center-Aligned Counting
-   - 5.8. Update Event và Update Interrupt
-   - 5.9. Công thức tính Timer Period / Frequency
-   - 5.10. Capture/Compare Channel
-   - 5.11. Output Compare
-   - 5.12. Input Capture
-   - 5.13. PWM là gì?
-   - 5.14. PWM Frequency và Duty Cycle
-   - 5.15. PWM Mode 1 / PWM Mode 2
-   - 5.16. CCRx và Compare Match
-   - 5.17. Preload: ARPE / OCxPE
-   - 5.18. GPIO Alternate Function cho PWM
-   - 5.19. Timer Interrupt và DMA
-   - 5.20. Advanced Timer: Complementary PWM / Dead-Time / Break
-   - 5.21. Quy trình cấu hình Timer
-   - 5.22. Quy trình cấu hình PWM
-   - 5.23. Ví dụ tính PSC / ARR / CCR
-   - 5.24. Câu hỏi tự kiểm tra
+    - 5.1. Timer là gì?
+    - 5.2. Các loại Timer trên STM32F1
+    - 5.3. Timer Clock
+    - 5.4. Counter: CNT
+    - 5.5. Prescaler: PSC
+    - 5.6. Auto-Reload Register: ARR
+    - 5.7. Up / Down / Center-Aligned Counting
+    - 5.8. Update Event và Update Interrupt
+    - 5.9. Công thức tính Timer Period / Frequency
+    - 5.10. Capture/Compare Channel
+    - 5.11. Output Compare
+    - 5.12. Input Capture
+    - 5.13. PWM là gì?
+    - 5.14. PWM Frequency và Duty Cycle
+    - 5.15. PWM Mode 1 / PWM Mode 2
+    - 5.16. CCRx và Compare Match
+    - 5.17. Preload: ARPE / OCxPE
+    - 5.18. GPIO Alternate Function cho PWM
+    - 5.19. Timer Interrupt và DMA
+    - 5.20. Advanced Timer: Complementary PWM / Dead-Time / Break
+    - 5.21. Quy trình cấu hình Timer
+    - 5.22. Quy trình cấu hình PWM
+    - 5.23. Ví dụ tính PSC / ARR / CCR
+    - 5.24. Câu hỏi tự kiểm tra
 6. **UART / USART**
-   - 6.1. UART và USART là gì?
-   - 6.2. Truyền nối tiếp bất đồng bộ
-   - 6.3. UART Frame: Start / Data / Parity / Stop
-   - 6.4. 8N1 và các cấu hình Frame
-   - 6.5. Baud Rate
-   - 6.6. USART Clock và USART_BRR
-   - 6.7. TX / RX và GPIO
-   - 6.8. USART_DR và cơ chế truyền dữ liệu
-   - 6.9. TXE và TC
-   - 6.10. RXNE và quá trình nhận dữ liệu
-   - 6.11. Error Flags: ORE / FE / NE / PE
-   - 6.12. USART Interrupt
-   - 6.13. IDLE Line
-   - 6.14. UART bằng Polling
-   - 6.15. UART bằng Interrupt
-   - 6.16. UART bằng DMA
-   - 6.17. Hardware Flow Control: CTS / RTS
-   - 6.18. Half-Duplex và Synchronous Mode
-   - 6.19. Quy trình cấu hình UART
-   - 6.20. Ví dụ USART1 115200 8N1
-   - 6.21. Câu hỏi tự kiểm tra
+    - 6.1. UART và USART là gì?
+    - 6.2. Truyền nối tiếp bất đồng bộ
+    - 6.3. UART Frame: Start / Data / Parity / Stop
+    - 6.4. 8N1 và các cấu hình Frame
+    - 6.5. Baud Rate
+    - 6.6. USART Clock và USART_BRR
+    - 6.7. TX / RX và GPIO
+    - 6.8. USART_DR và cơ chế truyền dữ liệu
+    - 6.9. TXE và TC
+    - 6.10. RXNE và quá trình nhận dữ liệu
+    - 6.11. Error Flags: ORE / FE / NE / PE
+    - 6.12. USART Interrupt
+    - 6.13. IDLE Line
+    - 6.14. UART bằng Polling
+    - 6.15. UART bằng Interrupt
+    - 6.16. UART bằng DMA
+    - 6.17. Hardware Flow Control: CTS / RTS
+    - 6.18. Half-Duplex và Synchronous Mode
+    - 6.19. Quy trình cấu hình UART
+    - 6.20. Ví dụ USART1 115200 8N1
+    - 6.21. Câu hỏi tự kiểm tra
 7. **SPI + I2C**
-   - 7.1. Tổng quan SPI và I2C
-   - 7.2. SPI là gì?
-   - 7.3. SCK / MOSI / MISO / NSS
-   - 7.4. Master / Slave và Full-Duplex
-   - 7.5. SPI Clock và Baud Rate Prescaler
-   - 7.6. CPOL / CPHA và 4 SPI Mode
-   - 7.7. Data Frame: 8/16-bit, MSB/LSB First
-   - 7.8. NSS Hardware / Software
-   - 7.9. SPI_DR và cơ chế Shift Register
-   - 7.10. TXE / RXNE / BSY
-   - 7.11. OVR / MODF / CRCERR
-   - 7.12. SPI bằng Polling / Interrupt / DMA
-   - 7.13. GPIO cho SPI
-   - 7.14. Quy trình cấu hình SPI Master
-   - 7.15. Ví dụ một SPI Transaction
-   - 7.16. I2C là gì?
-   - 7.17. SDA / SCL và Open-Drain
-   - 7.18. START / STOP / Address / R/W / ACK / NACK
-   - 7.19. 7-bit / 10-bit Addressing
-   - 7.20. Master / Slave / Transmitter / Receiver
-   - 7.21. Standard Mode / Fast Mode
-   - 7.22. I2C Clock: CR2.FREQ / CCR / TRISE
-   - 7.23. Các I2C Status Flag quan trọng
-   - 7.24. Clock Stretching
-   - 7.25. Arbitration và Multi-Master
-   - 7.26. Repeated START
-   - 7.27. Master Transmit / Master Receive
-   - 7.28. I2C Interrupt / DMA
-   - 7.29. Quy trình cấu hình I2C
-   - 7.30. So sánh SPI và I2C
-   - 7.31. Câu hỏi tự kiểm tra
+    - 7.1. Tổng quan SPI và I2C
+    - 7.2. SPI là gì?
+    - 7.3. SCK / MOSI / MISO / NSS
+    - 7.4. Master / Slave và Full-Duplex
+    - 7.5. SPI Clock và Baud Rate Prescaler
+    - 7.6. CPOL / CPHA và 4 SPI Mode
+    - 7.7. Data Frame: 8/16-bit, MSB/LSB First
+    - 7.8. NSS Hardware / Software
+    - 7.9. SPI_DR và cơ chế Shift Register
+    - 7.10. TXE / RXNE / BSY
+    - 7.11. OVR / MODF / CRCERR
+    - 7.12. SPI bằng Polling / Interrupt / DMA
+    - 7.13. GPIO cho SPI
+    - 7.14. Quy trình cấu hình SPI Master
+    - 7.15. Ví dụ một SPI Transaction
+    - 7.16. I2C là gì?
+    - 7.17. SDA / SCL và Open-Drain
+    - 7.18. START / STOP / Address / R/W / ACK / NACK
+    - 7.19. 7-bit / 10-bit Addressing
+    - 7.20. Master / Slave / Transmitter / Receiver
+    - 7.21. Standard Mode / Fast Mode
+    - 7.22. I2C Clock: CR2.FREQ / CCR / TRISE
+    - 7.23. Các I2C Status Flag quan trọng
+    - 7.24. Clock Stretching
+    - 7.25. Arbitration và Multi-Master
+    - 7.26. Repeated START
+    - 7.27. Master Transmit / Master Receive
+    - 7.28. I2C Interrupt / DMA
+    - 7.29. Quy trình cấu hình I2C
+    - 7.30. So sánh SPI và I2C
+    - 7.31. Câu hỏi tự kiểm tra
 8. **ADC**
-   - 8.1. ADC là gì?
-   - 8.2. Độ phân giải 12-bit và giá trị ADC
-   - 8.3. VREF+ / VREF- / VDDA / VSSA
-   - 8.4. ADC Clock và Prescaler
-   - 8.5. ADC Channel và GPIO Analog Mode
-   - 8.6. Sampling Time
-   - 8.7. Conversion Time
-   - 8.8. Regular Group và Injected Group
-   - 8.9. Conversion Sequence và Rank
-   - 8.10. Single Conversion và Continuous Conversion
-   - 8.11. Scan Mode
-   - 8.12. Discontinuous Mode
-   - 8.13. Software Trigger và External Trigger
-   - 8.14. EOC / JEOC và ADC Data Registers
-   - 8.15. Data Alignment
-   - 8.16. ADC Calibration
-   - 8.17. Analog Watchdog
-   - 8.18. Temperature Sensor và VREFINT
-   - 8.19. ADC Interrupt
-   - 8.20. ADC + DMA
-   - 8.21. Dual ADC Mode
-   - 8.22. Quy trình cấu hình ADC
-   - 8.23. Ví dụ đọc một Analog Channel
-   - 8.24. Ví dụ Scan nhiều Channel bằng DMA
-   - 8.25. Câu hỏi tự kiểm tra
+    - 8.1. ADC là gì?
+    - 8.2. Độ phân giải 12-bit và giá trị ADC
+    - 8.3. VREF+ / VREF- / VDDA / VSSA
+    - 8.4. ADC Clock và Prescaler
+    - 8.5. ADC Channel và GPIO Analog Mode
+    - 8.6. Sampling Time
+    - 8.7. Conversion Time
+    - 8.8. Regular Group và Injected Group
+    - 8.9. Conversion Sequence và Rank
+    - 8.10. Single Conversion và Continuous Conversion
+    - 8.11. Scan Mode
+    - 8.12. Discontinuous Mode
+    - 8.13. Software Trigger và External Trigger
+    - 8.14. EOC / JEOC và ADC Data Registers
+    - 8.15. Data Alignment
+    - 8.16. ADC Calibration
+    - 8.17. Analog Watchdog
+    - 8.18. Temperature Sensor và VREFINT
+    - 8.19. ADC Interrupt
+    - 8.20. ADC + DMA
+    - 8.21. Dual ADC Mode
+    - 8.22. Quy trình cấu hình ADC
+    - 8.23. Ví dụ đọc một Analog Channel
+    - 8.24. Ví dụ Scan nhiều Channel bằng DMA
+    - 8.25. Câu hỏi tự kiểm tra
 9. **DMA**
-   - 9.1. DMA là gì?
-   - 9.2. CPU Transfer và DMA Transfer
-   - 9.3. DMA1 / DMA2 và DMA Channel
-   - 9.4. DMA Request và Channel Mapping
-   - 9.5. Peripheral-to-Memory / Memory-to-Peripheral / Memory-to-Memory
-   - 9.6. DMA_CCRx
-   - 9.7. DMA_CNDTRx
-   - 9.8. DMA_CPARx / DMA_CMARx
-   - 9.9. Data Width: PSIZE / MSIZE
-   - 9.10. Address Increment: PINC / MINC
-   - 9.11. Circular Mode
-   - 9.12. DMA Priority
-   - 9.13. Transfer Complete / Half Transfer / Transfer Error
-   - 9.14. DMA_ISR / DMA_IFCR
-   - 9.15. DMA Interrupt
-   - 9.16. DMA + ADC
-   - 9.17. DMA + UART
-   - 9.18. DMA + SPI
-   - 9.19. DMA + I2C
-   - 9.20. DMA + Timer
-   - 9.21. Quy trình cấu hình DMA
-   - 9.22. Ví dụ Peripheral → Memory
-   - 9.23. Ví dụ Memory → Peripheral
-   - 9.24. Circular Buffer và Half-Transfer
-   - 9.25. Lỗi thường gặp
-   - 9.26. Câu hỏi tự kiểm tra
+    - 9.1. DMA là gì?
+    - 9.2. CPU Transfer và DMA Transfer
+    - 9.3. DMA1 / DMA2 và DMA Channel
+    - 9.4. DMA Request và Channel Mapping
+    - 9.5. Peripheral-to-Memory / Memory-to-Peripheral / Memory-to-Memory
+    - 9.6. DMA_CCRx
+    - 9.7. DMA_CNDTRx
+    - 9.8. DMA_CPARx / DMA_CMARx
+    - 9.9. Data Width: PSIZE / MSIZE
+    - 9.10. Address Increment: PINC / MINC
+    - 9.11. Circular Mode
+    - 9.12. DMA Priority
+    - 9.13. Transfer Complete / Half Transfer / Transfer Error
+    - 9.14. DMA_ISR / DMA_IFCR
+    - 9.15. DMA Interrupt
+    - 9.16. DMA + ADC
+    - 9.17. DMA + UART
+    - 9.18. DMA + SPI
+    - 9.19. DMA + I2C
+    - 9.20. DMA + Timer
+    - 9.21. Quy trình cấu hình DMA
+    - 9.22. Ví dụ Peripheral → Memory
+    - 9.23. Ví dụ Memory → Peripheral
+    - 9.24. Circular Buffer và Half-Transfer
+    - 9.25. Lỗi thường gặp
+    - 9.26. Câu hỏi tự kiểm tra
 10. **Debug bằng ST-Link**
-   - 10.1. Debug là gì? Programming và Debugging
-   - 10.2. ST-Link là gì?
-   - 10.3. SWD và JTAG
-   - 10.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
-   - 10.5. SWJ và AFIO_MAPR.SWJ_CFG
-   - 10.6. Debug Session hoạt động như thế nào?
-   - 10.7. Breakpoint
-   - 10.8. Step Into / Step Over / Step Out / Continue
-   - 10.9. Watchpoint
-   - 10.10. Registers / Memory / Peripheral Registers
-   - 10.11. Variables / Watch / Expressions
-   - 10.12. Call Stack / PC / LR / SP
-   - 10.13. Debug Interrupt
-   - 10.14. DBGMCU và Freeze Peripheral
-   - 10.15. Debug trong Sleep / Stop / Standby
-   - 10.16. Debug HardFault
-   - 10.17. Debug với Compiler Optimization
-   - 10.18. SWO / Trace
-   - 10.19. Các lỗi kết nối ST-Link thường gặp
-   - 10.20. Quy trình Debug có hệ thống
-   - 10.21. Câu hỏi tự kiểm tra
+    - 10.1. Debug là gì? Programming và Debugging
+    - 10.2. ST-Link là gì?
+    - 10.3. SWD và JTAG
+    - 10.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
+    - 10.5. SWJ và AFIO_MAPR.SWJ_CFG
+    - 10.6. Debug Session hoạt động như thế nào?
+    - 10.7. Breakpoint
+    - 10.8. Step Into / Step Over / Step Out / Continue
+    - 10.9. Watchpoint
+    - 10.10. Registers / Memory / Peripheral Registers
+    - 10.11. Variables / Watch / Expressions
+    - 10.12. Call Stack / PC / LR / SP
+    - 10.13. Debug Interrupt
+    - 10.14. DBGMCU và Freeze Peripheral
+    - 10.15. Debug trong Sleep / Stop / Standby
+    - 10.16. Debug HardFault
+    - 10.17. Debug với Compiler Optimization
+    - 10.18. SWO / Trace
+    - 10.19. Các lỗi kết nối ST-Link thường gặp
+    - 10.20. Quy trình Debug có hệ thống
+    - 10.21. Câu hỏi tự kiểm tra
 
 ---
 
@@ -697,21 +697,8 @@ Khái niệm **memory-mapped peripheral** sẽ được triển khai kỹ ở ph
 
 ### 1.1.11. Câu hỏi tự kiểm tra
 
-1. Processor Core là gì?
-2. Processor khác Processor Core ở điểm nào?
-3. Microcontroller khác Processor ở điểm nào?
-4. Cortex-M nằm ở đâu trong một vi điều khiển STM32?
-5. ALU có nhiệm vụ gì?
-6. Core sử dụng thanh ghi để làm gì?
-7. Ba giai đoạn cơ bản khi xử lý một lệnh là gì?
-8. Fetch nghĩa là gì?
-9. CPU thường lấy mã chương trình từ đâu trong hệ thống nhúng?
-10. I-Code bus được dùng cho mục đích gì ?
-11. D-Code bus được dùng cho mục đích gì ?
-12. System bus được dùng cho mục đích gì ?
-13. AHB và APB khác nhau ở ý tưởng sử dụng như thế nào?
-14. AHB-to-APB Bridge có vai trò gì?
-15. Tại sao không nên nói “STM32 chính là Cortex-M”?
+1. Cortex-M nằm ở đâu trong một vi điều khiển STM32?
+2. Tại sao không nên nói “STM32 chính là Cortex-M”?
 
 ---
 
@@ -1027,16 +1014,8 @@ Handler mode
 
 ### 1.2.10. Câu hỏi tự kiểm tra
 
-1. Cortex-M0/M3/M4 có bao nhiêu operation mode ?
-2. Hai operation mode đó là gì?
-3. Mã ứng dụng bình thường chạy trong mode nào?
-4. Exception handler chạy trong mode nào?
-5. Interrupt handler chạy trong mode nào?
-6. Processor bắt đầu ở mode nào?
-7. Khi system exception xảy ra, core chuyển sang mode nào?
-8. Khi external interrupt xảy ra, core chuyển sang mode nào?
-9. Thread mode và Handler mode khác nhau ở mục đích chính như thế nào?
-10. Trong phần Operation Modes này, tại sao chưa cần đi sâu vào NVIC hay interrupt priority?
+1. Hai operation mode đó là gì?
+2. Thread mode và Handler mode khác nhau ở mục đích chính như thế nào?
 
 ---
 
@@ -1511,20 +1490,8 @@ Handler mode + Privileged
 
 ### 1.3.15. Câu hỏi tự kiểm tra
 
-1. Cortex-M0/M3/M4 có bao nhiêu access level ?
-2. Hai access level đó là gì?
-3. Privileged Access Level cho phép truy cập những gì?
-4. Non-Privileged Access Level bị hạn chế điều gì?
-5. Access level mặc định là gì?
-6. Thread mode có thể chạy ở những access level nào?
-7. Handler mode chạy ở access level nào?
-8. Operation Mode và Access Level có phải cùng một khái niệm không?
-9. Thanh ghi nào được nội dung sử dụng để chuyển access level?
-10. Từ Thread/Privileged có thể chuyển sang Thread/Non-Privileged như thế nào ở mức khái niệm?
-11. Vì sao Thread/Non-Privileged không thể tự chuyển trực tiếp về Privileged?
-12. Exception/interrupt có vai trò gì trong quá trình quay lại Privileged ?
-13. Sau khi vào Handler mode, access level là gì?
-14. Hãy phân biệt `Thread + Privileged`, `Thread + Non-Privileged` và `Handler + Privileged`.
+1. Thread mode có thể chạy ở những access level nào?
+2. Hãy phân biệt `Thread + Privileged`, `Thread + Non-Privileged` và `Handler + Privileged`.
 
 ---
 
@@ -2253,26 +2220,9 @@ Peripheral Registers
 
 ### 1.4.16. Câu hỏi tự kiểm tra
 
-1. R0 đến R12 thuộc nhóm register nào?
-2. R0-R7 và R8-R12 được sơ đồ gọi là gì?
-3. R13 là register gì?
-4. Hai phiên bản Stack Pointer được nội dung thể hiện là gì?
-5. R14 là register gì?
-6. R15 là register gì?
-7. Khi caller gọi callee, LR giữ thông tin gì?
-8. Khi gọi hàm, PC thay đổi như thế nào?
-9. Khi hàm return, mối quan hệ `PC = LR` có ý nghĩa gì?
-10. Khi reset, nội dung nói PC được nạp từ địa chỉ nào?
-11. `PSR` được nội dung mô tả là loại register gì?
-12. `PRIMASK`, `FAULTMASK` và `BASEPRI` được nhóm thành loại register gì?
-13. `CONTROL` thuộc nhóm register nào?
-14. Processor core register có thuộc memory map không ?
-15. Peripheral register memory-mapped khác core register ở điểm nào?
-16. Hãy kể các ví dụ processor-specific peripheral register.
-17. Hãy kể các ví dụ microcontroller-specific peripheral register.
-18. Vì sao có thể truy cập memory-mapped register trong C bằng địa chỉ?
-19. Hãy phân biệt ngắn gọn `SP`, `LR` và `PC`.
-20. Hãy mô tả luồng caller → callee → caller bằng `PC` và `LR`.
+1. Hai phiên bản Stack Pointer được nội dung thể hiện là gì?
+2. Peripheral register memory-mapped khác core register ở điểm nào?
+3. Hãy phân biệt ngắn gọn `SP`, `LR` và `PC`.
 
 ---
 
@@ -2915,24 +2865,9 @@ Vì vậy:
 
 ### 1.5.16. Câu hỏi tự kiểm tra
 
-1. Reset Sequence là gì?
-2. Hai địa chỉ đầu tiên mà nội dung nhấn mạnh là gì?
-3. Giá trị tại `0x00000000` được nạp vào thanh ghi nào?
-4. MSP viết tắt của gì?
-5. Tại sao nội dung nói Stack Pointer được khởi tạo trước?
-6. Giá trị tại `0x00000004` đại diện cho gì?
-7. Thanh ghi nào nhận địa chỉ Reset Handler?
-8. Sau khi PC nhận địa chỉ Reset Handler thì processor làm gì?
-9. Reset Handler là gì?
-10. Reset Handler có thể được viết bằng ngôn ngữ nào ?
-11. Reset Handler chạy trước hay sau `main()`?
-12. Vector table có vai trò gì trong quá trình reset?
-13. Những bước khởi tạo nào diễn ra trước `main()`?
-14. `__libc_init_array()` được gọi ở bước nào?
-15. `.data` và `.bss` được xử lý trước hay sau `main()`?
-16. Hai địa chỉ `0x20008000` và `0x20001000` có phải giá trị cố định cho mọi STM32 không?
-17. Hãy mô tả Reset Sequence bằng MSP và PC.
-18. Hãy vẽ lại chuỗi `Reset → MSP → PC → Reset_Handler → main()`.
+1. Giá trị tại `0x00000000` được nạp vào thanh ghi nào?
+2. Giá trị tại `0x00000004` đại diện cho gì?
+3. Hãy mô tả Reset Sequence bằng MSP và PC.
 
 ---
 
@@ -3643,24 +3578,8 @@ Peripheral
 
 ### 1.6.18. Câu hỏi tự kiểm tra
 
-1. Bus Architecture dùng để giải quyết vấn đề gì?
-2. AMBA là gì ?
-3. AMBA do ai thiết kế?
-4. Hai bus protocol được nội dung nhắc tới là gì?
-5. AHB-Lite được dùng chủ yếu cho loại giao tiếp nào?
-6. APB được dùng chủ yếu cho loại giao tiếp nào?
-7. Vì sao hệ thống cần cả AHB và APB?
-8. AHB-APB Bridge có vai trò gì?
-9. I-CODE bus dùng để làm gì?
-10. I-CODE đọc những gì từ CODE region?
-11. D-CODE bus dùng để làm gì?
-12. System bus truy cập những vùng nào?
-13. Các bus trong sơ đồ có độ rộng bao nhiêu bit?
-14. PPB xuất hiện ở đâu trong sơ đồ?
-15. Bus Architecture và Memory Map khác nhau ở câu hỏi mà chúng trả lời như thế nào?
-16. Hãy mô tả đường đi khi processor fetch instruction.
-17. Hãy mô tả đường đi khi processor đọc/ghi SRAM.
-18. Hãy mô tả đường đi khái niệm khi processor truy cập một peripheral nằm phía APB.
+1. Vì sao hệ thống cần cả AHB và APB?
+2. Bus Architecture và Memory Map khác nhau ở câu hỏi mà chúng trả lời như thế nào?
 
 ---
 
@@ -4480,28 +4399,7 @@ Memory / Peripheral phản hồi
 ### 1.7.20. Câu hỏi tự kiểm tra
 
 1. Memory Map là gì?
-2. Kích thước address bus ảnh hưởng tới điều gì?
-3. Kênh địa chỉ có độ rộng bao nhiêu bit?
-4. 32-bit address space cho tối đa bao nhiêu không gian địa chỉ?
-5. Không gian địa chỉ bắt đầu và kết thúc ở đâu?
-6. Code Region bắt đầu tại địa chỉ nào?
-7. Code Region có kích thước bao nhiêu?
-8. Processor dùng Code Region cho những loại memory nào ?
-9. Vector table liên quan gì tới Code Region?
-10. SRAM Region bắt đầu tại địa chỉ nào?
-11. Peripheral Region bắt đầu tại địa chỉ nào?
-12. Peripheral Region là Execute Never có nghĩa là gì?
-13. External RAM Region nằm trong khoảng nào?
-14. External Device Region nằm trong khoảng nào?
-15. System/PPB region bắt đầu từ vùng địa chỉ nào theo sơ đồ tổng thể?
-16. Bit-Band Region của SRAM bắt đầu tại đâu?
-17. Bit-Band Alias của SRAM bắt đầu tại đâu?
-18. Bit-Band Region của Peripheral bắt đầu tại đâu?
-19. Bit-Band Alias của Peripheral bắt đầu tại đâu?
-20. Memory Map và Bus Architecture khác nhau ở điểm nào?
-21. CPU đọc ADC register bằng địa chỉ như thế nào?
-22. Vì sao 4 GB address space không có nghĩa MCU có 4 GB bộ nhớ vật lý?
-23. Hãy kể các base address chính: Code, SRAM, Peripheral, External RAM, External Device và PPB/System.
+2. Vì sao 4 GB address space không có nghĩa MCU có 4 GB bộ nhớ vật lý?
 
 ---
 
@@ -5331,26 +5229,8 @@ Stack
 
 ### 1.8.21. Câu hỏi tự kiểm tra
 
-1. Flash là volatile hay non-volatile?
-2. SRAM là volatile hay non-volatile?
-3. Firmware thường được lưu ở đâu ?
-4. Dữ liệu chỉ đọc thường nằm ở section nào?
-5. `.text` nằm ở Flash hay SRAM?
-6. `.data` chứa loại biến nào?
-7. Tại sao `.data` có bản trong cả Flash và SRAM?
-8. Khi startup, `.data` được chuyển theo hướng nào?
-9. `.bss` chứa loại biến nào?
-10. `.bss` nằm ở Flash hay SRAM?
-11. Stack nằm ở đâu?
-12. Heap nằm ở đâu?
-13. Tại sao dữ liệu `const` không cần một bản SRAM theo giải thích của nội dung?
-14. Vì sao biến cần thay đổi trong lúc chạy phù hợp với SRAM?
-15. Vector Table nằm ở đâu trong sơ đồ?
-16. `_sdata` và `_edata` đại diện cho điều gì ở mức khái niệm?
-17. Phần Reset Handler liên quan thế nào tới `.data` và `.bss`?
-18. Hãy mô tả luồng `Flash .data → SRAM .data → main()`.
-19. Hãy phân biệt `.text`, `.rodata`, `.data` và `.bss`.
-20. Flash base và SRAM base lần lượt là gì?
+1. Tại sao `.data` có bản trong cả Flash và SRAM?
+2. Hãy phân biệt `.text`, `.rodata`, `.data` và `.bss`.
 
 ---
 
@@ -6663,40 +6543,9 @@ Full Descending
 
 ### 1.9.36. Câu hỏi tự kiểm tra
 
-1. Stack Memory là gì?
-2. Stack thường nằm trong loại bộ nhớ nào?
-3. LIFO nghĩa là gì?
-4. Stack thường lưu những loại dữ liệu nào?
-5. SP là register nào?
-6. Cortex-M sử dụng Stack model nào ?
-7. Full và Empty khác nhau ở điểm nào?
-8. Ascending và Descending khác nhau ở điểm nào?
-9. Khi PUSH trên Full Descending Stack thì SP tăng hay giảm?
-10. Khi POP trên Full Descending Stack thì SP tăng hay giảm?
-11. `_estack` được sơ đồ dùng để biểu diễn gì?
-12. MSP viết tắt của gì?
-13. PSP viết tắt của gì?
-14. Stack Pointer mặc định sau reset là MSP hay PSP?
-15. Thread mode có thể dùng những Stack Pointer nào?
-16. Handler mode dùng Stack Pointer nào?
-17. Bit nào trong `CONTROL` được nội dung nhắc tới để chọn PSP?
-18. Vì sao phải khởi tạo PSP tới địa chỉ Stack hợp lệ trước khi dùng?
-19. Dùng PSP cho Thread mode có lợi gì?
-20. RTOS có thể sử dụng PSP như thế nào ?
-21. AAPCS là gì?
-22. Caller và Callee là gì?
-23. Bốn tham số đầu của hàm được truyền qua những register nào theo quy tắc?
-24. Nếu có nhiều hơn bốn tham số thì phần dư có thể được đặt ở đâu?
-25. Những register nào thuộc nhóm caller-saved?
-26. Những register nào được gọi là callee-saved?
-27. Khi callee sử dụng R4-R11 thì phải làm gì?
-28. Khi exception xảy ra, hardware tự động lưu những register nào?
-29. Một basic exception Stack Frame không FPU có bao nhiêu word?
-30. Stacking và un-stacking xảy ra khi nào?
-31. PC trong exception Stack Frame có ích gì khi debug?
-32. MSP được processor khởi tạo từ vị trí nào trong vector table?
-33. Linker script liên quan gì tới Stack?
-34. Hãy mô tả luồng `Thread → exception → stacking → Handler → un-stacking → Thread`.
+1. Handler mode dùng Stack Pointer nào?
+2. Khi exception xảy ra, hardware tự động lưu những register nào?
+3. Hãy mô tả luồng `Thread → exception → stacking → Handler → un-stacking → Thread`.
 
 ---
 
@@ -7275,21 +7124,8 @@ Reset_Handler chạy
 
 ### 1.10.16. Câu hỏi tự kiểm tra
 
-1. Startup Code trong phần này hiện tại tập trung vào vấn đề gì?
-2. CPU đọc bao nhiêu word đầu của Vector Table ngay khi reset?
-3. Word đầu tiên của Vector Table dùng để làm gì?
-4. Word thứ hai dùng để làm gì?
-5. Việc đọc Vector Table xảy ra trước hay sau khi code bắt đầu chạy?
-6. `.data` trong SRAM được tạo/copy khi nào?
-7. Ai thực hiện việc copy `.data` từ Flash xuống SRAM?
-8. Vì sao Vector Table không thể phụ thuộc vào `.data` trong SRAM?
-9. Điều gì xảy ra nếu CPU không lấy được initial SP và Reset_Handler?
-10. Hãy mô tả vòng phụ thuộc sai nếu Vector Table nằm trong `.data`.
-11. Hãy mô tả thứ tự đúng từ Reset tới lúc `.data` sẵn sàng trong SRAM.
-12. Startup Code liên hệ thế nào với Reset Sequence?
-13. Startup Code liên hệ thế nào với Flash/SRAM?
-14. Tại sao Vector Table phải tồn tại trước khi Reset_Handler chạy?
-15. Hãy trả lời: “Tại sao không đặt Vector Table vào `.data`?”
+1. CPU đọc bao nhiêu word đầu của Vector Table ngay khi reset?
+2. Hãy mô tả thứ tự đúng từ Reset tới lúc `.data` sẵn sàng trong SRAM.
 
 ---
 
@@ -8247,29 +8083,9 @@ main.o                    led.o
 
 ### 1.11.22. Câu hỏi tự kiểm tra
 
-1. File `.c` sau khi biên dịch tạo ra file gì?
-2. Một object file ELF có thể chứa những section nào?
-3. `.text` chứa gì?
-4. `.data` chứa gì?
-5. `.bss` chứa gì?
-6. `.rodata` chứa gì?
-7. User-defined section dùng để làm gì?
-8. Special section là gì ở mức khái niệm?
-9. Linker có nhiệm vụ chính gì?
-10. Merge similar sections nghĩa là gì?
-11. Undefined symbol là gì ở mức khái niệm?
-12. Linker resolve symbol giữa các object file như thế nào?
-13. Locator là gì ?
-14. Locator dùng gì để biết cách bố trí section?
-15. Linker Script dùng để làm gì?
-16. Address relocation nghĩa là gì?
-17. final ELF là gì?
-18. `.text(main.o)` và `.text(led.o)` cuối cùng được xử lý thế nào?
-19. Linker Script liên hệ thế nào với Flash và SRAM?
-20. Linker Script liên hệ thế nào với Startup Code?
-21. Vì sao boundary symbol như `_sdata`, `_edata` cần thông tin từ linker?
-22. Hãy mô tả luồng `main.c + led.c → object files → linker → final.elf`.
-23. Sơ đồ có điểm không nhất quán nào ở dòng `.bss`?
+1. Linker có nhiệm vụ chính gì?
+2. Linker Script dùng để làm gì?
+3. Linker Script liên hệ thế nào với Startup Code?
 
 ---
 
@@ -10011,41 +9827,21 @@ PLL có tạo đúng clock không?
 <a id="muc-02-11"></a>
 ## 2.11. Câu hỏi tự kiểm tra
 
-1. RCC viết tắt của gì?
-2. RCC có hai nhóm chức năng chính nào?
-3. HSI của STM32F10xxx trong phạm vi này có tần số bao nhiêu?
-4. HSI có thể đi vào PLL theo đường nào?
-5. HSE crystal nằm trong khoảng tần số nào?
-6. HSE và HSI khác nhau về phần cứng và độ chính xác như thế nào?
-7. LSI thường được dùng cho peripheral nào?
-8. LSE có tần số bao nhiêu và thường dùng cho gì?
-9. Ba nguồn nào có thể được chọn làm SYSCLK?
-10. Sau reset, nguồn nào được chọn làm SYSCLK?
-11. `SYSCLK`, `HCLK`, `PCLK1`, `PCLK2` khác nhau như thế nào?
-12. `HCLK` được tính từ `SYSCLK` bằng gì?
-13. `PCLK1` tối đa bao nhiêu MHz?
-14. `PCLK2` tối đa bao nhiêu MHz?
-15. PLL của STM32F1 nhận những nguồn đầu vào nào?
-16. Vì sao phải cấu hình PLL trước khi bật `PLLON`?
-17. `PLLRDY` dùng để kiểm tra điều gì?
-18. `SW` và `SWS` trong `RCC_CFGR` khác nhau như thế nào?
-19. Tại sao phải chờ `HSERDY` trước khi dùng HSE?
-20. Với HSE 8 MHz và PLL ×9, `PLLCLK` bằng bao nhiêu?
-21. Nếu `SYSCLK = 72 MHz` và `HPRE = /1`, `HCLK` bằng bao nhiêu?
-22. Nếu `HCLK = 72 MHz` và `PPRE1 = /2`, `PCLK1` bằng bao nhiêu?
-23. Nếu `PCLK1 = 36 MHz` và APB1 prescaler khác `/1`, `TIM2CLK` bằng bao nhiêu?
-24. Nếu `PCLK2 = 72 MHz` và `ADCPRE = /6`, `ADCCLK` bằng bao nhiêu?
-25. Vì sao GPIOA phải được bật clock trước khi cấu hình?
-26. GPIO trên STM32F1 nằm trên bus nào?
-27. `RCC_APB2ENR` và `RCC_APB2RSTR` khác nhau thế nào?
-28. USB cần clock bao nhiêu MHz?
-29. SysTick có thể dùng những nguồn clock nào trong Clock Tree?
-30. CSS làm gì khi HSE bị lỗi?
-31. MCO có tác dụng gì?
-32. Với `SYSCLK = 72 MHz`, Flash cần bao nhiêu wait state?
-33. Hãy mô tả đầy đủ đường đi `HSE → PLL → SYSCLK → HCLK → PCLK1/PCLK2`.
-34. Hãy mô tả trình tự cấu hình hệ thống từ HSI sau reset sang PLL 72 MHz.
-35. Vì sao không thể chỉ nhìn `PCLK1` để xác định Timer clock?
+1. HSE và HSI khác nhau về phần cứng và độ chính xác như thế nào?
+2. Ba nguồn nào có thể được chọn làm SYSCLK?
+3. Sau reset, nguồn nào được chọn làm SYSCLK?
+4. `SYSCLK`, `HCLK`, `PCLK1`, `PCLK2` khác nhau như thế nào?
+5. PLL của STM32F1 nhận những nguồn đầu vào nào?
+6. `SW` và `SWS` trong `RCC_CFGR` khác nhau như thế nào?
+7. Tại sao phải chờ `HSERDY` trước khi dùng HSE?
+8. Với HSE 8 MHz và PLL ×9, `PLLCLK` bằng bao nhiêu?
+9. Nếu `HCLK = 72 MHz` và `PPRE1 = /2`, `PCLK1` bằng bao nhiêu?
+10. Nếu `PCLK1 = 36 MHz` và APB1 prescaler khác `/1`, `TIM2CLK` bằng bao nhiêu?
+11. Nếu `PCLK2 = 72 MHz` và `ADCPRE = /6`, `ADCCLK` bằng bao nhiêu?
+12. `RCC_APB2ENR` và `RCC_APB2RSTR` khác nhau thế nào?
+13. CSS làm gì khi HSE bị lỗi?
+14. Hãy mô tả đầy đủ đường đi `HSE → PLL → SYSCLK → HCLK → PCLK1/PCLK2`.
+15. Hãy mô tả trình tự cấu hình hệ thống từ HSI sau reset sang PLL 72 MHz.
 
 ---
 
@@ -11589,51 +11385,21 @@ PA13/PA14/PA15/PB3/PB4 có liên quan đến JTAG/SWD. Nếu cần dùng chúng 
 <a id="muc-03-18"></a>
 ## 3.18. Câu hỏi tự kiểm tra
 
-1. GPIO viết tắt của gì?
-2. `PA5` có ý nghĩa gì?
-3. GPIO trên STM32F1 nằm trên bus nào?
-4. Thanh ghi nào dùng để bật clock GPIOA?
-5. Sau reset, GPIO thông thường ở mode nào?
-6. Vì sao PA13/PA14/PA15/PB3/PB4 cần chú ý đặc biệt?
-7. `CRL` cấu hình những pin nào?
-8. `CRH` cấu hình những pin nào?
-9. Mỗi pin dùng bao nhiêu bit cấu hình trong CRL/CRH?
-10. `MODE[1:0] = 00` có nghĩa gì?
-11. Khi Input, `CNF=00`, `01`, `10` lần lượt là gì?
-12. Khi Output, `CNF=00`, `01`, `10`, `11` lần lượt là gì?
-13. Output speed có những lựa chọn nào?
-14. Push-Pull hoạt động như thế nào khi xuất `0` và `1`?
-15. Open-Drain hoạt động như thế nào khi xuất `0` và `1`?
-16. Vì sao I2C dùng Open-Drain?
-17. Floating Input khác Pull-Up/Pull-Down ở điểm nào?
-18. Trên STM32F1, chọn Pull-Up hay Pull-Down bằng thanh ghi nào?
-19. `IDR` dùng để làm gì?
-20. `ODR` dùng để làm gì?
-21. `BSRR` khác `ODR` ở điểm nào?
-22. 16 bit thấp của `BSRR` làm gì?
-23. 16 bit cao của `BSRR` làm gì?
-24. Vì sao `BSRR` phù hợp cho atomic set/reset?
-25. `BRR` dùng để làm gì?
-26. Alternate Function là gì?
-27. UART TX thường dùng GPIO mode nào?
-28. UART RX thường dùng GPIO mode nào?
-29. I2C SCL/SDA dùng GPIO mode nào?
-30. SPI Master SCK/MOSI dùng GPIO mode nào?
-31. Timer PWM output dùng GPIO mode nào?
-32. ADC input dùng GPIO mode nào?
-33. AFIO dùng để làm gì?
-34. Trước khi truy cập `AFIO_MAPR` cần bật clock nào?
-35. USART1 mặc định và remap dùng những chân nào?
-36. SPI1 mặc định dùng PA4–PA7; sau remap dùng những chân nào?
-37. `SWJ_CFG` liên quan tới chức năng gì?
-38. Vì sao không nên tắt SWD khi vẫn cần ST-Link?
-39. GPIO Locking có tác dụng gì?
-40. Hãy mô tả đầy đủ quy trình cấu hình một GPIO output.
-41. Hãy mô tả đầy đủ quy trình cấu hình một GPIO input có pull-up.
-42. Hãy cấu hình về mặt khái niệm PA9/PA10 cho USART1.
-43. Hãy giải thích sự khác nhau giữa `IDR`, `ODR` và `BSRR`.
-44. Hãy giải thích vì sao Input Pull-Up trên STM32F1 vẫn cần thiết lập bit `ODR`.
-45. Hãy giải thích luồng `Peripheral → Alternate Function → GPIO Pin`.
+1. Sau reset, GPIO thông thường ở mode nào?
+2. `CRL` cấu hình những pin nào?
+3. `CRH` cấu hình những pin nào?
+4. Khi Input, `CNF=00`, `01`, `10` lần lượt là gì?
+5. Khi Output, `CNF=00`, `01`, `10`, `11` lần lượt là gì?
+6. Push-Pull hoạt động như thế nào khi xuất `0` và `1`?
+7. Open-Drain hoạt động như thế nào khi xuất `0` và `1`?
+8. Vì sao I2C dùng Open-Drain?
+9. Trên STM32F1, chọn Pull-Up hay Pull-Down bằng thanh ghi nào?
+10. Vì sao `BSRR` phù hợp cho atomic set/reset?
+11. Alternate Function là gì?
+12. AFIO dùng để làm gì?
+13. Hãy giải thích sự khác nhau giữa `IDR`, `ODR` và `BSRR`.
+14. Hãy giải thích vì sao Input Pull-Up trên STM32F1 vẫn cần thiết lập bit `ODR`.
+15. Hãy giải thích luồng `Peripheral → Alternate Function → GPIO Pin`.
 
 ---
 
@@ -13451,66 +13217,26 @@ EMR
 <a id="muc-04-21"></a>
 ## 4.21. Câu hỏi tự kiểm tra
 
-1. Polling là gì?
-2. Interrupt khác Polling như thế nào?
-3. Exception là gì trên Cortex-M?
-4. External Interrupt có phải là Exception không?
-5. Reset, NMI và HardFault thuộc nhóm nào?
-6. Vector Table dùng để làm gì?
-7. ISR là gì?
-8. IRQ được nối tới ISR thông qua cơ chế nào?
-9. Khi interrupt được chấp nhận, CPU chuyển sang mode nào?
-10. Hardware stacking lưu những register cơ bản nào?
-11. NVIC viết tắt của gì?
-12. NVIC có những chức năng chính nào?
-13. `Enabled` khác `Pending` như thế nào?
-14. `Pending` khác `Active` như thế nào?
-15. STM32F10xxx sử dụng bao nhiêu bit interrupt priority?
-16. Có bao nhiêu mức priority lập trình được?
-17. Priority số `2` và `5`, mức nào cao hơn?
-18. Nested Interrupt là gì?
-19. Preemption là gì?
-20. Khi IRQ mới không thể preempt handler hiện tại thì điều gì xảy ra?
-21. Preemption Priority khác Subpriority ở điểm nào?
-22. Priority Grouping dùng để làm gì?
-23. EXTI viết tắt của gì?
-24. EXTI tạo ra hai loại request nào?
-25. `EXTI_IMR` dùng để làm gì?
-26. `EXTI_EMR` dùng để làm gì?
-27. `EXTI_RTSR` dùng để làm gì?
-28. `EXTI_FTSR` dùng để làm gì?
-29. `EXTI_SWIER` dùng để làm gì?
-30. `EXTI_PR` dùng để làm gì?
-31. EXTI0 có thể nhận tín hiệu từ những pin nào về mặt số pin?
-32. Vì sao PA0 và PB0 không phải hai EXTI line độc lập?
-33. PC13 phải map vào EXTI line nào?
-34. Port cho EXTI line được chọn bằng thanh ghi nào?
-35. Trước khi cấu hình AFIO_EXTICR cần bật clock nào?
-36. `AFIO_EXTICR1` điều khiển những EXTI line nào?
-37. `AFIO_EXTICR4` điều khiển những EXTI line nào?
-38. EXTI16, EXTI17, EXTI18 nối với những nguồn nào?
-39. EXTI19 có ở nhóm STM32F10xxx nào?
-40. Rising Edge là chuyển mức gì?
-41. Falling Edge là chuyển mức gì?
-42. Button Active-Low với Pull-Up thường dùng cạnh nào để phát hiện nhấn?
-43. EXTI0–EXTI4 có IRQ như thế nào?
-44. EXTI5–EXTI9 dùng chung IRQ nào?
-45. EXTI10–EXTI15 dùng chung IRQ nào?
-46. Vì sao shared IRQ handler phải kiểm tra `EXTI_PR`?
-47. Clear pending bit của `EXTI_PR` bằng cách nào?
-48. Vì sao không nên dùng `EXTI->PR &= ~bit` để clear?
-49. EXTI pending flag và NVIC pending state khác nhau thế nào?
-50. Hãy mô tả luồng `GPIO → AFIO → EXTI → NVIC → ISR`.
-51. Hãy mô tả toàn bộ quy trình cấu hình PC13 Falling Edge Interrupt.
-52. Vì sao nên clear pending cũ trước khi enable NVIC?
-53. ISR nên thực hiện những công việc nào?
-54. Vì sao không nên delay dài trong ISR?
-55. `volatile` có vai trò gì với flag chia sẻ giữa ISR và main?
-56. `volatile` có tự làm mọi thao tác trở thành atomic không?
-57. Button bounce là gì?
-58. EXTI Event khác EXTI Interrupt như thế nào?
-59. WFI và WFE liên quan khác nhau thế nào với Interrupt/Event?
-60. Với Timer/UART/DMA interrupt, vì sao vẫn phải xử lý flag ở peripheral?
+1. Interrupt khác Polling như thế nào?
+2. Exception là gì trên Cortex-M?
+3. Vector Table dùng để làm gì?
+4. Khi interrupt được chấp nhận, CPU chuyển sang mode nào?
+5. Hardware stacking lưu những register cơ bản nào?
+6. NVIC có những chức năng chính nào?
+7. `Enabled` khác `Pending` như thế nào?
+8. Priority số `2` và `5`, mức nào cao hơn?
+9. Preemption Priority khác Subpriority ở điểm nào?
+10. Priority Grouping dùng để làm gì?
+11. EXTI viết tắt của gì?
+12. EXTI tạo ra hai loại request nào?
+13. Port cho EXTI line được chọn bằng thanh ghi nào?
+14. Button Active-Low với Pull-Up thường dùng cạnh nào để phát hiện nhấn?
+15. EXTI5–EXTI9 dùng chung IRQ nào?
+16. EXTI10–EXTI15 dùng chung IRQ nào?
+17. Clear pending bit của `EXTI_PR` bằng cách nào?
+18. EXTI pending flag và NVIC pending state khác nhau thế nào?
+19. Hãy mô tả luồng `GPIO → AFIO → EXTI → NVIC → ISR`.
+20. ISR nên thực hiện những công việc nào?
 
 ---
 
@@ -15905,76 +15631,26 @@ với cùng cách biểu diễn duty.
 <a id="muc-05-24"></a>
 ## 5.24. Câu hỏi tự kiểm tra
 
-1. Timer là gì?
-2. Timer phần cứng khác software counter ở điểm nào?
-3. Ba thanh ghi nền tảng `PSC`, `CNT`, `ARR` có vai trò gì?
-4. Advanced Timer gồm những Timer tiêu biểu nào?
-5. General-Purpose Timer TIM2–TIM5 hỗ trợ những chức năng chính nào?
-6. TIM6/TIM7 khác TIM2–TIM5 ở điểm quan trọng nào?
-7. Trước khi tính Timer period phải xác định clock nào?
-8. Khi APB prescaler bằng `/1`, `TIMxCLK` bằng gì?
-9. Khi APB prescaler khác `/1`, `TIMxCLK` bằng gì?
-10. Nếu `PCLK1 = 36 MHz` và `PPRE1 = /2`, Timer trên APB1 chạy bao nhiêu MHz?
-11. `TIMx_CNT` chứa gì?
-12. `TIMx_CR1.CEN` có tác dụng gì?
-13. Công thức `fCNT` là gì?
-14. Vì sao công thức Prescaler có `PSC + 1`?
-15. `PSC = 0` tương ứng hệ số chia bao nhiêu?
-16. `PSC = 71`, `TIMxCLK = 72 MHz` cho `fCNT` bao nhiêu?
-17. `ARR` có vai trò gì?
-18. Vì sao một chu kỳ Upcounting từ `0 → ARR` có `ARR + 1` tick?
-19. `ARR = 999` tương ứng bao nhiêu count mỗi chu kỳ?
-20. Upcounting hoạt động như thế nào?
-21. Downcounting hoạt động như thế nào?
-22. Center-Aligned Counting hoạt động như thế nào?
-23. `DIR` dùng để làm gì trong Edge-Aligned mode?
-24. `CMS` dùng để chọn gì?
-25. Update Event là gì?
-26. UEV có thể được tạo từ những nguồn nào?
-27. `UIF` có ý nghĩa gì?
-28. `UIE` có ý nghĩa gì?
-29. `UG` dùng để làm gì?
-30. Công thức frequency của Timer Edge-Aligned Upcounting là gì?
-31. Công thức period tương ứng là gì?
-32. `TIMx_CCRx` có hai vai trò chính nào?
-33. Input Capture khác Output Compare như thế nào?
-34. Compare Match xảy ra khi nào?
-35. Output Compare có thể làm gì khi match?
-36. Input Capture dùng để đo những đại lượng nào?
-37. Làm sao tính period từ hai Capture value?
-38. PWM là gì?
-39. Hai thông số chính của PWM là gì?
-40. PWM Frequency phụ thuộc chủ yếu vào những thanh ghi nào?
-41. PWM Duty Cycle phụ thuộc chủ yếu vào thanh ghi nào?
-42. Công thức PWM Edge-Aligned frequency là gì?
-43. Công thức Duty cho PWM Mode 1 Active-High Upcounting là gì?
-44. `ARR = 999`, `CCR = 250` cho duty khoảng bao nhiêu?
-45. PWM Mode 1 và PWM Mode 2 khác nhau thế nào?
-46. `OCxM = 110` là mode nào?
-47. `OCxM = 111` là mode nào?
-48. `CCxP` điều khiển gì?
-49. `CCxE` điều khiển gì?
-50. `ARPE` dùng để làm gì?
-51. `OCxPE` dùng để làm gì?
-52. Vì sao preload hữu ích khi PWM đang chạy?
-53. Vì sao thường tạo `UG` trước khi enable counter?
-54. GPIO cho Timer PWM output thường dùng mode nào trên STM32F1?
-55. Nếu chỉ cấu hình Timer nhưng GPIO vẫn là Input Floating thì điều gì xảy ra ở chân?
-56. Timer có thể tạo những loại interrupt nào?
-57. Timer event có thể kích DMA không?
-58. `TIMx_SR.UIF` và NVIC Pending có phải cùng một trạng thái không?
-59. Complementary PWM là gì?
-60. Dead-Time dùng để tránh vấn đề gì?
-61. Break input có tác dụng gì?
-62. `MOE` có vai trò gì trên TIM1/TIM8?
-63. Repetition Counter dùng để làm gì?
-64. Hãy tính `PSC`, `ARR`, `CCR` cho PWM 1 kHz, duty 25%, `TIMxCLK = 72 MHz`.
-65. Hãy tính `ARR` cho Timer interrupt 10 ms nếu `fCNT = 1 MHz`.
-66. Với `TIMxCLK = 72 MHz`, `PSC = 0`, `ARR = 3599`, PWM frequency là bao nhiêu?
-67. Với `ARR = 3599`, `CCR = 2160`, duty xấp xỉ bao nhiêu?
-68. Vì sao cùng một PWM frequency có thể có nhiều cặp `PSC/ARR`?
-69. `ARR` lớn hơn có lợi gì cho PWM duty resolution?
-70. Hãy mô tả đầy đủ luồng `RCC → TIMxCLK → PSC → CNT → ARR → CCR → PWM → GPIO`.
+1. Ba thanh ghi nền tảng `PSC`, `CNT`, `ARR` có vai trò gì?
+2. Trước khi tính Timer period phải xác định clock nào?
+3. Khi APB prescaler khác `/1`, `TIMxCLK` bằng gì?
+4. Nếu `PCLK1 = 36 MHz` và `PPRE1 = /2`, Timer trên APB1 chạy bao nhiêu MHz?
+5. Công thức `fCNT` là gì?
+6. `ARR` có vai trò gì?
+7. Update Event là gì?
+8. `UG` dùng để làm gì?
+9. Công thức frequency của Timer Edge-Aligned Upcounting là gì?
+10. `TIMx_CCRx` có hai vai trò chính nào?
+11. Input Capture khác Output Compare như thế nào?
+12. Input Capture dùng để đo những đại lượng nào?
+13. PWM là gì?
+14. Công thức PWM Edge-Aligned frequency là gì?
+15. Công thức Duty cho PWM Mode 1 Active-High Upcounting là gì?
+16. PWM Mode 1 và PWM Mode 2 khác nhau thế nào?
+17. `ARPE` dùng để làm gì?
+18. Vì sao preload hữu ích khi PWM đang chạy?
+19. Hãy tính `PSC`, `ARR`, `CCR` cho PWM 1 kHz, duty 25%, `TIMxCLK = 72 MHz`.
+20. Hãy mô tả đầy đủ luồng `RCC → TIMxCLK → PSC → CNT → ARR → CCR → PWM → GPIO`.
 
 ---
 
@@ -18162,86 +17838,26 @@ trước khi disable USART nếu muốn bảo đảm frame cuối không bị h�
 <a id="muc-06-21"></a>
 ## 6.21. Câu hỏi tự kiểm tra
 
-1. UART viết tắt của gì?
-2. USART viết tắt của gì?
-3. USART khác UART ở khả năng nào?
-4. Asynchronous communication có dùng đường CK để đồng bộ từng bit không?
-5. Full-Duplex cần tối thiểu những đường dữ liệu nào?
-6. TX của thiết bị A phải nối với chân nào của thiết bị B?
-7. Một frame UART bất đồng bộ gồm những phần nào?
-8. Start Bit có mức logic gì?
-9. Stop Bit có mức logic gì?
-10. USART STM32F1 truyền MSB first hay LSB first?
-11. `USART_CR1.M = 0` tương ứng word length bao nhiêu?
-12. `M = 1` tương ứng word length bao nhiêu?
-13. `PCE` dùng để làm gì?
-14. `PS = 0` là parity gì?
-15. `PS = 1` là parity gì?
-16. `STOP = 00` là bao nhiêu Stop Bit?
-17. 8N1 nghĩa là gì?
-18. Một frame 8N1 có bao nhiêu bit?
-19. Vì sao 115200 8N1 chỉ đạt khoảng 11520 byte/s lý tưởng?
-20. Nếu `M=0`, `PCE=1`, có bao nhiêu data bit thực tế?
-21. Muốn 8E1 phải cấu hình `M/PCE/PS` thế nào?
-22. Baud Rate của USART được tạo từ clock nào?
-23. USART1 lấy clock từ bus nào?
-24. USART2/USART3 lấy clock từ bus nào?
-25. Công thức Baud Rate của STM32F1 là gì?
-26. `USARTDIV` gồm hai phần nào?
-27. `BRR[15:4]` lưu gì?
-28. `BRR[3:0]` lưu gì?
-29. Với USART1, PCLK2=72 MHz, 115200 baud, BRR bằng bao nhiêu?
-30. Vì sao cùng BRR nhưng USART1 và USART2 có thể ra baud khác nhau?
-31. TX GPIO thường dùng mode nào trên STM32F1?
-32. RX GPIO thường dùng mode nào?
-33. USART1 TX/RX mặc định ở chân nào?
-34. USART1 remap sang chân nào?
-35. `USART_DR` có hai chức năng nào?
-36. TDR là gì?
-37. RDR là gì?
-38. TXE có nghĩa gì?
-39. TXE được clear khi nào?
-40. TC có nghĩa gì?
-41. TXE khác TC thế nào?
-42. Khi gửi nhiều byte, flag nào dùng để nạp byte tiếp?
-43. Sau byte cuối, khi nào cần chờ TC?
-44. RXNE có nghĩa gì?
-45. RXNE được clear như thế nào trong single-buffer mode?
-46. ORE xảy ra khi nào?
-47. Khi ORE xảy ra, data nào bị mất?
-48. FE biểu thị lỗi gì?
-49. NE biểu thị lỗi gì?
-50. PE biểu thị lỗi gì?
-51. Trình tự clear ORE/NE/FE là gì?
-52. `RXNEIE` dùng để làm gì?
-53. `TXEIE` dùng để làm gì?
-54. `TCIE` dùng để làm gì?
-55. `IDLEIE` dùng để làm gì?
-56. Tại sao phải disable TXEIE khi TX buffer đã hết dữ liệu?
-57. IDLE Line được dùng để nhận biết điều gì?
-58. IDLE được clear bằng trình tự nào?
-59. Polling UART hoạt động như thế nào?
-60. Interrupt UART khác Polling ở điểm nào?
-61. DMA UART có lợi gì?
-62. `DMAT` dùng để làm gì?
-63. `DMAR` dùng để làm gì?
-64. DMA Receive kết hợp IDLE hữu ích trong trường hợp nào?
-65. CTS có vai trò gì?
-66. RTS có vai trò gì?
-67. UART4/UART5 có CTS/RTS như USART1/2/3 không?
-68. `HDSEL` chọn chế độ gì?
-69. Synchronous USART cần thêm chân nào?
-70. `CLKEN` dùng để làm gì?
-71. `CPOL` và `CPHA` liên quan đến gì?
-72. Hãy mô tả luồng `CPU → DR → TDR → Shift Register → TX`.
-73. Hãy mô tả luồng `RX → Shift Register → RDR → DR → CPU`.
-74. Hãy mô tả toàn bộ quy trình cấu hình USART1 115200 8N1.
-75. Vì sao phải dùng đúng GPIO Alternate Function trước khi truyền USART?
-76. Vì sao receiver có thể bị ORE dù Baud Rate cấu hình đúng?
-77. Vì sao error flag và NVIC pending state không phải cùng một thứ?
-78. Khi parity enable, MSB ghi vào DR có được truyền nguyên vẹn không?
-79. Khi parity enable ở reception, MSB đọc từ DR chứa gì?
-80. Hãy phân biệt Polling, Interrupt và DMA trong USART.
+1. USART khác UART ở khả năng nào?
+2. Một frame UART bất đồng bộ gồm những phần nào?
+3. 8N1 nghĩa là gì?
+4. Muốn 8E1 phải cấu hình `M/PCE/PS` thế nào?
+5. Baud Rate của USART được tạo từ clock nào?
+6. Công thức Baud Rate của STM32F1 là gì?
+7. Với USART1, PCLK2=72 MHz, 115200 baud, BRR bằng bao nhiêu?
+8. Vì sao cùng BRR nhưng USART1 và USART2 có thể ra baud khác nhau?
+9. TX GPIO thường dùng mode nào trên STM32F1?
+10. RX GPIO thường dùng mode nào?
+11. `USART_DR` có hai chức năng nào?
+12. TXE khác TC thế nào?
+13. RXNE có nghĩa gì?
+14. ORE xảy ra khi nào?
+15. Trình tự clear ORE/NE/FE là gì?
+16. Tại sao phải disable TXEIE khi TX buffer đã hết dữ liệu?
+17. IDLE Line được dùng để nhận biết điều gì?
+18. DMA Receive kết hợp IDLE hữu ích trong trường hợp nào?
+19. Hãy mô tả toàn bộ quy trình cấu hình USART1 115200 8N1.
+20. Hãy phân biệt Polling, Interrupt và DMA trong USART.
 
 ---
 
@@ -20934,112 +20550,31 @@ tốc độ 100/400 kHz phù hợp
 
 ### SPI
 
-1. SPI viết tắt của gì?
-2. SPI là synchronous hay asynchronous?
-3. Master và Slave khác nhau ở vai trò tạo SCK thế nào?
-4. MOSI có ý nghĩa gì?
-5. MISO có ý nghĩa gì?
-6. NSS/CS dùng để làm gì?
-7. Vì sao SPI Full-Duplex có thể truyền và nhận đồng thời?
-8. Khi Master gửi một byte, Receive path có hoạt động không?
-9. SPI1 lấy clock từ bus nào?
-10. SPI2/SPI3 lấy clock từ bus nào?
-11. Các SPI Master prescaler của STM32F1 là gì?
-12. Với PCLK2=72 MHz và `/8`, SCK bằng bao nhiêu?
-13. CPOL điều khiển gì?
-14. CPHA điều khiển gì?
-15. SPI Mode 0 tương ứng CPOL/CPHA nào?
-16. SPI Mode 3 tương ứng CPOL/CPHA nào?
-17. `DFF=0` là frame bao nhiêu bit?
-18. `DFF=1` là frame bao nhiêu bit?
-19. `LSBFIRST=0` nghĩa là gì?
-20. `SSM` dùng để làm gì?
-21. `SSI` dùng để làm gì?
-22. `SSOE` dùng để làm gì?
-23. Hardware NSS có hạn chế gì khi thiết bị cần CS toggle cho từng transaction?
-24. `SPI_DR` có vai trò gì?
-25. `TXE` có nghĩa gì?
-26. `RXNE` có nghĩa gì?
-27. `BSY` có nghĩa gì?
-28. Vì sao Master muốn Read vẫn phải transmit dummy data?
-29. OVR xảy ra khi nào?
-30. Clear OVR bằng trình tự nào?
-31. MODF là lỗi gì?
-32. CRCERR là lỗi gì?
-33. SPI Interrupt có những nguồn cơ bản nào?
-34. SPI DMA có thể dùng ở cả TX và RX không?
-35. GPIO SCK/MOSI của Master thường dùng mode nào?
-36. MISO Master thường dùng mode nào?
-37. SPI1 mặc định dùng những chân nào?
-38. SPI1 remap dùng những chân nào?
-39. Vì sao SPI1 remap có thể liên quan JTAG?
-40. Trước khi CS High sau frame cuối nên kiểm tra gì?
-
-### I2C
-
-41. I2C viết tắt của gì?
-42. I2C dùng mấy dây tín hiệu chính?
-43. SDA dùng để làm gì?
-44. SCL dùng để làm gì?
-45. Vì sao SDA/SCL dùng Open-Drain?
-46. Vì sao bus I2C cần Pull-Up?
-47. START Condition là gì?
-48. STOP Condition là gì?
-49. I2C truyền MSB First hay LSB First?
-50. Mỗi byte I2C có bao nhiêu clock nếu tính ACK/NACK?
-51. ACK là gì?
-52. NACK là gì?
-53. 7-bit Address và Address Byte khác nhau thế nào?
-54. Address 0x50 khi Write tạo byte nào trên bus?
-55. Address 0x50 khi Read tạo byte nào trên bus?
-56. STM32F1 hỗ trợ 10-bit Address không?
-57. Bốn trạng thái Master/Slave Transmit/Receive là gì?
-58. Standard Mode tối đa bao nhiêu?
-59. Fast Mode tối đa bao nhiêu?
-60. I2C1/I2C2 nằm trên bus nào?
-61. `CR2.FREQ` chứa giá trị gì?
-62. Với PCLK1=36 MHz, `FREQ` bằng bao nhiêu?
-63. Công thức CCR trong Standard Mode là gì?
-64. Với PCLK1=36 MHz và 100 kHz, CCR bằng bao nhiêu?
-65. TRISE Standard Mode bằng bao nhiêu khi PCLK1=36 MHz?
-66. `SB` có nghĩa gì?
-67. `ADDR` có nghĩa gì?
-68. `TxE` có nghĩa gì?
-69. `RxNE` có nghĩa gì?
-70. `BTF` có nghĩa gì?
-71. `BUSY` nằm trong register nào?
-72. Clear `ADDR` bằng trình tự nào?
-73. Clear `SB` bằng trình tự nào?
-74. Clear `RxNE` bằng cách nào?
-75. `BERR` là lỗi gì?
-76. `ARLO` là lỗi gì?
-77. `AF` là lỗi gì?
-78. Clock Stretching là gì?
-79. Arbitration hoạt động dựa trên nguyên tắc gì?
-80. Vì sao Low là mức dominant trên bus I2C?
-81. Repeated START dùng khi nào?
-82. Hãy mô tả sequence đọc một register của sensor.
-83. Master Transmit bắt đầu từ những event nào?
-84. Vì sao Master Receive 1 byte và nhiều byte có sequence khác nhau?
-85. Khi nhận byte cuối, Master dùng ACK hay NACK?
-86. Event Interrupt và Error Interrupt khác nhau thế nào?
-87. I2C DMA thay CPU xử lý phần data nhưng vẫn cần software quản lý những phần nào?
-88. GPIO của I2C1 mặc định là chân nào?
-89. I2C1 remap sang chân nào?
-90. Hãy mô tả đầy đủ luồng `RCC → GPIO → FREQ → CCR → TRISE → START → Address → Data → STOP`.
-
-### So sánh
-
-91. SPI chọn Slave bằng gì?
-92. I2C chọn Slave bằng gì?
-93. Giao tiếp nào Full-Duplex tự nhiên?
-94. Giao tiếp nào hỗ trợ Clock Stretching?
-95. Giao tiếp nào hỗ trợ Arbitration theo protocol?
-96. Vì sao I2C phù hợp khi cần nhiều thiết bị nhưng ít chân?
-97. Vì sao SPI thường đạt tốc độ cao hơn và state machine đơn giản hơn?
-98. Khi thiết kế driver SPI, ba flag nào cần nhớ nhất?
-99. Khi thiết kế driver I2C STM32F1, vì sao thứ tự đọc/ghi `SR1/SR2/DR/CR1` quan trọng?
-100. Hãy so sánh một transaction đọc register bằng SPI với I2C.
+1. Master và Slave khác nhau ở vai trò tạo SCK thế nào?
+2. NSS/CS dùng để làm gì?
+3. Vì sao SPI Full-Duplex có thể truyền và nhận đồng thời?
+4. Với PCLK2=72 MHz và `/8`, SCK bằng bao nhiêu?
+5. CPOL điều khiển gì?
+6. CPHA điều khiển gì?
+7. Hardware NSS có hạn chế gì khi thiết bị cần CS toggle cho từng transaction?
+8. `TXE` có nghĩa gì?
+9. `RXNE` có nghĩa gì?
+10. `BSY` có nghĩa gì?
+11. Vì sao Master muốn Read vẫn phải transmit dummy data?
+12. Trước khi CS High sau frame cuối nên kiểm tra gì?
+13. Vì sao SDA/SCL dùng Open-Drain?
+14. Vì sao bus I2C cần Pull-Up?
+15. START Condition là gì?
+16. STOP Condition là gì?
+17. 7-bit Address và Address Byte khác nhau thế nào?
+18. Công thức CCR trong Standard Mode là gì?
+19. Clear `ADDR` bằng trình tự nào?
+20. Clock Stretching là gì?
+21. Arbitration hoạt động dựa trên nguyên tắc gì?
+22. Repeated START dùng khi nào?
+23. Hãy mô tả sequence đọc một register của sensor.
+24. Khi nhận byte cuối, Master dùng ACK hay NACK?
+25. Hãy so sánh một transaction đọc register bằng SPI với I2C.
 
 ---
 
@@ -23613,91 +23148,26 @@ Injected
 <a id="muc-08-25"></a>
 ## 8.25. Câu hỏi tự kiểm tra
 
-1. ADC viết tắt của gì?
-2. STM32F1 ADC sử dụng kiến trúc chuyển đổi nào?
-3. ADC có độ phân giải bao nhiêu bit?
-4. ADC 12-bit có bao nhiêu mức?
-5. Regular ADC code có dải bao nhiêu?
-6. ADC code có đơn vị Volt không?
-7. Muốn đổi ADC code sang Volt cần biết thông tin gì?
-8. `VDDA` dùng để làm gì?
-9. `VSSA` dùng để làm gì?
-10. `VREF+` có vai trò gì?
-11. `VREF-` có vai trò gì?
-12. ADC input phải nằm trong khoảng nào?
-13. ADC clock được tạo từ bus clock nào?
-14. Các ADC prescaler trên STM32F1 là gì?
-15. ADCCLK tối đa bao nhiêu?
-16. Với PCLK2=72 MHz, prescaler `/6`, ADCCLK bằng bao nhiêu?
-17. Vì sao `/4` không hợp lệ khi PCLK2=72 MHz?
-18. GPIO dùng làm ADC Input phải cấu hình mode nào?
-19. `ADC_SMPR1` cấu hình những channel nào?
-20. `ADC_SMPR2` cấu hình những channel nào?
-21. Các lựa chọn Sampling Time là gì?
-22. Vì sao nguồn trở kháng cao có thể cần Sampling Time dài hơn?
-23. Công thức total conversion time là gì?
-24. Sampling 1.5 cycles, ADCCLK=14 MHz cho Tconv bao nhiêu?
-25. Regular Group có tối đa bao nhiêu conversion?
-26. Injected Group có tối đa bao nhiêu conversion?
-27. Regular Sequence được cấu hình bằng những register nào?
-28. Injected Sequence được cấu hình bằng register nào?
-29. `Rank` có nghĩa gì?
-30. Một channel có thể xuất hiện nhiều lần trong sequence không?
-31. Điều gì xảy ra nếu SQR/JSQR bị sửa trong khi conversion đang chạy?
-32. `CONT=0` là mode gì?
-33. `CONT=1` là mode gì?
-34. Scan Mode dùng để làm gì?
-35. `SCAN` nằm trong register nào?
-36. Vì sao Regular Scan cần DMA?
-37. Injected result được lưu ở đâu?
-38. Discontinuous Mode dùng để làm gì?
-39. `DISCNUM` quy định gì?
-40. Injected Discontinuous Mode convert bao nhiêu channel mỗi trigger?
-41. Auto-Injected và Discontinuous Mode có dùng đồng thời được không?
-42. `SWSTART` dùng cho group nào?
-43. `JSWSTART` dùng cho group nào?
-44. External trigger có thể đến từ những loại peripheral nào?
-45. External ADC trigger trên STM32F1 kích ở cạnh nào?
-46. Vì sao Timer Trigger phù hợp với ADC sampling định kỳ?
-47. `EOC` có nghĩa gì?
-48. `JEOC` có nghĩa gì?
-49. Regular result nằm ở register nào?
-50. Injected result nằm ở những register nào?
-51. EOC được clear bằng những cách nào?
-52. Right Alignment và Left Alignment khác nhau thế nào?
-53. Injected offset được cấu hình bằng register nào?
-54. Vì sao Injected result có thể âm?
-55. Calibration dùng để làm gì?
-56. `RSTCAL` dùng để làm gì?
-57. `CAL` dùng để làm gì?
-58. ADC phải power-on ít nhất bao nhiêu ADCCLK cycles trước calibration?
-59. RM0008 khuyến nghị Calibration vào thời điểm nào?
-60. Analog Watchdog dùng để làm gì?
-61. `ADC_HTR` dùng để làm gì?
-62. `ADC_LTR` dùng để làm gì?
-63. `AWD` được set khi nào?
-64. Analog Watchdog có thể giám sát một channel riêng không?
-65. Temperature Sensor nằm ở channel nào?
-66. VREFINT nằm ở channel nào?
-67. Internal Temperature Sensor/VREFINT thuộc ADC nào?
-68. Bit nào enable hai internal channels này?
-69. Recommended Sampling Time của Temperature Sensor là bao nhiêu?
-70. Vì sao Internal Temperature Sensor không phù hợp làm thermometer tuyệt đối chính xác?
-71. Ba ADC interrupt event chính là gì?
-72. ADC1 và ADC2 có dùng chung interrupt vector không?
-73. ADC3 interrupt có dùng cùng vector ADC1/ADC2 không?
-74. ADC DMA request được tạo từ loại conversion nào?
-75. ADC nào có DMA request capability trực tiếp?
-76. ADC2 data có thể đi DMA bằng cơ chế nào?
-77. Dual ADC Mode dùng để làm gì?
-78. Regular Simultaneous khác Interleaved về mục tiêu thế nào?
-79. Trong một số Dual Mode, ADC1_DR 32-bit chứa data ADC1/ADC2 như thế nào?
-80. Hãy mô tả luồng `RCC → GPIO Analog → ADCCLK → Sampling → Conversion → ADC_DR`.
-81. Hãy mô tả quy trình đọc một Regular Channel bằng Polling.
-82. Hãy mô tả kiến trúc `Timer → ADC Scan → DMA → SRAM`.
-83. Nếu ADC code=2048 và VREF≈3.3 V, điện áp lý tưởng xấp xỉ bao nhiêu?
-84. Nếu ADCCLK=12 MHz và Sampling=55.5 cycles, Tconv xấp xỉ bao nhiêu?
-85. Vì sao `17.1 µs` của Temperature Sensor không phải `17.1 cycles`?
+1. ADC có độ phân giải bao nhiêu bit?
+2. Muốn đổi ADC code sang Volt cần biết thông tin gì?
+3. ADC input phải nằm trong khoảng nào?
+4. ADCCLK tối đa bao nhiêu?
+5. GPIO dùng làm ADC Input phải cấu hình mode nào?
+6. Vì sao nguồn trở kháng cao có thể cần Sampling Time dài hơn?
+7. Công thức total conversion time là gì?
+8. Regular Group có tối đa bao nhiêu conversion?
+9. Injected Group có tối đa bao nhiêu conversion?
+10. `Rank` có nghĩa gì?
+11. Scan Mode dùng để làm gì?
+12. Vì sao Regular Scan cần DMA?
+13. Vì sao Timer Trigger phù hợp với ADC sampling định kỳ?
+14. `EOC` có nghĩa gì?
+15. Regular result nằm ở register nào?
+16. Calibration dùng để làm gì?
+17. Analog Watchdog dùng để làm gì?
+18. Temperature Sensor nằm ở channel nào?
+19. ADC DMA request được tạo từ loại conversion nào?
+20. Hãy mô tả kiến trúc `Timer → ADC Scan → DMA → SRAM`.
 
 ---
 
@@ -26334,106 +25804,26 @@ nếu CPU không xử lý kịp.
 <a id="muc-09-26"></a>
 ## 9.26. Câu hỏi tự kiểm tra
 
-1. DMA viết tắt của gì?
-2. DMA giải quyết vấn đề gì?
-3. DMA có thay CPU xử lý protocol không?
-4. DMA có tự xử lý nội dung dữ liệu không?
-5. STM32F1 dùng DMA Channel hay DMA Stream?
-6. DMA1 có bao nhiêu channel?
-7. DMA2 có tồn tại trên mọi STM32F1 không?
-8. Mỗi DMA Channel có những register chính nào?
-9. DMA Request là gì?
-10. DMA Request được tạo bởi ai?
-11. Peripheral-to-DMA Channel mapping trên STM32F1 có chọn tùy ý được không?
-12. ADC1 thường map vào DMA1 channel nào?
-13. SPI1_RX thường map vào DMA1 channel nào?
-14. SPI1_TX thường map vào DMA1 channel nào?
-15. USART1_TX thường map vào DMA1 channel nào?
-16. USART1_RX thường map vào DMA1 channel nào?
-17. I2C1_TX thường map vào DMA1 channel nào?
-18. I2C1_RX thường map vào DMA1 channel nào?
-19. Nếu hai peripheral cần cùng một DMA channel tại cùng thời điểm thì có vấn đề gì?
-20. DMA hỗ trợ ba hướng transfer chính nào?
-21. `DIR=0` là hướng nào?
-22. `DIR=1` là hướng nào?
-23. `MEM2MEM` dùng để làm gì?
-24. Memory-to-Memory có cần peripheral DMA request không?
-25. Memory-to-Memory có dùng Circular Mode không?
-26. `EN` trong CCR dùng để làm gì?
-27. `TCIE` dùng để làm gì?
-28. `HTIE` dùng để làm gì?
-29. `TEIE` dùng để làm gì?
-30. `CIRC` dùng để làm gì?
-31. `PINC` dùng để làm gì?
-32. `MINC` dùng để làm gì?
-33. `PSIZE` dùng để làm gì?
-34. `MSIZE` dùng để làm gì?
-35. `PL` dùng để làm gì?
-36. Tại sao nên cấu hình channel khi `EN=0`?
-37. `CNDTR` chứa gì?
-38. `CNDTR` giảm khi nào?
-39. `CNDTR=100`, `MSIZE=16-bit` tương ứng bao nhiêu byte memory data?
-40. Normal Mode làm gì khi `CNDTR=0`?
-41. Circular Mode làm gì khi `CNDTR=0`?
-42. Làm sao ước lượng số byte UART DMA RX đã nhận từ `CNDTR`?
-43. `CPAR` chứa gì?
-44. `CMAR` chứa gì?
-45. Trong Peripheral-to-Memory, source và destination tương ứng CPAR/CMAR thế nào?
-46. Trong Memory-to-Peripheral thì thế nào?
-47. DMA hỗ trợ những data width nào?
-48. `PSIZE=01` nghĩa là gì?
-49. `MSIZE=10` nghĩa là gì?
-50. ADC DMA thường dùng PSIZE/MSIZE bao nhiêu?
-51. UART byte DMA thường dùng PSIZE/MSIZE bao nhiêu?
-52. Với `MINC=1`, memory address tăng theo tham số nào?
-53. Với `PINC=1`, peripheral address tăng theo tham số nào?
-54. Vì sao `PINC` thường bằng 0 với USART/ADC/SPI?
-55. Circular Mode phù hợp với những use case nào?
-56. DMA Priority có những mức nào?
-57. Nếu hai channel cùng `PL`, channel nào được ưu tiên?
-58. DMA Priority và NVIC Priority khác nhau thế nào?
-59. `TC` là gì?
-60. `HT` là gì?
-61. `TE` là gì?
-62. `DMA_ISR` dùng để làm gì?
-63. `DMA_IFCR` dùng để làm gì?
-64. `TCIFx` có nghĩa gì?
-65. `HTIFx` có nghĩa gì?
-66. `TEIFx` có nghĩa gì?
-67. Clear DMA flag bằng cơ chế gì?
-68. Vì sao không dùng read-modify-write trên IFCR để clear flag?
-69. DMA interrupt handler cần xử lý những flag nào?
-70. DMA flag và NVIC pending state có phải cùng một thứ không?
-71. ADC + DMA đi theo hướng transfer nào?
-72. ADC + DMA thường bật PINC/MINC như thế nào?
-73. Vì sao ADC Scan rất phù hợp với DMA?
-74. Kiến trúc `Timer → ADC → DMA → Buffer` phân chia nhiệm vụ thế nào?
-75. UART RX DMA dùng hướng nào?
-76. UART TX DMA dùng hướng nào?
-77. USART1 RX/TX map vào channel nào?
-78. Vì sao DMA TC của UART TX chưa có nghĩa transmission hoàn tất?
-79. Sau UART TX DMA TC phải kiểm tra flag nào nếu cần biết frame cuối đã ra TX?
-80. SPI Full-Duplex DMA thường cần mấy DMA channel?
-81. Vì sao SPI Master Read vẫn có TX DMA?
-82. SPI1 RX/TX map vào channel nào?
-83. Sau SPI TX DMA complete, vì sao vẫn cần kiểm tra BSY?
-84. I2C DMA có tự tạo START/STOP không?
-85. I2C DMA thay CPU ở phần nào của transaction?
-86. Timer có thể tạo DMA request từ những event nào?
-87. DMA có thể cập nhật Timer CCR để làm gì?
-88. Hãy mô tả sequence cấu hình DMA từ RCC tới enable channel.
-89. Vì sao phải clear DMA flag cũ trước transfer mới?
-90. Hãy mô tả cấu hình ADC1 → DMA1 Channel 1 → uint16_t buffer.
-91. Hãy mô tả cấu hình USART1 TX DMA.
-92. Half Transfer giúp xử lý Circular Buffer thế nào?
-93. Ping-Pong Processing hoạt động ra sao?
-94. Điều kiện timing nào để CPU không bị DMA overwrite dữ liệu chưa xử lý?
-95. Sai `MINC` sẽ gây lỗi gì?
-96. Sai `PINC` có thể gây hậu quả gì?
-97. Sai `PSIZE/MSIZE` ảnh hưởng gì?
-98. Vì sao DMA TC và Peripheral Complete phải được phân biệt?
-99. Hãy so sánh ADC DMA, UART DMA và SPI DMA về hướng transfer.
-100. Hãy mô tả luồng `Peripheral Event → DMA Request → Channel → CPAR/CMAR → CNDTR → HT/TC`.
+1. STM32F1 dùng DMA Channel hay DMA Stream?
+2. Mỗi DMA Channel có những register chính nào?
+3. Peripheral-to-DMA Channel mapping trên STM32F1 có chọn tùy ý được không?
+4. DMA hỗ trợ ba hướng transfer chính nào?
+5. `EN` trong CCR dùng để làm gì?
+6. `CIRC` dùng để làm gì?
+7. `MINC` dùng để làm gì?
+8. `PSIZE` dùng để làm gì?
+9. `MSIZE` dùng để làm gì?
+10. `CNDTR` chứa gì?
+11. `CPAR` chứa gì?
+12. `CMAR` chứa gì?
+13. Vì sao `PINC` thường bằng 0 với USART/ADC/SPI?
+14. Circular Mode phù hợp với những use case nào?
+15. DMA Priority và NVIC Priority khác nhau thế nào?
+16. Clear DMA flag bằng cơ chế gì?
+17. Vì sao ADC Scan rất phù hợp với DMA?
+18. Vì sao DMA TC của UART TX chưa có nghĩa transmission hoàn tất?
+19. Sau SPI TX DMA complete, vì sao vẫn cần kiểm tra BSY?
+20. Vì sao DMA TC và Peripheral Complete phải được phân biệt?
 
 ---
 
@@ -28766,104 +28156,24 @@ Kết quả nào sẽ bác bỏ giả thuyết?
 
 1. Programming khác Debugging như thế nào?
 2. ST-Link có vai trò gì?
-3. ST-Link có phải là khối debug nằm trong CPU không?
-4. File ELF hữu ích cho source-level debug vì sao?
-5. SWD viết tắt của gì?
-6. Hai tín hiệu SWD chính là gì?
-7. SWDIO nằm ở chân nào trên STM32F1?
-8. SWCLK nằm ở chân nào?
-9. JTAG sử dụng thêm những chân nào?
-10. Vì sao SWD tiết kiệm chân hơn JTAG?
-11. NRST giúp gì trong debug?
-12. `Connect Under Reset` hữu ích trong những tình huống nào?
-13. SWO là gì?
-14. SWO thường nằm trên chân nào của STM32F1?
-15. `AFIO_MAPR.SWJ_CFG` dùng để làm gì?
-16. Cấu hình nào giúp giải phóng PA15/PB3/PB4 mà vẫn debug được?
-17. Điều gì có thể xảy ra nếu firmware disable cả JTAG và SWD?
-18. Breakpoint dùng để làm gì?
-19. Hardware breakpoint có vô hạn không?
-20. Step Into khác Step Over như thế nào?
-21. Step Out làm gì?
-22. Continue / Resume làm gì?
-23. Watchpoint khác Breakpoint như thế nào?
-24. Watchpoint đặc biệt hữu ích với loại bug nào?
-25. `PC` cho biết gì?
-26. `LR` dùng làm gì?
-27. `SP` là gì?
-28. Handler mode dùng MSP hay PSP?
-29. Call Stack dùng để làm gì?
-30. Vì sao Call Stack có thể sai khi Stack bị corruption?
-31. Debugger có thể xem những loại memory nào?
-32. Peripheral Register Window hữu ích như thế nào?
-33. Vì sao đọc peripheral register bằng debugger đôi khi có side effect?
-34. Hãy nêu ví dụ I2C flag bị clear bởi sequence read.
-35. Hãy nêu ví dụ SPI OVR clear sequence.
-36. Hãy nêu ví dụ USART receive error clear sequence.
-37. Watch / Expressions dùng để làm gì?
-38. `<optimized out>` có nghĩa gì?
-39. Live Watch có hoàn toàn không ảnh hưởng target không?
-40. Khi interrupt không chạy, nên kiểm tra những tầng nào?
-41. `Pending` ở NVIC có nghĩa gì?
-42. Vì sao breakpoint trong ISR có thể làm thay đổi system behavior?
-43. DBGMCU là gì?
-44. Các register DBGMCU chính cần nhận diện là gì?
-45. DBGMCU_IDCODE chứa thông tin gì?
-46. Freeze Peripheral dùng để làm gì?
-47. Vì sao nên freeze Timer khi debug timing logic?
-48. Vì sao watchdog có thể reset MCU khi dừng ở breakpoint?
-49. Freeze bit có làm mọi peripheral trong chip dừng không?
-50. `DBG_SLEEP` dùng cho tình huống nào?
-51. `DBG_STOP` dùng cho tình huống nào?
-52. `DBG_STANDBY` dùng cho tình huống nào?
-53. Vì sao debug low-power có thể làm current consumption cao hơn?
-54. Khi vào HardFault, bốn core state nào nên xem trước?
-55. `SCB->CFSR` dùng để làm gì?
-56. `SCB->HFSR` dùng để làm gì?
-57. `SCB->BFAR` dùng để làm gì?
-58. `SCB->MMFAR` dùng để làm gì?
-59. Khi nào BFAR/MMFAR có giá trị đáng tin?
-60. `HFSR.FORCED` gợi ý điều gì?
-61. Exception Stack Frame gồm những register nào?
-62. Vì sao stacked PC quan trọng?
-63. `EXC_RETURN` giúp xác định điều gì?
-64. HardFault Handler có thể xác định MSP/PSP bằng cách nào về mặt nguyên lý?
-65. Các nguyên nhân HardFault phổ biến là gì?
-66. Tại sao -O0 thường dễ debug hơn?
-67. Optimization có thể làm variable biến mất khỏi Watch không?
-68. `volatile` có phải cách để ép debugger nhìn thấy variable không?
-69. `volatile` có làm thao tác trở thành atomic không?
-70. Vì sao nên test cả build gần Release?
-71. ITM là gì?
-72. SWO khác UART debug print như thế nào?
-73. SWO có cần để dùng breakpoint không?
-74. `No target found` nên kiểm tra những gì?
-75. Vì sao giảm SWD Clock đôi khi giúp kết nối?
-76. Firmware disable SWD có thể recovery bằng cách nào?
-77. Firmware vào Stop quá sớm có thể làm attach khó thế nào?
-78. Nếu MCU reset khi breakpoint giữ quá lâu, nên nghi ngờ gì?
-79. Option Bytes / Read Protection có thể ảnh hưởng debug thế nào?
-80. Khi UART không truyền, nên kiểm tra register theo thứ tự nào?
-81. Khi Timer không chạy, nên kiểm tra gì?
-82. Khi SPI không có waveform, nên kiểm tra gì?
-83. Khi I2C treo BUSY, nên kiểm tra những tầng nào?
-84. Khi ADC không EOC, nên kiểm tra gì?
-85. Khi DMA không chạy, nên kiểm tra gì?
-86. Khi EXTI không vào ISR, nên kiểm tra gì?
-87. Vì sao debug theo peripheral flag tốt hơn chỉ nhìn source?
-88. DMA có thể tiếp tục khi CPU halt không?
-89. External device có dừng khi CPU breakpoint không?
-90. Tại sao breakpoint có thể tạo bug giả hoặc che mất bug timing?
-91. `USART TC` và `DMA TC` khác nhau thế nào khi debug UART TX?
-92. `SPI BSY` quan trọng thế nào sau DMA TC?
-93. Khi xem I2C SR1/SR2 bằng debugger cần cẩn thận điều gì?
-94. Khi HardFault do bad pointer, register nào giúp tìm instruction gây fault?
-95. Khi BusFault có valid address, nên xem register nào?
-96. Khi một biến bị ghi sai, nên dùng watchpoint thế nào?
-97. Nếu breakpoint đã dùng hết hardware resource thì vấn đề là gì?
-98. Vì sao NRST nên được đưa ra debug connector?
-99. Hãy mô tả luồng `IDE → ST-Link → SWD → Cortex-M3`.
-100. Hãy mô tả một quy trình debug firmware từ symptom tới root cause.
+3. Hai tín hiệu SWD chính là gì?
+4. NRST giúp gì trong debug?
+5. `Connect Under Reset` hữu ích trong những tình huống nào?
+6. `AFIO_MAPR.SWJ_CFG` dùng để làm gì?
+7. Cấu hình nào giúp giải phóng PA15/PB3/PB4 mà vẫn debug được?
+8. Breakpoint dùng để làm gì?
+9. Watchpoint khác Breakpoint như thế nào?
+10. `PC` cho biết gì?
+11. Call Stack dùng để làm gì?
+12. Vì sao đọc peripheral register bằng debugger đôi khi có side effect?
+13. Khi interrupt không chạy, nên kiểm tra những tầng nào?
+14. Freeze Peripheral dùng để làm gì?
+15. Vì sao watchdog có thể reset MCU khi dừng ở breakpoint?
+16. Khi vào HardFault, bốn core state nào nên xem trước?
+17. `SCB->CFSR` dùng để làm gì?
+18. Vì sao stacked PC quan trọng?
+19. `No target found` nên kiểm tra những gì?
+20. Hãy mô tả một quy trình debug firmware từ symptom tới root cause.
 
 ---
 
