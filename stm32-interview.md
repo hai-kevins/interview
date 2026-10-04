@@ -8,8 +8,8 @@
 ## Lộ trình tài liệu
 
 1. **STM32 architecture / memory map**
-   - **1.1. Processor Core vs Processor vs Microcontroller** ← đang triển khai
-   - 1.2. Operation Modes
+   - 1.1. Processor Core vs Processor vs Microcontroller
+   - **1.2. Operation Modes** ← đang triển khai
    - 1.3. Access Level
    - 1.4. Core Registers
    - 1.5. Reset Sequence
@@ -549,5 +549,322 @@ System bus
 **Ý quan trọng nhất:**
 
 > **STM32 là một vi điều khiển hoàn chỉnh; Cortex-M là bộ xử lý/lõi xử lý được tích hợp bên trong nó. Core chịu trách nhiệm lấy, giải mã và thực thi lệnh, còn Flash, SRAM và peripheral là các thành phần khác của vi điều khiển mà core truy cập thông qua hệ thống bus.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-02"></a>
+## 1.2. Operation Modes
+
+### 1.2.1. Cortex-M có những chế độ hoạt động nào?
+
+Theo tài liệu, các bộ xử lý Cortex-M0/M3/M4 có **2 chế độ hoạt động**:
+
+```text
+Operational Modes
+├── Thread mode
+└── Handler mode
+```
+
+Hai chế độ này được dùng để phân biệt hai tình huống thực thi chính:
+
+```text
+Thread mode
+→ thực thi mã ứng dụng bình thường
+
+Handler mode
+→ thực thi exception handler / interrupt handler
+```
+
+Tài liệu tổng quan cũng liệt kê **Operational mode of the processor** là một trong những nội dung đặc trưng cần hiểu khi học Cortex-M0/M3/M4.
+
+---
+
+### 1.2.2. Thread mode
+
+Theo tài liệu:
+
+> Mã ứng dụng sẽ chạy trong **Thread mode**.
+
+Có thể hình dung:
+
+```text
+Khởi động processor
+        ↓
+   Thread mode
+        ↓
+Chạy mã ứng dụng
+```
+
+Ví dụ ở mức khái niệm:
+
+```c
+int main(void)
+{
+    while (1)
+    {
+        // Mã ứng dụng
+    }
+}
+```
+
+Trong trạng thái chương trình đang thực thi luồng mã ứng dụng bình thường, tài liệu xếp việc thực thi đó vào **Thread mode**.
+
+Tài liệu cũng gọi Thread mode là **"User Mode"**.
+
+> **Phạm vi của mục này:** ở đây chỉ ghi nhận cách gọi trong tài liệu nguồn.  
+> Phần **Access Level** sẽ được học riêng ở mục 1.3, nên chưa trộn khái niệm quyền truy cập vào Operation Modes.
+
+---
+
+### 1.2.3. Handler mode
+
+Theo tài liệu:
+
+> Tất cả **exception handler** hoặc **interrupt handler** sẽ chạy trong **Handler mode**.
+
+Có thể hình dung:
+
+```text
+Exception / Interrupt xảy ra
+          ↓
+       Core
+          ↓
+   Handler mode
+          ↓
+Chạy handler / ISR tương ứng
+```
+
+Ví dụ về mặt ý tưởng:
+
+```c
+void Some_IRQHandler(void)
+{
+    // Mã xử lý ngắt
+}
+```
+
+Điểm cần nhớ:
+
+```text
+Mã ứng dụng bình thường
+→ Thread mode
+
+Exception handler / Interrupt handler
+→ Handler mode
+```
+
+---
+
+### 1.2.4. Processor bắt đầu ở mode nào?
+
+Theo tài liệu:
+
+> Processor luôn bắt đầu ở **Thread mode**.
+
+Do đó, ở mức khái niệm có thể ghi nhớ:
+
+```text
+Processor bắt đầu hoạt động
+          ↓
+      Thread mode
+```
+
+Ở mục này chưa đi sâu vào **Reset Sequence** hay startup code; các nội dung đó sẽ được triển khai riêng ở phần sau.
+
+---
+
+### 1.2.5. Khi nào Core chuyển từ Thread mode sang Handler mode?
+
+Tài liệu mô tả:
+
+- Khi core gặp **system exception**, hoặc
+- Khi có **external interrupt**,
+
+thì core sẽ chuyển sang **Handler mode** để phục vụ handler/ISR tương ứng.
+
+Sơ đồ:
+
+```text
+              Thread mode
+                  │
+                  │ System exception
+                  │ hoặc External interrupt
+                  ↓
+              Handler mode
+                  │
+                  ↓
+          Thực thi handler / ISR
+```
+
+Có thể nhớ ngắn gọn:
+
+```text
+Thread mode
+    ↓ exception / interrupt
+Handler mode
+```
+
+Phần tài liệu Operation Modes hiện tại chỉ mô tả việc chuyển sang Handler mode để phục vụ exception/interrupt. Cơ chế exception chi tiết sẽ được học ở phần **Exception / Interrupt** sau này.
+
+---
+
+### 1.2.6. System exception và external interrupt trong mục này cần hiểu đến đâu?
+
+Ở mục **Operation Modes**, chưa cần học chi tiết từng loại exception hoặc interrupt.
+
+Chỉ cần hiểu mối liên hệ:
+
+```text
+Sự kiện xảy ra
+      ↓
+System exception
+hoặc
+External interrupt
+      ↓
+Core chuyển sang Handler mode
+      ↓
+Handler / ISR được thực thi
+```
+
+Các nội dung như:
+
+```text
+NVIC
+Interrupt priority
+Exception number
+HardFault
+SysTick
+PendSV
+SVC
+...
+```
+
+sẽ được để sang phần chuyên về **Interrupt + NVIC + EXTI** và phần exception tương ứng.
+
+---
+
+### 1.2.7. Phân biệt nhanh Thread mode và Handler mode
+
+| Tiêu chí | Thread mode | Handler mode |
+|---|---|---|
+| Mục đích chính theo tài liệu | Chạy mã ứng dụng | Chạy exception/interrupt handler |
+| Mã thường chạy | Application code | Handler / ISR |
+| Processor bắt đầu ở đây | Có | Không |
+| Khi exception/interrupt xảy ra | Core rời Thread mode để xử lý sự kiện | Core chuyển vào mode này để phục vụ handler |
+
+Cách nhớ:
+
+```text
+Thread
+→ chương trình đang chạy bình thường
+
+Handler
+→ CPU đang xử lý exception / interrupt
+```
+
+---
+
+### 1.2.8. Sơ đồ tổng hợp
+
+```text
+              Processor bắt đầu
+                     │
+                     ↓
+                Thread mode
+                     │
+                     │ Chạy application code
+                     │
+                     ├───────────────┐
+                     │               │
+                     │        Exception / Interrupt
+                     │               │
+                     │               ↓
+                     │          Handler mode
+                     │               │
+                     │               ↓
+                     │          Handler / ISR
+                     │
+                     └── Luồng hoạt động bình thường
+```
+
+Ý chính của sơ đồ:
+
+```text
+Thread mode
+= mã ứng dụng
+
+Handler mode
+= mã xử lý exception / interrupt
+```
+
+---
+
+### 1.2.9. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Cortex-M có những operation mode nào?”**, có thể trả lời:
+
+> **Theo mô hình Cortex-M trong tài liệu, processor có hai operation mode là Thread mode và Handler mode. Mã ứng dụng chạy trong Thread mode, còn exception handler và interrupt handler chạy trong Handler mode.**
+
+Nếu hỏi **“Processor bắt đầu ở mode nào?”**:
+
+> **Processor bắt đầu ở Thread mode.**
+
+Nếu hỏi **“Khi interrupt xảy ra thì mode thay đổi như thế nào?”**:
+
+> **Khi core gặp system exception hoặc external interrupt, core chuyển từ Thread mode sang Handler mode để thực thi handler hoặc ISR tương ứng.**
+
+Nếu hỏi **“Thread mode và Handler mode khác nhau ở điểm chính nào?”**:
+
+> **Thread mode dành cho luồng mã ứng dụng bình thường, còn Handler mode dành cho việc xử lý exception và interrupt.**
+
+---
+
+### 1.2.10. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Cortex-M0/M3/M4 có bao nhiêu operation mode theo tài liệu?
+2. Hai operation mode đó là gì?
+3. Mã ứng dụng bình thường chạy trong mode nào?
+4. Exception handler chạy trong mode nào?
+5. Interrupt handler chạy trong mode nào?
+6. Processor bắt đầu ở mode nào?
+7. Khi system exception xảy ra, core chuyển sang mode nào?
+8. Khi external interrupt xảy ra, core chuyển sang mode nào?
+9. Thread mode và Handler mode khác nhau ở mục đích chính như thế nào?
+10. Trong phần Operation Modes này, tại sao chưa cần đi sâu vào NVIC hay interrupt priority?
+
+---
+
+### 1.2.11. Tóm tắt
+
+```text
+Cortex-M Operational Modes
+│
+├── Thread mode
+│   ├── processor bắt đầu ở mode này
+│   └── chạy application code
+│
+└── Handler mode
+    └── chạy exception / interrupt handler
+```
+
+Khi có sự kiện:
+
+```text
+Thread mode
+     ↓
+System exception
+hoặc External interrupt
+     ↓
+Handler mode
+     ↓
+Handler / ISR
+```
+
+**Ý quan trọng nhất:**
+
+> **Thread mode được dùng cho mã ứng dụng, còn Handler mode được dùng để phục vụ exception và interrupt. Khi core gặp system exception hoặc external interrupt, nó chuyển sang Handler mode để thực thi handler tương ứng.**
 
 [↑ Về mục lục](#muc-luc)
