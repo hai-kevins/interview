@@ -1,232 +1,231 @@
-# STM32 Architecture / Memory Map
+# Ghi chú phỏng vấn STM32
 
-> Trình bày nền tảng kiến trúc Cortex-M trong STM32, tổ chức bộ nhớ, cơ chế khởi động, Stack và quá trình liên kết chương trình.
+> **Mục tiêu:** Ôn STM32 theo hướng phỏng vấn Embedded Firmware.
 
 ---
 
 <a id="muc-luc"></a>
 ## Mục lục
 
-1. **STM32 architecture / memory map**
-    - 1.1. Processor Core vs Processor vs Microcontroller
-    - 1.2. Operation Modes
-    - 1.3. Access Level
-    - 1.4. Core Registers
-    - 1.5. Reset Sequence
-    - 1.6. Bus Architecture
-    - 1.7. Memory Map
-    - 1.8. Flash và SRAM
-    - 1.9. Stack cơ bản trên Cortex-M
-    - 1.10. Startup Code
-    - 1.11. Linker Script và các section
-2. **RCC + Clock**
-    - 2.1. RCC là gì?
-    - 2.2. Các nguồn Clock: HSI / HSE / LSI / LSE
-    - 2.3. Clock Tree
-    - 2.4. PLL
-    - 2.5. SYSCLK / HCLK / PCLK1 / PCLK2
-    - 2.6. Prescaler và cách tính tần số
-    - 2.7. Peripheral Clock Enable và Peripheral Reset
-    - 2.8. Clock của Timer
-    - 2.9. Clock của các Peripheral quan trọng
-    - 2.10. Quy trình cấu hình Clock
-    - 2.11. Câu hỏi tự kiểm tra
-3. **GPIO**
-    - 3.1. GPIO là gì? Port và Pin
-    - 3.2. Bật Clock cho GPIO
-    - 3.3. Cấu trúc một GPIO Pin
-    - 3.4. Các chế độ Input
-    - 3.5. Các chế độ Output
-    - 3.6. Push-Pull và Open-Drain
-    - 3.7. Pull-Up / Pull-Down / Floating
-    - 3.8. Output Speed: 2 / 10 / 50 MHz
-    - 3.9. CRL / CRH và MODE / CNF
-    - 3.10. IDR / ODR
-    - 3.11. BSRR / BRR và thao tác Atomic
-    - 3.12. Alternate Function
-    - 3.13. AFIO và Pin Remapping
-    - 3.14. Analog Mode
-    - 3.15. GPIO cho UART / SPI / I2C / Timer / ADC
-    - 3.16. GPIO Locking
-    - 3.17. Quy trình cấu hình GPIO
-    - 3.18. Câu hỏi tự kiểm tra
-4. **Interrupt + NVIC + EXTI**
-    - 4.1. Interrupt là gì? Polling và Interrupt
-    - 4.2. Exception và Interrupt
-    - 4.3. Vector Table và ISR / Handler
-    - 4.4. Luồng xử lý Interrupt trên Cortex-M3
-    - 4.5. NVIC là gì?
-    - 4.6. Enable / Disable / Pending / Active
-    - 4.7. Interrupt Priority
-    - 4.8. Preemption và Nested Interrupt
-    - 4.9. Priority Grouping
-    - 4.10. EXTI là gì?
-    - 4.11. EXTI Line và GPIO Mapping
-    - 4.12. Rising Edge / Falling Edge
-    - 4.13. IMR / EMR / RTSR / FTSR / SWIER / PR
-    - 4.14. AFIO_EXTICR
-    - 4.15. GPIO → AFIO → EXTI → NVIC
-    - 4.16. Shared IRQ: EXTI5_9 và EXTI10_15
-    - 4.17. Clear Pending Flag
-    - 4.18. Quy trình cấu hình EXTI Interrupt
-    - 4.19. Quy ước thiết kế ISR
-    - 4.20. Ví dụ Button → EXTI → ISR
-    - 4.21. Câu hỏi tự kiểm tra
-5. **Timer + PWM**
-    - 5.1. Timer là gì?
-    - 5.2. Các loại Timer trên STM32F1
-    - 5.3. Timer Clock
-    - 5.4. Counter: CNT
-    - 5.5. Prescaler: PSC
-    - 5.6. Auto-Reload Register: ARR
-    - 5.7. Up / Down / Center-Aligned Counting
-    - 5.8. Update Event và Update Interrupt
-    - 5.9. Công thức tính Timer Period / Frequency
-    - 5.10. Capture/Compare Channel
-    - 5.11. Output Compare
-    - 5.12. Input Capture
-    - 5.13. PWM là gì?
-    - 5.14. PWM Frequency và Duty Cycle
-    - 5.15. PWM Mode 1 / PWM Mode 2
-    - 5.16. CCRx và Compare Match
-    - 5.17. Preload: ARPE / OCxPE
-    - 5.18. GPIO Alternate Function cho PWM
-    - 5.19. Timer Interrupt và DMA
-    - 5.20. Advanced Timer: Complementary PWM / Dead-Time / Break
-    - 5.21. Quy trình cấu hình Timer
-    - 5.22. Quy trình cấu hình PWM
-    - 5.23. Ví dụ tính PSC / ARR / CCR
-    - 5.24. Câu hỏi tự kiểm tra
-6. **UART / USART**
-    - 6.1. UART và USART là gì?
-    - 6.2. Truyền nối tiếp bất đồng bộ
-    - 6.3. UART Frame: Start / Data / Parity / Stop
-    - 6.4. 8N1 và các cấu hình Frame
-    - 6.5. Baud Rate
-    - 6.6. USART Clock và USART_BRR
-    - 6.7. TX / RX và GPIO
-    - 6.8. USART_DR và cơ chế truyền dữ liệu
-    - 6.9. TXE và TC
-    - 6.10. RXNE và quá trình nhận dữ liệu
-    - 6.11. Error Flags: ORE / FE / NE / PE
-    - 6.12. USART Interrupt
-    - 6.13. IDLE Line
-    - 6.14. UART bằng Polling
-    - 6.15. UART bằng Interrupt
-    - 6.16. UART bằng DMA
-    - 6.17. Hardware Flow Control: CTS / RTS
-    - 6.18. Half-Duplex và Synchronous Mode
-    - 6.19. Quy trình cấu hình UART
-    - 6.20. Ví dụ USART1 115200 8N1
-    - 6.21. Câu hỏi tự kiểm tra
-7. **SPI + I2C**
-    - 7.1. Tổng quan SPI và I2C
-    - 7.2. SPI là gì?
-    - 7.3. SCK / MOSI / MISO / NSS
-    - 7.4. Master / Slave và Full-Duplex
-    - 7.5. SPI Clock và Baud Rate Prescaler
-    - 7.6. CPOL / CPHA và 4 SPI Mode
-    - 7.7. Data Frame: 8/16-bit, MSB/LSB First
-    - 7.8. NSS Hardware / Software
-    - 7.9. SPI_DR và cơ chế Shift Register
-    - 7.10. TXE / RXNE / BSY
-    - 7.11. OVR / MODF / CRCERR
-    - 7.12. SPI bằng Polling / Interrupt / DMA
-    - 7.13. GPIO cho SPI
-    - 7.14. Quy trình cấu hình SPI Master
-    - 7.15. Ví dụ một SPI Transaction
-    - 7.16. I2C là gì?
-    - 7.17. SDA / SCL và Open-Drain
-    - 7.18. START / STOP / Address / R/W / ACK / NACK
-    - 7.19. 7-bit / 10-bit Addressing
-    - 7.20. Master / Slave / Transmitter / Receiver
-    - 7.21. Standard Mode / Fast Mode
-    - 7.22. I2C Clock: CR2.FREQ / CCR / TRISE
-    - 7.23. Các I2C Status Flag quan trọng
-    - 7.24. Clock Stretching
-    - 7.25. Arbitration và Multi-Master
-    - 7.26. Repeated START
-    - 7.27. Master Transmit / Master Receive
-    - 7.28. I2C Interrupt / DMA
-    - 7.29. Quy trình cấu hình I2C
-    - 7.30. So sánh SPI và I2C
-    - 7.31. Câu hỏi tự kiểm tra
-8. **ADC**
-    - 8.1. ADC là gì?
-    - 8.2. Độ phân giải 12-bit và giá trị ADC
-    - 8.3. VREF+ / VREF- / VDDA / VSSA
-    - 8.4. ADC Clock và Prescaler
-    - 8.5. ADC Channel và GPIO Analog Mode
-    - 8.6. Sampling Time
-    - 8.7. Conversion Time
-    - 8.8. Regular Group và Injected Group
-    - 8.9. Conversion Sequence và Rank
-    - 8.10. Single Conversion và Continuous Conversion
-    - 8.11. Scan Mode
-    - 8.12. Discontinuous Mode
-    - 8.13. Software Trigger và External Trigger
-    - 8.14. EOC / JEOC và ADC Data Registers
-    - 8.15. Data Alignment
-    - 8.16. ADC Calibration
-    - 8.17. Analog Watchdog
-    - 8.18. Temperature Sensor và VREFINT
-    - 8.19. ADC Interrupt
-    - 8.20. ADC + DMA
-    - 8.21. Dual ADC Mode
-    - 8.22. Quy trình cấu hình ADC
-    - 8.23. Ví dụ đọc một Analog Channel
-    - 8.24. Ví dụ Scan nhiều Channel bằng DMA
-    - 8.25. Câu hỏi tự kiểm tra
-9. **DMA**
-    - 9.1. DMA là gì?
-    - 9.2. CPU Transfer và DMA Transfer
-    - 9.3. DMA1 / DMA2 và DMA Channel
-    - 9.4. DMA Request và Channel Mapping
-    - 9.5. Peripheral-to-Memory / Memory-to-Peripheral / Memory-to-Memory
-    - 9.6. DMA_CCRx
-    - 9.7. DMA_CNDTRx
-    - 9.8. DMA_CPARx / DMA_CMARx
-    - 9.9. Data Width: PSIZE / MSIZE
-    - 9.10. Address Increment: PINC / MINC
-    - 9.11. Circular Mode
-    - 9.12. DMA Priority
-    - 9.13. Transfer Complete / Half Transfer / Transfer Error
-    - 9.14. DMA_ISR / DMA_IFCR
-    - 9.15. DMA Interrupt
-    - 9.16. DMA + ADC
-    - 9.17. DMA + UART
-    - 9.18. DMA + SPI
-    - 9.19. DMA + I2C
-    - 9.20. DMA + Timer
-    - 9.21. Quy trình cấu hình DMA
-    - 9.22. Ví dụ Peripheral → Memory
-    - 9.23. Ví dụ Memory → Peripheral
-    - 9.24. Circular Buffer và Half-Transfer
-    - 9.25. Lỗi thường gặp
-    - 9.26. Câu hỏi tự kiểm tra
-10. **Debug bằng ST-Link**
-    - 10.1. Debug là gì? Programming và Debugging
-    - 10.2. ST-Link là gì?
-    - 10.3. SWD và JTAG
-    - 10.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
-    - 10.5. SWJ và AFIO_MAPR.SWJ_CFG
-    - 10.6. Debug Session hoạt động như thế nào?
-    - 10.7. Breakpoint
-    - 10.8. Step Into / Step Over / Step Out / Continue
-    - 10.9. Watchpoint
-    - 10.10. Registers / Memory / Peripheral Registers
-    - 10.11. Variables / Watch / Expressions
-    - 10.12. Call Stack / PC / LR / SP
-    - 10.13. Debug Interrupt
-    - 10.14. DBGMCU và Freeze Peripheral
-    - 10.15. Debug trong Sleep / Stop / Standby
-    - 10.16. Debug HardFault
-    - 10.17. Debug với Compiler Optimization
-    - 10.18. SWO / Trace
-    - 10.19. Các lỗi kết nối ST-Link thường gặp
-    - 10.20. Quy trình Debug có hệ thống
-    - 10.21. Câu hỏi tự kiểm tra
-
+1. **[STM32 architecture / memory map](#chuong-01)**
+    - [1.1. Processor Core vs Processor vs Microcontroller](#muc-01-01)
+    - [1.2. Operation Modes](#muc-01-02)
+    - [1.3. Access Level](#muc-01-03)
+    - [1.4. Core Registers](#muc-01-04)
+    - [1.5. Reset Sequence](#muc-01-05)
+    - [1.6. Bus Architecture](#muc-01-06)
+    - [1.7. Memory Map](#muc-01-07)
+    - [1.8. Flash và SRAM](#muc-01-08)
+    - [1.9. Stack cơ bản trên Cortex-M](#muc-01-09)
+    - [1.10. Startup Code](#muc-01-10)
+    - [1.11. Linker Script và các section](#muc-01-11)
+2. **[RCC + Clock](#chuong-02)**
+    - [2.1. RCC là gì?](#muc-02-01)
+    - [2.2. Các nguồn Clock: HSI / HSE / LSI / LSE](#muc-02-02)
+    - [2.3. Clock Tree](#muc-02-03)
+    - [2.4. PLL](#muc-02-04)
+    - [2.5. SYSCLK / HCLK / PCLK1 / PCLK2](#muc-02-05)
+    - [2.6. Prescaler và cách tính tần số](#muc-02-06)
+    - [2.7. Peripheral Clock Enable và Peripheral Reset](#muc-02-07)
+    - [2.8. Clock của Timer](#muc-02-08)
+    - [2.9. Clock của các Peripheral quan trọng](#muc-02-09)
+    - [2.10. Quy trình cấu hình Clock](#muc-02-10)
+    - [2.11. Câu hỏi tự kiểm tra](#muc-02-11)
+3. **[GPIO](#chuong-03)**
+    - [3.1. GPIO là gì? Port và Pin](#muc-03-01)
+    - [3.2. Bật Clock cho GPIO](#muc-03-02)
+    - [3.3. Cấu trúc một GPIO Pin](#muc-03-03)
+    - [3.4. Các chế độ Input](#muc-03-04)
+    - [3.5. Các chế độ Output](#muc-03-05)
+    - [3.6. Push-Pull và Open-Drain](#muc-03-06)
+    - [3.7. Pull-Up / Pull-Down / Floating](#muc-03-07)
+    - [3.8. Output Speed: 2 / 10 / 50 MHz](#muc-03-08)
+    - [3.9. CRL / CRH và MODE / CNF](#muc-03-09)
+    - [3.10. IDR / ODR](#muc-03-10)
+    - [3.11. BSRR / BRR và thao tác Atomic](#muc-03-11)
+    - [3.12. Alternate Function](#muc-03-12)
+    - [3.13. AFIO và Pin Remapping](#muc-03-13)
+    - [3.14. Analog Mode](#muc-03-14)
+    - [3.15. GPIO cho UART / SPI / I2C / Timer / ADC](#muc-03-15)
+    - [3.16. GPIO Locking](#muc-03-16)
+    - [3.17. Quy trình cấu hình GPIO](#muc-03-17)
+    - [3.18. Câu hỏi tự kiểm tra](#muc-03-18)
+4. **[Interrupt + NVIC + EXTI](#chuong-04)**
+    - [4.1. Interrupt là gì? Polling và Interrupt](#muc-04-01)
+    - [4.2. Exception và Interrupt](#muc-04-02)
+    - [4.3. Vector Table và ISR / Handler](#muc-04-03)
+    - [4.4. Luồng xử lý Interrupt trên Cortex-M3](#muc-04-04)
+    - [4.5. NVIC là gì?](#muc-04-05)
+    - [4.6. Enable / Disable / Pending / Active](#muc-04-06)
+    - [4.7. Interrupt Priority](#muc-04-07)
+    - [4.8. Preemption và Nested Interrupt](#muc-04-08)
+    - [4.9. Priority Grouping](#muc-04-09)
+    - [4.10. EXTI là gì?](#muc-04-10)
+    - [4.11. EXTI Line và GPIO Mapping](#muc-04-11)
+    - [4.12. Rising Edge / Falling Edge](#muc-04-12)
+    - [4.13. IMR / EMR / RTSR / FTSR / SWIER / PR](#muc-04-13)
+    - [4.14. AFIO_EXTICR](#muc-04-14)
+    - [4.15. GPIO → AFIO → EXTI → NVIC](#muc-04-15)
+    - [4.16. Shared IRQ: EXTI5_9 và EXTI10_15](#muc-04-16)
+    - [4.17. Clear Pending Flag](#muc-04-17)
+    - [4.18. Quy trình cấu hình EXTI Interrupt](#muc-04-18)
+    - [4.19. Quy ước thiết kế ISR](#muc-04-19)
+    - [4.20. Ví dụ Button → EXTI → ISR](#muc-04-20)
+    - [4.21. Câu hỏi tự kiểm tra](#muc-04-21)
+5. **[Timer + PWM](#chuong-05)**
+    - [5.1. Timer là gì?](#muc-05-01)
+    - [5.2. Các loại Timer trên STM32F1](#muc-05-02)
+    - [5.3. Timer Clock](#muc-05-03)
+    - [5.4. Counter: CNT](#muc-05-04)
+    - [5.5. Prescaler: PSC](#muc-05-05)
+    - [5.6. Auto-Reload Register: ARR](#muc-05-06)
+    - [5.7. Up / Down / Center-Aligned Counting](#muc-05-07)
+    - [5.8. Update Event và Update Interrupt](#muc-05-08)
+    - [5.9. Công thức tính Timer Period / Frequency](#muc-05-09)
+    - [5.10. Capture/Compare Channel](#muc-05-10)
+    - [5.11. Output Compare](#muc-05-11)
+    - [5.12. Input Capture](#muc-05-12)
+    - [5.13. PWM là gì?](#muc-05-13)
+    - [5.14. PWM Frequency và Duty Cycle](#muc-05-14)
+    - [5.15. PWM Mode 1 / PWM Mode 2](#muc-05-15)
+    - [5.16. CCRx và Compare Match](#muc-05-16)
+    - [5.17. Preload: ARPE / OCxPE](#muc-05-17)
+    - [5.18. GPIO Alternate Function cho PWM](#muc-05-18)
+    - [5.19. Timer Interrupt và DMA](#muc-05-19)
+    - [5.20. Advanced Timer: Complementary PWM / Dead-Time / Break](#muc-05-20)
+    - [5.21. Quy trình cấu hình Timer](#muc-05-21)
+    - [5.22. Quy trình cấu hình PWM](#muc-05-22)
+    - [5.23. Ví dụ tính PSC / ARR / CCR](#muc-05-23)
+    - [5.24. Câu hỏi tự kiểm tra](#muc-05-24)
+6. **[UART / USART](#chuong-06)**
+    - [6.1. UART và USART là gì?](#muc-06-01)
+    - [6.2. Truyền nối tiếp bất đồng bộ](#muc-06-02)
+    - [6.3. UART Frame: Start / Data / Parity / Stop](#muc-06-03)
+    - [6.4. 8N1 và các cấu hình Frame](#muc-06-04)
+    - [6.5. Baud Rate](#muc-06-05)
+    - [6.6. USART Clock và USART_BRR](#muc-06-06)
+    - [6.7. TX / RX và GPIO](#muc-06-07)
+    - [6.8. USART_DR và cơ chế truyền dữ liệu](#muc-06-08)
+    - [6.9. TXE và TC](#muc-06-09)
+    - [6.10. RXNE và quá trình nhận dữ liệu](#muc-06-10)
+    - [6.11. Error Flags: ORE / FE / NE / PE](#muc-06-11)
+    - [6.12. USART Interrupt](#muc-06-12)
+    - [6.13. IDLE Line](#muc-06-13)
+    - [6.14. UART bằng Polling](#muc-06-14)
+    - [6.15. UART bằng Interrupt](#muc-06-15)
+    - [6.16. UART bằng DMA](#muc-06-16)
+    - [6.17. Hardware Flow Control: CTS / RTS](#muc-06-17)
+    - [6.18. Half-Duplex và Synchronous Mode](#muc-06-18)
+    - [6.19. Quy trình cấu hình UART](#muc-06-19)
+    - [6.20. Ví dụ USART1 115200 8N1](#muc-06-20)
+    - [6.21. Câu hỏi tự kiểm tra](#muc-06-21)
+7. **[SPI + I2C](#chuong-07)**
+    - [7.1. Tổng quan SPI và I2C](#muc-07-01)
+    - [7.2. SPI là gì?](#muc-07-02)
+    - [7.3. SCK / MOSI / MISO / NSS](#muc-07-03)
+    - [7.4. Master / Slave và Full-Duplex](#muc-07-04)
+    - [7.5. SPI Clock và Baud Rate Prescaler](#muc-07-05)
+    - [7.6. CPOL / CPHA và 4 SPI Mode](#muc-07-06)
+    - [7.7. Data Frame: 8/16-bit, MSB/LSB First](#muc-07-07)
+    - [7.8. NSS Hardware / Software](#muc-07-08)
+    - [7.9. SPI_DR và cơ chế Shift Register](#muc-07-09)
+    - [7.10. TXE / RXNE / BSY](#muc-07-10)
+    - [7.11. OVR / MODF / CRCERR](#muc-07-11)
+    - [7.12. SPI bằng Polling / Interrupt / DMA](#muc-07-12)
+    - [7.13. GPIO cho SPI](#muc-07-13)
+    - [7.14. Quy trình cấu hình SPI Master](#muc-07-14)
+    - [7.15. Ví dụ một SPI Transaction](#muc-07-15)
+    - [7.16. I2C là gì?](#muc-07-16)
+    - [7.17. SDA / SCL và Open-Drain](#muc-07-17)
+    - [7.18. START / STOP / Address / R/W / ACK / NACK](#muc-07-18)
+    - [7.19. 7-bit / 10-bit Addressing](#muc-07-19)
+    - [7.20. Master / Slave / Transmitter / Receiver](#muc-07-20)
+    - [7.21. Standard Mode / Fast Mode](#muc-07-21)
+    - [7.22. I2C Clock: CR2.FREQ / CCR / TRISE](#muc-07-22)
+    - [7.23. Các I2C Status Flag quan trọng](#muc-07-23)
+    - [7.24. Clock Stretching](#muc-07-24)
+    - [7.25. Arbitration và Multi-Master](#muc-07-25)
+    - [7.26. Repeated START](#muc-07-26)
+    - [7.27. Master Transmit / Master Receive](#muc-07-27)
+    - [7.28. I2C Interrupt / DMA](#muc-07-28)
+    - [7.29. Quy trình cấu hình I2C](#muc-07-29)
+    - [7.30. So sánh SPI và I2C](#muc-07-30)
+    - [7.31. Câu hỏi tự kiểm tra](#muc-07-31)
+8. **[ADC](#chuong-08)**
+    - [8.1. ADC là gì?](#muc-08-01)
+    - [8.2. Độ phân giải 12-bit và giá trị ADC](#muc-08-02)
+    - [8.3. VREF+ / VREF- / VDDA / VSSA](#muc-08-03)
+    - [8.4. ADC Clock và Prescaler](#muc-08-04)
+    - [8.5. ADC Channel và GPIO Analog Mode](#muc-08-05)
+    - [8.6. Sampling Time](#muc-08-06)
+    - [8.7. Conversion Time](#muc-08-07)
+    - [8.8. Regular Group và Injected Group](#muc-08-08)
+    - [8.9. Conversion Sequence và Rank](#muc-08-09)
+    - [8.10. Single Conversion và Continuous Conversion](#muc-08-10)
+    - [8.11. Scan Mode](#muc-08-11)
+    - [8.12. Discontinuous Mode](#muc-08-12)
+    - [8.13. Software Trigger và External Trigger](#muc-08-13)
+    - [8.14. EOC / JEOC và ADC Data Registers](#muc-08-14)
+    - [8.15. Data Alignment](#muc-08-15)
+    - [8.16. ADC Calibration](#muc-08-16)
+    - [8.17. Analog Watchdog](#muc-08-17)
+    - [8.18. Temperature Sensor và VREFINT](#muc-08-18)
+    - [8.19. ADC Interrupt](#muc-08-19)
+    - [8.20. ADC + DMA](#muc-08-20)
+    - [8.21. Dual ADC Mode](#muc-08-21)
+    - [8.22. Quy trình cấu hình ADC](#muc-08-22)
+    - [8.23. Ví dụ đọc một Analog Channel](#muc-08-23)
+    - [8.24. Ví dụ Scan nhiều Channel bằng DMA](#muc-08-24)
+    - [8.25. Câu hỏi tự kiểm tra](#muc-08-25)
+9. **[DMA](#chuong-09)**
+    - [9.1. DMA là gì?](#muc-09-01)
+    - [9.2. CPU Transfer và DMA Transfer](#muc-09-02)
+    - [9.3. DMA1 / DMA2 và DMA Channel](#muc-09-03)
+    - [9.4. DMA Request và Channel Mapping](#muc-09-04)
+    - [9.5. Peripheral-to-Memory / Memory-to-Peripheral / Memory-to-Memory](#muc-09-05)
+    - [9.6. DMA_CCRx](#muc-09-06)
+    - [9.7. DMA_CNDTRx](#muc-09-07)
+    - [9.8. DMA_CPARx / DMA_CMARx](#muc-09-08)
+    - [9.9. Data Width: PSIZE / MSIZE](#muc-09-09)
+    - [9.10. Address Increment: PINC / MINC](#muc-09-10)
+    - [9.11. Circular Mode](#muc-09-11)
+    - [9.12. DMA Priority](#muc-09-12)
+    - [9.13. Transfer Complete / Half Transfer / Transfer Error](#muc-09-13)
+    - [9.14. DMA_ISR / DMA_IFCR](#muc-09-14)
+    - [9.15. DMA Interrupt](#muc-09-15)
+    - [9.16. DMA + ADC](#muc-09-16)
+    - [9.17. DMA + UART](#muc-09-17)
+    - [9.18. DMA + SPI](#muc-09-18)
+    - [9.19. DMA + I2C](#muc-09-19)
+    - [9.20. DMA + Timer](#muc-09-20)
+    - [9.21. Quy trình cấu hình DMA](#muc-09-21)
+    - [9.22. Ví dụ Peripheral → Memory](#muc-09-22)
+    - [9.23. Ví dụ Memory → Peripheral](#muc-09-23)
+    - [9.24. Circular Buffer và Half-Transfer](#muc-09-24)
+    - [9.25. Lỗi thường gặp](#muc-09-25)
+    - [9.26. Câu hỏi tự kiểm tra](#muc-09-26)
+10. **[Debug bằng ST-Link](#chuong-10)**
+    - [10.1. Debug là gì? Programming và Debugging](#muc-10-01)
+    - [10.2. ST-Link là gì?](#muc-10-02)
+    - [10.3. SWD và JTAG](#muc-10-03)
+    - [10.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO](#muc-10-04)
+    - [10.5. SWJ và AFIO_MAPR.SWJ_CFG](#muc-10-05)
+    - [10.6. Debug Session hoạt động như thế nào?](#muc-10-06)
+    - [10.7. Breakpoint](#muc-10-07)
+    - [10.8. Step Into / Step Over / Step Out / Continue](#muc-10-08)
+    - [10.9. Watchpoint](#muc-10-09)
+    - [10.10. Registers / Memory / Peripheral Registers](#muc-10-10)
+    - [10.11. Variables / Watch / Expressions](#muc-10-11)
+    - [10.12. Call Stack / PC / LR / SP](#muc-10-12)
+    - [10.13. Debug Interrupt](#muc-10-13)
+    - [10.14. DBGMCU và Freeze Peripheral](#muc-10-14)
+    - [10.15. Debug trong Sleep / Stop / Standby](#muc-10-15)
+    - [10.16. Debug HardFault](#muc-10-16)
+    - [10.17. Debug với Compiler Optimization](#muc-10-17)
+    - [10.18. SWO / Trace](#muc-10-18)
+    - [10.19. Các lỗi kết nối ST-Link thường gặp](#muc-10-19)
+    - [10.20. Quy trình Debug có hệ thống](#muc-10-20)
+    - [10.21. Câu hỏi tự kiểm tra](#muc-10-21)
 ---
 
 <a id="chuong-01"></a>
