@@ -1,7 +1,6 @@
 # Ghi chú phỏng vấn C++
 
-> **Mục tiêu:** Ôn phần C++ cần thiết cho phỏng vấn.  
-> **Tiền đề:** Đã nắm phần C cơ bản và C cho hệ thống nhúng. Tài liệu này tập trung vào những phần C++ khác C hoặc thường được hỏi khi dùng C++ trong phần mềm nhúng.  
+> **Mục tiêu:** Ôn C++ theo hướng phỏng vấn Embedded Firmware.
 
 <a id="muc-luc"></a>
 ## Mục lục
@@ -2658,30 +2657,227 @@ Khi dùng C++, cần chú ý:
 
 ### Câu hỏi phỏng vấn tự kiểm tra
 
-1. Tham chiếu khác con trỏ như thế nào?
-2. Tại sao nên dùng `nullptr` thay cho `NULL`?
-3. `class` khác `struct` trong C++ ở điểm nào?
-4. Hàm dựng và hàm hủy chạy khi nào?
-5. Tại sao dùng danh sách khởi tạo thành viên?
-6. Hàm thành viên `const` nghĩa là gì?
-7. RAII giải quyết vấn đề gì?
-8. Hàm dựng sao chép khác phép gán sao chép như thế nào?
-9. Sao chép nông có thể gây lỗi gì với đối tượng sở hữu con trỏ?
-10. Di chuyển khác sao chép như thế nào?
-11. `std::move()` có tự di chuyển dữ liệu không?
-12. `virtual` dùng để làm gì?
-13. Khi nào hàm hủy của lớp cơ sở cần là `virtual`?
-14. Hàm thuần ảo là gì?
-15. Khuôn mẫu khác `virtual` về thời điểm xử lý như thế nào?
-16. Tại sao `std::array` thường phù hợp với hệ thống nhúng hơn `std::vector` khi kích thước cố định?
-17. `new/delete` khác `malloc/free` ở điểm quan trọng nào?
-18. `unique_ptr` giải quyết vấn đề gì?
-19. `static_cast` khác `reinterpret_cast` như thế nào?
-20. `enum class` tốt hơn `enum` truyền thống ở điểm nào?
-21. `constexpr` dùng để làm gì?
-22. Tại sao cần `extern "C"` khi C++ gọi mã C?
-23. Tại sao một số dự án nhúng không dùng ngoại lệ hoặc RTTI?
-24. Những tính năng C++ nào có thể gây cấp phát động?
-25. Khi dùng C++ trong phần mềm nhúng, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?
+1. **Tham chiếu khác con trỏ như thế nào?**
+
+   **Trả lời:**
+   - Con trỏ lưu địa chỉ, có thể là `nullptr`, có thể đổi sang trỏ đối tượng khác và phải giải tham chiếu bằng `*`.
+   - Tham chiếu là một tên khác của đối tượng đã tồn tại, phải được khởi tạo khi khai báo và sau đó không thể chuyển sang tham chiếu đối tượng khác.
+   - Tham chiếu thường có cú pháp gọn hơn khi đối tượng bắt buộc phải tồn tại.
+
+2. **Tại sao nên dùng `nullptr` thay cho `NULL`?**
+
+   **Trả lời:** `nullptr` là giá trị con trỏ rỗng của C++ hiện đại và có kiểu riêng. Vì vậy nó thể hiện rõ ý nghĩa “không trỏ tới đối tượng nào” và giúp trình biên dịch phân biệt tốt hơn trong các trường hợp nạp chồng hàm so với `NULL` hoặc số `0`.
+
+3. **`class` khác `struct` trong C++ ở điểm nào?**
+
+   **Trả lời:** Hai kiểu này gần giống nhau về khả năng. Khác biệt mặc định chính:
+
+   | | `class` | `struct` |
+   |---|---|---|
+   | Quyền truy cập mặc định | `private` | `public` |
+   | Kiểu kế thừa mặc định | `private` | `public` |
+
+4. **Hàm dựng và hàm hủy chạy khi nào?**
+
+   **Trả lời:**
+   - Hàm dựng chạy khi đối tượng được tạo.
+   - Hàm hủy chạy khi đối tượng kết thúc vòng đời.
+   - Với đối tượng cục bộ, hàm hủy thường chạy khi rời khỏi phạm vi chứa đối tượng.
+   - Các đối tượng cục bộ trong cùng phạm vi thường được hủy theo thứ tự ngược với thứ tự tạo.
+
+5. **Tại sao dùng danh sách khởi tạo thành viên?**
+
+   **Trả lời:** Danh sách khởi tạo thành viên khởi tạo trực tiếp các thành viên trước khi thân hàm dựng chạy. Đây là cách nên dùng để khởi tạo thành viên, và một số loại như tham chiếu hoặc thành viên `const` bắt buộc phải được khởi tạo theo cách này.
+
+6. **Hàm thành viên `const` nghĩa là gì?**
+
+   **Trả lời:** Từ khóa `const` sau danh sách tham số cho biết hàm không được thay đổi trạng thái của đối tượng thông qua `this`. Đối tượng `const` chỉ được gọi các hàm thành viên được khai báo `const`.
+
+   ```cpp
+   int getSpeed() const;
+   ```
+
+7. **RAII giải quyết vấn đề gì?**
+
+   **Trả lời:** RAII gắn việc quản lý tài nguyên với vòng đời đối tượng:
+
+   ```text
+   Hàm dựng
+   → thiết lập / nhận tài nguyên
+
+   Hàm hủy
+   → giải phóng tài nguyên
+   ```
+
+   Nhờ đó giảm nguy cơ quên giải phóng tài nguyên, đặc biệt khi hàm có nhiều đường `return`.
+
+8. **Hàm dựng sao chép khác phép gán sao chép như thế nào?**
+
+   **Trả lời:**
+   - Hàm dựng sao chép tạo **đối tượng mới** từ một đối tượng đã tồn tại.
+   - Phép gán sao chép gán nội dung cho một **đối tượng đã tồn tại**.
+
+   ```cpp
+   Data b = a;   // Hàm dựng sao chép
+
+   Data c;
+   c = a;        // Phép gán sao chép
+   ```
+
+9. **Sao chép nông có thể gây lỗi gì với đối tượng sở hữu con trỏ?**
+
+   **Trả lời:** Sao chép nông chỉ sao chép địa chỉ của con trỏ. Vì vậy hai đối tượng có thể cùng giữ một vùng tài nguyên, dẫn tới sửa chung dữ liệu hoặc cả hai cùng cố giải phóng một vùng nhớ.
+
+   ```text
+   obj1.data ──┐
+                ├──> cùng một vùng nhớ
+   obj2.data ──┘
+   ```
+
+10. **Di chuyển khác sao chép như thế nào?**
+
+    **Trả lời:**
+    - Sao chép tạo một bản sao của tài nguyên.
+    - Di chuyển chuyển quyền sở hữu tài nguyên từ đối tượng nguồn sang đối tượng đích, nhờ đó có thể tránh sao chép dữ liệu lớn không cần thiết.
+
+11. **`std::move()` có tự di chuyển dữ liệu không?**
+
+    **Trả lời:** Không. `std::move()` không tự di chuyển dữ liệu. Nó chuyển biểu thức sang dạng cho phép hàm dựng di chuyển hoặc phép gán di chuyển được lựa chọn nếu kiểu dữ liệu hỗ trợ.
+
+12. **`virtual` dùng để làm gì?**
+
+    **Trả lời:** `virtual` hỗ trợ đa hình lúc chạy. Khi gọi hàm thông qua con trỏ hoặc tham chiếu lớp cơ sở, C++ có thể chọn phiên bản ghi đè của lớp dẫn xuất dựa trên đối tượng thực tế.
+
+    ```text
+    Animal &animal = dog;
+
+    animal.sound()
+    → Dog::sound()
+    ```
+
+13. **Khi nào hàm hủy của lớp cơ sở cần là `virtual`?**
+
+    **Trả lời:** Khi đối tượng lớp dẫn xuất có thể được hủy thông qua con trỏ lớp cơ sở. Hàm hủy `virtual` giúp hàm hủy của lớp dẫn xuất được gọi trước, sau đó mới tới hàm hủy lớp cơ sở.
+
+    ```cpp
+    class Device
+    {
+    public:
+        virtual ~Device() = default;
+    };
+    ```
+
+14. **Hàm thuần ảo là gì?**
+
+    **Trả lời:** Hàm thuần ảo là hàm `virtual` được khai báo với `= 0`.
+
+    ```cpp
+    virtual int read() = 0;
+    ```
+
+    Lớp có ít nhất một hàm thuần ảo là lớp trừu tượng và không thể tạo trực tiếp đối tượng của lớp đó.
+
+15. **Khuôn mẫu khác `virtual` về thời điểm xử lý như thế nào?**
+
+    **Trả lời:**
+    - Khuôn mẫu thường tạo phiên bản mã phù hợp trong quá trình biên dịch.
+    - `virtual` hỗ trợ lựa chọn hàm tại thời gian chạy dựa trên đối tượng thực tế.
+
+    Có thể nhớ:
+
+    ```text
+    template → chủ yếu xử lý lúc biên dịch
+    virtual  → đa hình lúc chạy
+    ```
+
+16. **Tại sao `std::array` thường phù hợp với hệ thống nhúng hơn `std::vector` khi kích thước cố định?**
+
+    **Trả lời:** `std::array<T, N>` có kích thước xác định lúc biên dịch và không tự cấp phát động cho các phần tử. Trong khi đó `std::vector` thường dùng vùng nhớ động và có thể cấp phát lại khi tăng sức chứa. Vì vậy khi kích thước cố định, `std::array` giúp việc sử dụng bộ nhớ dễ dự đoán hơn.
+
+17. **`new/delete` khác `malloc/free` ở điểm quan trọng nào?**
+
+    **Trả lời:**
+
+    - `new` cấp phát vùng nhớ **và tạo đối tượng**, nên gọi hàm dựng.
+    - `delete` gọi hàm hủy rồi giải phóng vùng nhớ.
+    - `new` trả về con trỏ đúng kiểu.
+    - Không được trộn cặp `new` với `free()` hoặc `malloc()` với `delete`.
+
+18. **`unique_ptr` giải quyết vấn đề gì?**
+
+    **Trả lời:** `std::unique_ptr` biểu diễn quyền sở hữu duy nhất đối với một đối tượng động. Khi `unique_ptr` hết vòng đời, đối tượng được giải phóng tự động.
+
+    Lợi ích chính:
+
+    - Giảm nguy cơ quên `delete`.
+    - Thể hiện rõ ai sở hữu tài nguyên.
+    - Phù hợp với RAII.
+    - Không sao chép được nhưng có thể chuyển quyền sở hữu bằng cơ chế di chuyển.
+
+19. **`static_cast` khác `reinterpret_cast` như thế nào?**
+
+    **Trả lời:**
+    - `static_cast`: dùng cho các chuyển đổi kiểu có ý nghĩa rõ ràng và được compiler kiểm tra ở mức phù hợp.
+    - `reinterpret_cast`: dùng cho các chuyển đổi mức thấp, ví dụ giữa các kiểu con trỏ hoặc từ địa chỉ số sang con trỏ; cần dùng rất cẩn thận.
+
+20. **`enum class` tốt hơn `enum` truyền thống ở điểm nào?**
+
+    **Trả lời:** `enum class` có phạm vi tên riêng và kiểm tra kiểu chặt hơn. Các giá trị phải được truy cập thông qua tên kiểu:
+
+    ```cpp
+    State state = State::Idle;
+    ```
+
+    Điều này tránh làm các tên như `Idle`, `Running` tràn ra phạm vi bên ngoài.
+
+21. **`constexpr` dùng để làm gì?**
+
+    **Trả lời:** `constexpr` cho biết một giá trị hoặc hàm có thể tham gia vào tính toán trong giai đoạn biên dịch khi điều kiện cho phép.
+
+    ```cpp
+    constexpr int BUFFER_SIZE = 128;
+
+    constexpr int square(int x)
+    {
+        return x * x;
+    }
+
+    constexpr int value = square(5);
+    ```
+
+22. **Tại sao cần `extern "C"` khi C++ gọi mã C?**
+
+    **Trả lời:** C++ thường mã hóa tên hàm để hỗ trợ nạp chồng hàm, trong khi C có quy ước tên khác. `extern "C"` yêu cầu C++ sử dụng quy ước liên kết tương thích với C để linker có thể tìm đúng symbol.
+
+    ```cpp
+    extern "C" void HAL_Init(void);
+    ```
+
+23. **Tại sao một số dự án nhúng không dùng ngoại lệ hoặc RTTI?**
+
+    **Trả lời:** Vì một số dự án muốn giảm kích thước mã, giảm phụ thuộc vào môi trường thời gian chạy và giữ hành vi dễ dự đoán hơn. RTTI và ngoại lệ vẫn có thể được dùng nếu nền tảng và yêu cầu của dự án cho phép.
+
+24. **Những tính năng C++ nào có thể gây cấp phát động?**
+
+    **Trả lời:** Các thành phần trong tài liệu cần đặc biệt chú ý gồm:
+
+    - `new`.
+    - `std::vector`.
+    - `std::string`.
+    - Một số con trỏ thông minh và kiểu chứa khác.
+
+    Ví dụ `std::vector` có thể cấp phát vùng mới khi sức chứa hiện tại không đủ.
+
+25. **Khi dùng C++ trong phần mềm nhúng, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?**
+
+    **Trả lời:** Vì hệ thống nhúng thường có giới hạn RAM/Flash và yêu cầu thời gian thực thi có thể dự đoán. Cần chú ý những cơ chế có thể tạo chi phí hoặc cấp phát bất ngờ như:
+
+    - Cấp phát động.
+    - `std::vector`/`std::string`.
+    - Ngoại lệ nếu dự án sử dụng.
+    - Lời gọi `virtual`.
+    - Hàm dựng/hàm hủy chạy tự động theo vòng đời đối tượng.
+
+    Mục tiêu là kiểm soát được tài nguyên và tránh các hành vi khó dự đoán trong luồng xử lý quan trọng.
 
 [↑ Về mục lục](#muc-luc)

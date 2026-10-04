@@ -1,7 +1,6 @@
 # Ghi chú phỏng vấn C
 
-> **Mục tiêu:** Ôn phần C cho phỏng vấn.  
-> **Cách dùng:** Học theo từng chương, dùng mục lục để nhảy nhanh đến chủ đề cần ôn.  
+> **Mục tiêu:** Ôn phần C theo hướng phỏng vấn Embedded Firmware.
 
 <a id="muc-luc"></a>
 ## Mục lục
@@ -2812,50 +2811,317 @@ Khi dùng C, cần đặc biệt chú ý:
 
 ### Câu hỏi phỏng vấn tự kiểm tra
 
-1. Quá trình từ tệp `.c` đến tệp thực thi gồm những giai đoạn nào?
-2. `static` với biến cục bộ khác gì `static` ở phạm vi tệp?
-3. `extern` dùng để làm gì?
-4. Tại sao trong C mọi đối số đều được xem là truyền theo giá trị?
-5. Mảng khác con trỏ như thế nào?
-6. Tại sao `ptr[i]` tương đương về ý nghĩa với `*(ptr + i)`?
-7. Chuỗi C kết thúc bằng ký tự gì?
-8. `struct` và `union` khác nhau như thế nào?
-9. Tại sao `sizeof(struct)` có thể lớn hơn tổng kích thước các thành viên?
-10. Con trỏ hàm dùng để làm gì?
-11. Callback là gì?
-12. `malloc()` khác `calloc()` ở điểm nào?
-13. Khi `malloc()` hoặc `calloc()` thất bại, chúng trả về gì?
-14. `realloc()` có thể làm thay đổi địa chỉ vùng nhớ không?
-15. Nếu `realloc()` thất bại, vùng nhớ cũ có còn tồn tại không?
-16. Tại sao nên dùng con trỏ tạm khi gọi `realloc()`?
-17. Rò rỉ bộ nhớ là gì?
-18. Con trỏ treo là gì?
-19. `volatile` thường được dùng trong những trường hợp nào trong Embedded?
-20. `volatile` có đảm bảo thao tác nguyên tử hay an toàn đa luồng không?
-21. Công thức bật, xóa, đảo và kiểm tra một bit là gì?
-22. Big Endian và Little Endian khác nhau như thế nào?
-23. `memcpy()` và `memmove()` khác nhau ở điểm nào?
-24. Tại sao cấp phát động cần được cân nhắc trong hệ thống nhúng?
-25. Khi viết Embedded C, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?
+1. **Quá trình từ tệp `.c` đến tệp thực thi gồm những giai đoạn nào?**
+
+   **Trả lời:** Có 4 giai đoạn chính:
+
+   ```text
+   .c
+    ↓ Tiền xử lý
+   .i
+    ↓ Biên dịch
+   .s
+    ↓ Hợp dịch
+   .o
+    ↓ Liên kết
+   .elf / chương trình thực thi
+   ```
+
+   - Tiền xử lý xử lý `#include`, `#define`, các chỉ thị điều kiện...
+   - Biên dịch kiểm tra cú pháp, kiểu dữ liệu và sinh mã Assembly.
+   - Hợp dịch chuyển Assembly thành mã máy trong tệp đối tượng `.o`.
+   - Liên kết ghép các tệp `.o` và thư viện, giải quyết các symbol để tạo chương trình hoàn chỉnh.
+
+2. **`static` với biến cục bộ khác gì `static` ở phạm vi tệp?**
+
+   **Trả lời:**
+
+   - `static` cục bộ: phạm vi vẫn chỉ nằm trong hàm/khối, nhưng biến tồn tại suốt thời gian chạy và giữ giá trị giữa các lần gọi hàm.
+   - `static` ở phạm vi tệp: tên biến hoặc hàm có **liên kết nội bộ**, chỉ được truy cập theo tên trong đơn vị dịch hiện tại.
+
+3. **`extern` dùng để làm gì?**
+
+   **Trả lời:** `extern` dùng để khai báo rằng một biến hoặc hàm có phần định nghĩa ở nơi khác. Nó thường được dùng khi nhiều tệp `.c` cần sử dụng chung một biến hoặc hàm có liên kết ngoài.
+
+4. **Tại sao trong C mọi đối số đều được xem là truyền theo giá trị?**
+
+   **Trả lời:** Vì khi gọi hàm, giá trị của đối số được sao chép vào tham số. Nếu truyền một con trỏ thì **giá trị địa chỉ** cũng được sao chép. Hàm có thể dùng địa chỉ đó để sửa đối tượng gốc, nhưng bản thân con trỏ vẫn được truyền theo giá trị.
+
+5. **Mảng khác con trỏ như thế nào?**
+
+   **Trả lời:** Mảng và con trỏ là hai kiểu khác nhau.
+
+   - Mảng là một đối tượng chứa nhiều phần tử cùng kiểu, nằm liên tiếp trong bộ nhớ.
+   - Con trỏ là một biến lưu địa chỉ.
+   - Trong hầu hết biểu thức, tên mảng tự chuyển thành con trỏ tới phần tử đầu tiên, nhưng bản thân mảng không phải là con trỏ.
+
+6. **Tại sao `ptr[i]` tương đương về ý nghĩa với `*(ptr + i)`?**
+
+   **Trả lời:** Vì phép toán số học con trỏ tự dịch theo kích thước kiểu dữ liệu mà con trỏ trỏ tới. `ptr + i` trỏ tới phần tử thứ `i`, và `*` lấy giá trị tại địa chỉ đó.
+
+   ```c
+   ptr[i]
+   *(ptr + i)
+   ```
+
+7. **Chuỗi C kết thúc bằng ký tự gì?**
+
+   **Trả lời:** Chuỗi C kết thúc bằng ký tự rỗng:
+
+   ```c
+   '\0'
+   ```
+
+   Các hàm xử lý chuỗi như `strlen()` dựa vào ký tự này để xác định điểm kết thúc chuỗi.
+
+8. **`struct` và `union` khác nhau như thế nào?**
+
+   **Trả lời:**
+
+   - `struct`: mỗi thành viên có vùng lưu trữ riêng.
+   - `union`: các thành viên dùng chung cùng một vùng nhớ.
+   - Kích thước `union` phải đủ chứa thành viên lớn nhất và còn có thể tăng thêm do yêu cầu căn chỉnh.
+
+9. **Tại sao `sizeof(struct)` có thể lớn hơn tổng kích thước các thành viên?**
+
+   **Trả lời:** Vì compiler có thể chèn các byte đệm giữa các thành viên hoặc ở cuối `struct` để đáp ứng yêu cầu căn chỉnh dữ liệu của kiến trúc.
+
+10. **Con trỏ hàm dùng để làm gì?**
+
+    **Trả lời:** Con trỏ hàm lưu địa chỉ của một hàm. Nó cho phép chọn hàm cần gọi tại thời gian chạy và thường được dùng cho callback, bảng hàm hoặc thiết kế trình điều khiển.
+
+11. **Callback là gì?**
+
+    **Trả lời:** Callback là một hàm được truyền cho hàm khác, thường thông qua con trỏ hàm, để hàm nhận có thể gọi lại khi cần.
+
+12. **`malloc()` khác `calloc()` ở điểm nào?**
+
+    **Trả lời:**
+
+    - `malloc(size)`: nhận tổng số byte cần cấp phát; vùng nhớ mới chưa được khởi tạo.
+    - `calloc(count, size)`: nhận số phần tử và kích thước mỗi phần tử; toàn bộ byte của vùng nhớ được đặt về `0`.
+
+13. **Khi `malloc()` hoặc `calloc()` thất bại, chúng trả về gì?**
+
+    **Trả lời:** Trả về `NULL`.
+
+14. **`realloc()` có thể làm thay đổi địa chỉ vùng nhớ không?**
+
+    **Trả lời:** Có. Nếu vùng hiện tại có thể mở rộng tại chỗ, địa chỉ có thể giữ nguyên. Nếu không, `realloc()` có thể chuyển dữ liệu sang một vùng mới và trả về địa chỉ mới.
+
+15. **Nếu `realloc()` thất bại, vùng nhớ cũ có còn tồn tại không?**
+
+    **Trả lời:** Có. Khi yêu cầu kích thước khác `0` mà `realloc()` thất bại, nó trả về `NULL` và vùng nhớ cũ vẫn còn được cấp phát; con trỏ cũ vẫn phải được giữ để tiếp tục sử dụng hoặc `free()`.
+
+16. **Tại sao nên dùng con trỏ tạm khi gọi `realloc()`?**
+
+    **Trả lời:** Để tránh làm mất địa chỉ vùng nhớ cũ nếu `realloc()` thất bại.
+
+    ```c
+    int *temp = realloc(ptr, new_size);
+
+    if (temp != NULL) {
+        ptr = temp;
+    }
+    ```
+
+17. **Rò rỉ bộ nhớ là gì?**
+
+    **Trả lời:** Rò rỉ bộ nhớ xảy ra khi chương trình đã cấp phát vùng nhớ động nhưng không còn giải phóng được hoặc không `free()` khi không còn sử dụng. Ví dụ: làm mất con trỏ duy nhất đang giữ địa chỉ của vùng đã cấp phát.
+
+18. **Con trỏ treo là gì?**
+
+    **Trả lời:** Con trỏ treo là con trỏ vẫn giữ một địa chỉ nhưng đối tượng tại đó đã hết thời gian tồn tại hoặc vùng nhớ đã được giải phóng.
+
+19. **`volatile` thường được dùng trong những trường hợp nào trong Embedded?**
+
+    **Trả lời:** Thường dùng khi giá trị có thể thay đổi ngoài luồng thực thi thông thường, ví dụ:
+
+    - Thanh ghi ngoại vi.
+    - Biến được ISR thay đổi và mã chính đọc.
+    - Dữ liệu được phần cứng cập nhật.
+
+20. **`volatile` có đảm bảo thao tác nguyên tử hay an toàn đa luồng không?**
+
+    **Trả lời:** Không. `volatile` chỉ ảnh hưởng cách compiler xử lý các lần đọc/ghi cần thiết; nó không tạo khóa, không đảm bảo nguyên tử và không tự giải quyết tranh chấp dữ liệu.
+
+21. **Công thức bật, xóa, đảo và kiểm tra một bit là gì?**
+
+    **Trả lời:**
+
+    ```c
+    value |=  (1U << n);   // Bật bit
+    value &= ~(1U << n);   // Xóa bit
+    value ^=  (1U << n);   // Đảo bit
+    value &   (1U << n);   // Kiểm tra bit
+    ```
+
+22. **Big Endian và Little Endian khác nhau như thế nào?**
+
+    **Trả lời:**
+
+    - Big Endian: byte có trọng số cao nhất nằm ở địa chỉ thấp hơn.
+    - Little Endian: byte có trọng số thấp nhất nằm ở địa chỉ thấp hơn.
+
+23. **`memcpy()` và `memmove()` khác nhau ở điểm nào?**
+
+    **Trả lời:** Cả hai đều sao chép `n` byte, nhưng `memmove()` dùng được khi vùng nguồn và vùng đích chồng lấn nhau. Với vùng chồng lấn, không nên dùng `memcpy()`.
+
+24. **Tại sao cấp phát động cần được cân nhắc trong hệ thống nhúng?**
+
+    **Trả lời:** Vì hệ thống nhúng thường có RAM hạn chế; cấp phát/giải phóng nhiều lần có thể gây phân mảnh Heap, rò rỉ bộ nhớ và thời gian cấp phát khó dự đoán hơn bộ nhớ tĩnh.
+
+25. **Khi viết Embedded C, tại sao cần quan tâm tới tính xác định của thời gian và bộ nhớ?**
+
+    **Trả lời:** Vì firmware thường phải đáp ứng giới hạn thời gian và tài nguyên rõ ràng. Thời gian thực thi hoặc mức dùng RAM thay đổi khó dự đoán có thể làm hệ thống bỏ lỡ thời hạn, tràn Stack/Heap hoặc hoạt động không ổn định.
 
 #### Memory Management
 
-1. Tại sao cần chia bộ nhớ thành nhiều vùng?
-2. Biến toàn cục không khởi tạo nằm ở đâu?
-3. Hai biến global có cùng giá trị khởi tạo `0` và `10` — tại sao chúng không nằm trong cùng một vùng nhớ?
-4. Khi chương trình gọi một hàm lồng nhau nhiều lần (đệ quy), vùng nhớ nào bị ảnh hưởng nhiều nhất?
-5. Tại sao biến `const` thường được đặt trong vùng `.rodata` thay vì `.data`?
-6. Nếu bạn muốn dữ liệu tồn tại suốt vòng đời chương trình, bạn nên đặt nó ở vùng nhớ nào?
-7. Tại sao vùng `.bss` không chiếm nhiều dung lượng trong file `.bin`, nhưng lại chiếm RAM khi chạy?
-8. Điều gì xảy ra với Stack khi hàm kết thúc, nhưng biến `static` trong hàm đó vẫn được giữ giá trị?
-9. Lỗi Memory Leak xảy ra khi nào? Tại sao? Cách debug.
-10. Lỗi Stack Overflow xảy ra khi nào? Tại sao? Cách debug.
-11. Lỗi Segmentation Fault xảy ra khi nào? Tại sao? Cách debug.
-12. Lỗi Stack Smashing là gì? Cách compiler phát hiện bằng cơ chế Canary.
-13. Lỗi Heap Corruption là gì? Cách phát hiện bằng AddressSanitizer.
-14. Lỗi Dangling Pointer là gì? Tại sao nguy hiểm? Cách khắc phục.
-15. Khi nào nên dùng AddressSanitizer thay vì Valgrind để debug lỗi bộ nhớ?
-16. Lỗi Wild Pointer là gì?
+> Các câu hỏi về Stack Canary, AddressSanitizer và Valgrind cần thêm kiến thức về công cụ ngoài phần nội dung C cơ bản ở trên. Phần trả lời tương ứng dưới đây bổ sung kiến thức thực hành để phục vụ phỏng vấn.
+
+1. **Tại sao cần chia bộ nhớ thành nhiều vùng?**
+
+   **Trả lời:** Vì mỗi loại dữ liệu có đặc điểm khác nhau về quyền truy cập, thời gian tồn tại và cách khởi tạo. Việc chia thành `.text`, `.rodata`, `.data`, `.bss`, Heap và Stack giúp linker/startup code quản lý bộ nhớ rõ ràng và cho phép phần cứng áp dụng quyền đọc/ghi/thực thi phù hợp.
+
+2. **Biến toàn cục không khởi tạo nằm ở đâu?**
+
+   **Trả lời:** Thông thường nằm trong vùng `.bss`. Trước khi vào `main()`, startup code sẽ thiết lập vùng này về `0`.
+
+3. **Hai biến global có giá trị khởi tạo `0` và `10` — tại sao chúng không nằm trong cùng một vùng nhớ?**
+
+   **Trả lời:** Theo cách bố trí phổ biến của toolchain:
+
+   ```c
+   int a = 0;    // thường có thể đặt trong .bss
+   int b = 10;   // thường nằm trong .data
+   ```
+
+   - Biến bằng `0` không cần lưu các byte `0` trong file chương trình; startup code có thể tự xóa vùng `.bss`.
+   - Biến bằng `10` cần lưu giá trị khởi tạo trong image để khi khởi động có thể chép giá trị đó vào RAM, nên thường nằm trong `.data`.
+
+   Đây là cách tổ chức phổ biến của compiler/linker, không phải tên section do chuẩn C bắt buộc.
+
+4. **Khi chương trình gọi một hàm lồng nhau nhiều lần (đệ quy), vùng nhớ nào bị ảnh hưởng nhiều nhất?**
+
+   **Trả lời:** Stack. Mỗi lần gọi hàm thường tạo thêm một stack frame chứa thông tin như biến cục bộ, địa chỉ trả về và dữ liệu phục vụ lời gọi hàm. Đệ quy quá sâu có thể gây Stack Overflow.
+
+5. **Tại sao biến `const` thường được đặt trong vùng `.rodata` thay vì `.data`?**
+
+   **Trả lời:** Vì dữ liệu `const` không cần sửa trong quá trình chạy. Đặt nó vào vùng chỉ đọc giúp tránh tốn RAM ghi được và cho phép hệ thống bảo vệ dữ liệu khỏi việc sửa ngoài ý muốn. Trong vi điều khiển, dữ liệu chỉ đọc thường có thể được đặt trong Flash/ROM tùy linker và kiến trúc.
+
+6. **Nếu bạn muốn dữ liệu tồn tại suốt vòng đời chương trình, bạn nên đặt nó ở vùng nhớ nào?**
+
+   **Trả lời:** Dùng đối tượng có **thời gian lưu trữ tĩnh**, ví dụ biến toàn cục hoặc biến `static`.
+
+   - Đã khởi tạo khác `0`: thường ở `.data`.
+   - Chưa khởi tạo hoặc khởi tạo `0`: thường ở `.bss`.
+   - Dữ liệu chỉ đọc: có thể ở `.rodata`.
+
+7. **Tại sao vùng `.bss` không chiếm nhiều dung lượng trong file `.bin`, nhưng lại chiếm RAM khi chạy?**
+
+   **Trả lời:** Vì file chương trình thường chỉ cần lưu **kích thước** của vùng `.bss`, không cần lưu hàng loạt byte `0`. Khi khởi động, startup code dành vùng RAM tương ứng và đặt toàn bộ vùng đó về `0`. Vì vậy `.bss` ít làm tăng kích thước file nhưng vẫn tiêu tốn RAM lúc chạy.
+
+8. **Điều gì xảy ra với Stack khi hàm kết thúc, nhưng biến `static` trong hàm đó vẫn được giữ giá trị?**
+
+   **Trả lời:** Khi hàm kết thúc, stack frame của lần gọi hàm đó được thu hồi/tái sử dụng. Nhưng biến `static` không có thời gian lưu trữ tự động và không phụ thuộc stack frame; nó tồn tại suốt thời gian chạy, thường ở `.data` hoặc `.bss`.
+
+9. **Lỗi Memory Leak xảy ra khi nào? Tại sao? Cách debug.**
+
+   **Trả lời:**
+
+   - **Xảy ra khi:** vùng nhớ động đã cấp phát nhưng không được `free()` hoặc chương trình làm mất con trỏ cuối cùng tới vùng đó.
+   - **Tại sao nguy hiểm:** lượng Heap khả dụng giảm dần; chương trình chạy lâu có thể hết bộ nhớ.
+   - **Cách debug:** kiểm tra cặp cấp phát/giải phóng, các nhánh `return`, theo dõi quyền sở hữu con trỏ; trên môi trường hỗ trợ có thể dùng LeakSanitizer, AddressSanitizer hoặc Valgrind.
+
+10. **Lỗi Stack Overflow xảy ra khi nào? Tại sao? Cách debug.**
+
+    **Trả lời:**
+
+    - **Xảy ra khi:** chương trình dùng Stack vượt quá kích thước được cấp.
+    - **Nguyên nhân:** đệ quy quá sâu/vô hạn, mảng cục bộ quá lớn, chuỗi lời gọi hàm quá sâu hoặc Stack của task RTOS quá nhỏ.
+    - **Cách debug:** xem call stack, Stack Pointer, linker map; với RTOS có thể kiểm tra high-water mark; giảm biến cục bộ lớn và giới hạn độ sâu đệ quy.
+
+11. **Lỗi Segmentation Fault xảy ra khi nào? Tại sao? Cách debug.**
+
+    **Trả lời:** Segmentation Fault thường gặp trên hệ điều hành có cơ chế bảo vệ bộ nhớ khi chương trình truy cập một địa chỉ không hợp lệ hoặc không có quyền truy cập, ví dụ giải tham chiếu `NULL`, con trỏ sai hoặc truy cập vượt biên.
+
+    **Cách debug:**
+
+    - Dùng debugger xem backtrace/call stack.
+    - Xem địa chỉ con trỏ tại lệnh gây lỗi.
+    - Kiểm tra vượt biên, use-after-free và `NULL`.
+    - Có thể dùng AddressSanitizer khi môi trường hỗ trợ.
+
+    Trong vi điều khiển bare-metal, lỗi tương tự có thể biểu hiện dưới dạng HardFault, BusFault hoặc MemManage Fault tùy kiến trúc.
+
+12. **Lỗi Stack Smashing là gì? Cách compiler phát hiện bằng cơ chế Canary.**
+
+    **Trả lời:** Stack Smashing thường xảy ra khi chương trình ghi vượt giới hạn một bộ đệm trên Stack và ghi đè lên dữ liệu lân cận, có thể gồm dữ liệu điều khiển của hàm.
+
+    Với Stack Canary, compiler đặt một giá trị bảo vệ giữa các biến cục bộ nhạy cảm và phần dữ liệu điều khiển của stack frame:
+
+    ```text
+    [buffer]
+    [canary]
+    [dữ liệu điều khiển / địa chỉ trả về]
+    ```
+
+    Trước khi hàm `return`, chương trình kiểm tra canary. Nếu giá trị đã bị thay đổi, compiler/runtime có thể gọi hàm xử lý lỗi thay vì tiếp tục trả về bằng dữ liệu Stack có thể đã bị phá hỏng.
+
+13. **Lỗi Heap Corruption là gì? Cách phát hiện bằng AddressSanitizer.**
+
+    **Trả lời:** Heap Corruption là tình trạng dữ liệu hoặc cấu trúc quản lý Heap bị phá hỏng, thường do:
+
+    - Ghi vượt vùng được `malloc()`.
+    - Use-after-free.
+    - Double free hoặc invalid free.
+    - Phép toán con trỏ sai.
+
+    AddressSanitizer chèn mã kiểm tra vào chương trình và theo dõi các vùng bộ nhớ hợp lệ/không hợp lệ để phát hiện nhiều lỗi như heap-buffer-overflow và use-after-free gần thời điểm chúng xảy ra.
+
+    Ví dụ trên GCC/Clang khi môi trường hỗ trợ:
+
+    ```bash
+    -fsanitize=address -g
+    ```
+
+14. **Lỗi Dangling Pointer là gì? Tại sao nguy hiểm? Cách khắc phục.**
+
+    **Trả lời:** Dangling Pointer là con trỏ vẫn giữ địa chỉ nhưng đối tượng tại đó đã hết vòng đời hoặc vùng nhớ đã được `free()`.
+
+    **Nguy hiểm:** giải tham chiếu nó gây undefined behavior; vùng địa chỉ đó có thể đã được tái sử dụng cho dữ liệu khác.
+
+    **Cách hạn chế:**
+
+    - Không trả về địa chỉ biến cục bộ tự động.
+    - Không dùng con trỏ sau `free()`.
+    - Có thể đặt con trỏ về `NULL` sau khi giải phóng nếu phù hợp.
+    - Quy định rõ quyền sở hữu và vòng đời dữ liệu.
+
+15. **Khi nào nên dùng AddressSanitizer thay vì Valgrind để debug lỗi bộ nhớ?**
+
+    **Trả lời:** Nên ưu tiên AddressSanitizer khi:
+
+    - Có thể biên dịch lại chương trình với cờ sanitizer.
+    - Muốn phát hiện nhanh lỗi vượt biên, use-after-free và nhiều lỗi bộ nhớ trong quá trình test.
+    - Muốn tốc độ chạy thường nhanh hơn so với chạy dưới Valgrind.
+
+    Valgrind thường hữu ích khi chạy trên hệ điều hành được hỗ trợ và muốn phân tích bộ nhớ mà không cần instrumentation lúc biên dịch, hoặc muốn dùng các công cụ phân tích Heap/leak của Valgrind.
+
+    Với firmware bare-metal trên MCU, cả ASan và Valgrind thường không chạy trực tiếp như trên Linux; cách phổ biến là test phần mã có thể tách biệt trên máy chủ hoặc dùng debugger/JTAG/SWD và công cụ của RTOS/toolchain.
+
+16. **Lỗi Wild Pointer là gì?**
+
+    **Trả lời:** Wild Pointer là con trỏ chưa được khởi tạo đúng cách hoặc đang chứa một địa chỉ không xác định nhưng lại được sử dụng như một con trỏ hợp lệ.
+
+    ```c
+    int *ptr;     // chưa khởi tạo
+    // *ptr = 10; // nguy hiểm
+    ```
+
+    Khác với Dangling Pointer: dangling pointer từng trỏ tới một đối tượng hợp lệ nhưng đối tượng đó đã hết vòng đời; wild pointer ngay từ đầu chưa có địa chỉ hợp lệ xác định.
+
+    **Cách hạn chế:** khởi tạo con trỏ bằng địa chỉ hợp lệ hoặc `NULL`, bật cảnh báo compiler và không giải tham chiếu trước khi con trỏ được gán hợp lệ.
 
 [↑ Về mục lục](#muc-luc)
 
