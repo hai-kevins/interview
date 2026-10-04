@@ -152,7 +152,58 @@
    - 7.30. So sánh SPI và I2C
    - 7.31. Câu hỏi tự kiểm tra
 8. **ADC**
+   - 8.1. ADC là gì?
+   - 8.2. Độ phân giải 12-bit và giá trị ADC
+   - 8.3. VREF+ / VREF- / VDDA / VSSA
+   - 8.4. ADC Clock và Prescaler
+   - 8.5. ADC Channel và GPIO Analog Mode
+   - 8.6. Sampling Time
+   - 8.7. Conversion Time
+   - 8.8. Regular Group và Injected Group
+   - 8.9. Conversion Sequence và Rank
+   - 8.10. Single Conversion và Continuous Conversion
+   - 8.11. Scan Mode
+   - 8.12. Discontinuous Mode
+   - 8.13. Software Trigger và External Trigger
+   - 8.14. EOC / JEOC và ADC Data Registers
+   - 8.15. Data Alignment
+   - 8.16. ADC Calibration
+   - 8.17. Analog Watchdog
+   - 8.18. Temperature Sensor và VREFINT
+   - 8.19. ADC Interrupt
+   - 8.20. ADC + DMA
+   - 8.21. Dual ADC Mode
+   - 8.22. Quy trình cấu hình ADC
+   - 8.23. Ví dụ đọc một Analog Channel
+   - 8.24. Ví dụ Scan nhiều Channel bằng DMA
+   - 8.25. Câu hỏi tự kiểm tra
 9. **DMA**
+   - 9.1. DMA là gì?
+   - 9.2. CPU Transfer và DMA Transfer
+   - 9.3. DMA1 / DMA2 và DMA Channel
+   - 9.4. DMA Request và Channel Mapping
+   - 9.5. Peripheral-to-Memory / Memory-to-Peripheral / Memory-to-Memory
+   - 9.6. DMA_CCRx
+   - 9.7. DMA_CNDTRx
+   - 9.8. DMA_CPARx / DMA_CMARx
+   - 9.9. Data Width: PSIZE / MSIZE
+   - 9.10. Address Increment: PINC / MINC
+   - 9.11. Circular Mode
+   - 9.12. DMA Priority
+   - 9.13. Transfer Complete / Half Transfer / Transfer Error
+   - 9.14. DMA_ISR / DMA_IFCR
+   - 9.15. DMA Interrupt
+   - 9.16. DMA + ADC
+   - 9.17. DMA + UART
+   - 9.18. DMA + SPI
+   - 9.19. DMA + I2C
+   - 9.20. DMA + Timer
+   - 9.21. Quy trình cấu hình DMA
+   - 9.22. Ví dụ Peripheral → Memory
+   - 9.23. Ví dụ Memory → Peripheral
+   - 9.24. Circular Buffer và Half-Transfer
+   - 9.25. Lỗi thường gặp
+   - 9.26. Câu hỏi tự kiểm tra
 10. **Debug bằng ST-Link**
 
 ---
@@ -21113,5 +21164,5389 @@ Read Data
 **Điểm cần nhớ:**
 
 > **SPI cần xác định đúng `SCK`, `CPOL/CPHA`, frame format và luôn nhớ Full-Duplex nghĩa là truyền đồng thời với nhận. I2C cần hiểu đúng Open-Drain, Address, START/STOP, ACK/NACK, Repeated START và đặc biệt phải giữ đúng trình tự xử lý các flag `SB`, `ADDR`, `BTF`, `RxNE`, `TxE` của state machine STM32F1.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="chuong-08"></a>
+# 8. ADC
+
+`ADC` chuyển điện áp analog thành giá trị số để CPU có thể xử lý.
+
+Luồng cơ bản:
+
+```text
+Analog Voltage
+     ↓
+GPIO Analog Mode
+     ↓
+ADC Channel
+     ↓
+Sampling
+     ↓
+12-bit Conversion
+     ↓
+ADC Data Register
+     ↓
+Polling / Interrupt / DMA
+```
+
+STM32F10xxx sử dụng ADC kiểu **successive approximation** với độ phân giải 12-bit. ADC có thể thực hiện Single, Continuous, Scan và Discontinuous conversion; hỗ trợ Regular Group, Injected Group, external trigger, Analog Watchdog, self-calibration, interrupt và DMA cho Regular conversion.
+
+<a id="muc-08-01"></a>
+## 8.1. ADC là gì?
+
+`ADC`:
+
+```text
+Analog-to-Digital Converter
+```
+
+ADC nhận một điện áp analog:
+
+```text
+VIN
+```
+
+và tạo một mã số:
+
+```text
+ADC Code
+```
+
+Khái niệm:
+
+```text
+Analog Voltage
+      ↓
+Sample
+      ↓
+Quantize
+      ↓
+Digital Code
+```
+
+STM32F10xxx ADC có:
+
+```text
+12-bit resolution
+```
+
+và tối đa:
+
+```text
+16 external channels
++
+2 internal sources
+```
+
+Trong đó hai nguồn nội bộ trên ADC1 là:
+
+```text
+Temperature Sensor
+VREFINT
+```
+
+Một ADC channel không phải một ADC độc lập. Các channel được đưa qua analog multiplexer vào cùng bộ chuyển đổi.
+
+```text
+ADC_IN0 ─┐
+ADC_IN1 ─┤
+ADC_IN2 ─┤
+...      ├──→ Analog MUX ──→ ADC Core
+ADC_IN15 ┘
+```
+
+---
+
+<a id="muc-08-02"></a>
+## 8.2. Độ phân giải 12-bit và giá trị ADC
+
+ADC 12-bit có:
+
+```text
+2^12 = 4096 mức
+```
+
+Regular conversion result có giá trị:
+
+```text
+0 → 4095
+```
+
+Có thể hình dung:
+
+```text
+VREF+
+  │
+  │        4095
+  │       /
+  │      /
+VIN     /
+  │    /
+  │   /
+  │  /
+  │ /
+  │/
+VREF- ───────── 0
+```
+
+### Mô hình lượng tử hóa lý tưởng
+
+Nếu:
+
+```text
+VREF- = 0 V
+```
+
+thì có thể ước lượng:
+
+```text
+VIN ≈ ADC_Code × VREF+
+      ─────────────────
+             4095
+```
+
+Tổng quát hơn:
+
+```text
+VIN
+≈
+VREF-
++
+ADC_Code × (VREF+ - VREF-)
+──────────────────────────
+           4095
+```
+
+Đây là mô hình tính lý tưởng; sai số thực tế còn phụ thuộc reference, ADC accuracy, nguồn tín hiệu, sampling time, nhiễu và đặc tính điện của MCU.
+
+### Ví dụ
+
+Giả sử:
+
+```text
+VREF- = 0 V
+VREF+ = 3.3 V
+ADC   = 2048
+```
+
+thì:
+
+```text
+VIN
+≈ 2048 × 3.3 / 4095
+≈ 1.65 V
+```
+
+Điểm cần nhớ:
+
+```text
+ADC_DR không chứa đơn vị Volt
+```
+
+Nó chứa:
+
+```text
+Digital Code
+```
+
+và muốn đổi ra Volt phải biết điện áp reference thực tế.
+
+---
+
+<a id="muc-08-03"></a>
+## 8.3. VREF+ / VREF- / VDDA / VSSA
+
+ADC sử dụng miền nguồn analog riêng.
+
+Các tín hiệu:
+
+```text
+VDDA
+→ Analog Supply
+
+VSSA
+→ Analog Ground
+
+VREF+
+→ Positive ADC Reference
+
+VREF-
+→ Negative ADC Reference
+```
+
+Theo STM32F10xxx:
+
+```text
+2.4 V ≤ VDDA ≤ 3.6 V
+```
+
+và ADC input phải nằm trong:
+
+```text
+VREF- ≤ VIN ≤ VREF+
+```
+
+Nếu chân `VREF-` tồn tại trên package:
+
+```text
+VREF- = VSSA
+```
+
+`VREF+` nằm trong:
+
+```text
+2.4 V ≤ VREF+ ≤ VDDA
+```
+
+Khả năng đưa `VREF+` / `VREF-` ra chân riêng phụ thuộc đúng MCU và package.
+
+### Vì sao Reference quan trọng?
+
+ADC đo:
+
+```text
+VIN
+so với
+VREF
+```
+
+Nếu reference thay đổi:
+
+```text
+cùng một VIN
+→ ADC Code có thể thay đổi
+```
+
+Do đó độ ổn định của:
+
+```text
+VDDA
+VREF+
+VSSA
+```
+
+ảnh hưởng trực tiếp đến chất lượng phép đo.
+
+---
+
+<a id="muc-08-04"></a>
+## 8.4. ADC Clock và Prescaler
+
+ADC clock:
+
+```text
+ADCCLK
+```
+
+được tạo từ:
+
+```text
+PCLK2
+```
+
+qua ADC Prescaler trong RCC.
+
+Clock Tree:
+
+```text
+PCLK2
+  ↓
+ADC Prescaler
+  ↓
+ADCCLK
+```
+
+Các hệ số chia trên STM32F1:
+
+```text
+/2
+/4
+/6
+/8
+```
+
+Điều kiện quan trọng:
+
+```text
+ADCCLK ≤ 14 MHz
+```
+
+### Ví dụ
+
+Cho:
+
+```text
+PCLK2 = 72 MHz
+```
+
+Nếu:
+
+```text
+ADCPRE = /6
+```
+
+thì:
+
+```text
+ADCCLK
+= 72 MHz / 6
+= 12 MHz
+```
+
+hợp lệ.
+
+Nếu:
+
+```text
+ADCPRE = /4
+```
+
+thì:
+
+```text
+ADCCLK
+= 72 MHz / 4
+= 18 MHz
+```
+
+vượt giới hạn:
+
+```text
+14 MHz
+```
+
+### Tư duy cấu hình
+
+```text
+SYSCLK / Clock Tree
+        ↓
+PCLK2
+        ↓
+ADCPRE
+        ↓
+ADCCLK
+        ↓
+Sampling + Conversion
+```
+
+Không nên cấu hình ADC trước khi biết `PCLK2`.
+
+---
+
+<a id="muc-08-05"></a>
+## 8.5. ADC Channel và GPIO Analog Mode
+
+External ADC input được đặt tên:
+
+```text
+ADCx_IN0
+ADCx_IN1
+...
+ADCx_IN15
+```
+
+Pin cụ thể của từng channel phải kiểm tra theo pinout MCU.
+
+Ví dụ thường gặp:
+
+```text
+PA0
+→ ADC_IN0
+```
+
+nhưng mapping chính xác phụ thuộc ADC instance và device.
+
+### GPIO Configuration
+
+GPIO dùng cho ADC phải cấu hình:
+
+```text
+Analog Mode
+```
+
+Trên STM32F1:
+
+```text
+MODE = 00
+CNF  = 00
+```
+
+Khi ở Analog Mode:
+
+```text
+Output Buffer
+→ OFF
+
+Digital Input / Schmitt Trigger
+→ OFF
+
+Pull-Up / Pull-Down
+→ OFF
+```
+
+Luồng:
+
+```text
+Analog Source
+     ↓
+GPIO Analog Pin
+     ↓
+ADC Channel
+```
+
+### Vì sao không dùng Digital Input?
+
+Digital input path không cần thiết cho ADC signal.
+
+Analog Mode giúp:
+
+```text
+ngắt digital input path
+giảm tiêu thụ không cần thiết
+tránh ảnh hưởng không cần thiết lên analog signal
+```
+
+---
+
+<a id="muc-08-06"></a>
+## 8.6. Sampling Time
+
+Trước khi chuyển đổi, ADC phải sample điện áp input trong một số chu kỳ `ADCCLK`.
+
+STM32F1 cho phép chọn sampling time riêng cho từng channel.
+
+Registers:
+
+```text
+ADC_SMPR1
+→ Channels 10 → 17
+
+ADC_SMPR2
+→ Channels 0 → 9
+```
+
+Mỗi channel dùng:
+
+```text
+SMPx[2:0]
+```
+
+Các lựa chọn:
+
+| `SMPx` | Sampling Time |
+|---|---:|
+| `000` | 1.5 cycles |
+| `001` | 7.5 cycles |
+| `010` | 13.5 cycles |
+| `011` | 28.5 cycles |
+| `100` | 41.5 cycles |
+| `101` | 55.5 cycles |
+| `110` | 71.5 cycles |
+| `111` | 239.5 cycles |
+
+### Tư duy
+
+```text
+Sampling Time ngắn
+→ tốc độ cao hơn
+
+Sampling Time dài
+→ input có nhiều thời gian ổn định hơn
+```
+
+ADC sử dụng mạch sample-and-hold.
+
+Có thể hình dung:
+
+```text
+Analog Source
+     ↓
+Source Resistance
+     ↓
+Sample-and-Hold Capacitor
+     ↓
+ADC Core
+```
+
+Nếu nguồn tín hiệu có trở kháng tương đối cao, capacitor cần đủ thời gian để nạp đến điện áp gần với VIN.
+
+Do đó:
+
+```text
+sampling time quá ngắn
+→ code ADC có thể sai
+```
+
+Sampling Time phải được chọn theo:
+
+```text
+Source impedance
+ADC clock
+Accuracy requirement
+Sampling rate requirement
+Electrical characteristics
+```
+
+---
+
+<a id="muc-08-07"></a>
+## 8.7. Conversion Time
+
+Tổng conversion time:
+
+```text
+Tconv
+=
+Sampling Time
++
+12.5 ADCCLK cycles
+```
+
+### Ví dụ 1
+
+```text
+ADCCLK = 14 MHz
+Sampling Time = 1.5 cycles
+```
+
+Tổng:
+
+```text
+1.5 + 12.5
+= 14 cycles
+```
+
+Do đó:
+
+```text
+Tconv
+= 14 / 14 MHz
+= 1 µs
+```
+
+### Ví dụ 2
+
+```text
+ADCCLK = 12 MHz
+Sampling Time = 55.5 cycles
+```
+
+Tổng:
+
+```text
+55.5 + 12.5
+= 68 cycles
+```
+
+Do đó:
+
+```text
+Tconv
+= 68 / 12 MHz
+≈ 5.67 µs
+```
+
+### Phân biệt
+
+```text
+Sampling Time
+→ thời gian lấy mẫu input
+
+Conversion Time
+→ Sampling Time + 12.5 cycles
+```
+
+Không được coi hai khái niệm là giống nhau.
+
+---
+
+<a id="muc-08-08"></a>
+## 8.8. Regular Group và Injected Group
+
+Các conversion được chia thành:
+
+```text
+ADC
+├── Regular Group
+└── Injected Group
+```
+
+### Regular Group
+
+Regular Group có tối đa:
+
+```text
+16 conversions
+```
+
+Sequence được cấu hình bằng:
+
+```text
+ADC_SQR1
+ADC_SQR2
+ADC_SQR3
+```
+
+Kết quả được đưa vào:
+
+```text
+ADC_DR
+```
+
+Regular Group phù hợp cho:
+
+```text
+sensor sampling thông thường
+continuous conversion
+scan nhiều channel
+ADC + DMA
+```
+
+### Injected Group
+
+Injected Group có tối đa:
+
+```text
+4 conversions
+```
+
+Sequence được cấu hình bằng:
+
+```text
+ADC_JSQR
+```
+
+Kết quả được lưu riêng:
+
+```text
+ADC_JDR1
+ADC_JDR2
+ADC_JDR3
+ADC_JDR4
+```
+
+### Ý nghĩa "Injected"
+
+Injected conversion có thể được kích hoạt trong lúc Regular Group đang chạy.
+
+Khái niệm:
+
+```text
+Regular conversion
+      ↓
+Injected trigger
+      ↓
+conversion hiện tại bị reset
+      ↓
+Injected sequence chạy
+      ↓
+Regular sequence tiếp tục
+```
+
+Nếu Regular event xảy ra trong Injected conversion:
+
+```text
+Injected sequence tiếp tục
+→ Regular sequence chờ tới cuối Injected sequence
+```
+
+### Auto-Injected
+
+Bit:
+
+```text
+JAUTO
+```
+
+cho phép:
+
+```text
+Regular Group hoàn tất
+        ↓
+Injected Group tự động chạy
+```
+
+Khi `JAUTO` và `CONT` cùng bật:
+
+```text
+Regular
+→ Injected
+→ Regular
+→ Injected
+→ ...
+```
+
+Auto-Injected và Discontinuous Mode không được sử dụng đồng thời.
+
+---
+
+<a id="muc-08-09"></a>
+## 8.9. Conversion Sequence và Rank
+
+Một group không chỉ chọn channel mà còn quy định **thứ tự conversion**.
+
+Ví dụ:
+
+```text
+Rank 1 → Channel 3
+Rank 2 → Channel 8
+Rank 3 → Channel 2
+Rank 4 → Channel 2
+Rank 5 → Channel 0
+```
+
+Một channel có thể xuất hiện nhiều lần trong sequence.
+
+### Regular Sequence
+
+Registers:
+
+```text
+ADC_SQR1
+ADC_SQR2
+ADC_SQR3
+```
+
+`ADC_SQR1.L` xác định:
+
+```text
+số conversion của Regular Group
+```
+
+Tối đa:
+
+```text
+16
+```
+
+### Injected Sequence
+
+Register:
+
+```text
+ADC_JSQR
+```
+
+`JL` xác định số conversion:
+
+```text
+1 → 4
+```
+
+### Rank
+
+Rank có nghĩa:
+
+```text
+vị trí trong sequence
+```
+
+Ví dụ:
+
+```text
+Rank 1 = Channel 5
+Rank 2 = Channel 1
+Rank 3 = Channel 9
+```
+
+không có nghĩa:
+
+```text
+Channel 5 có priority cao hơn Channel 1
+```
+
+Đây chỉ là thứ tự conversion.
+
+### Lưu ý khi sửa Sequence
+
+Nếu:
+
+```text
+ADC_SQRx
+hoặc
+ADC_JSQR
+```
+
+bị thay đổi trong khi conversion đang diễn ra, current conversion bị reset và ADC bắt đầu theo group configuration mới.
+
+---
+
+<a id="muc-08-10"></a>
+## 8.10. Single Conversion và Continuous Conversion
+
+### Single Conversion
+
+Bit:
+
+```text
+CONT = 0
+```
+
+Luồng:
+
+```text
+Trigger
+ ↓
+Conversion
+ ↓
+Result
+ ↓
+ADC dừng
+```
+
+Regular result:
+
+```text
+ADC_DR
+EOC = 1
+```
+
+Injected result:
+
+```text
+ADC_JDRx
+JEOC = 1
+```
+
+### Continuous Conversion
+
+Bit:
+
+```text
+CONT = 1
+```
+
+Luồng:
+
+```text
+Start
+ ↓
+Conversion
+ ↓
+Conversion
+ ↓
+Conversion
+ ↓
+...
+```
+
+Sau mỗi Regular conversion:
+
+```text
+ADC_DR được cập nhật
+EOC được set
+```
+
+Sau mỗi Injected sequence:
+
+```text
+JDRx được cập nhật
+JEOC được set
+```
+
+Continuous mode phù hợp cho:
+
+```text
+continuous sensor sampling
+ADC + DMA
+signal acquisition
+```
+
+---
+
+<a id="muc-08-11"></a>
+## 8.11. Scan Mode
+
+Bit:
+
+```text
+ADC_CR1.SCAN
+```
+
+Scan Mode dùng để tự động convert một group nhiều channel.
+
+Ví dụ:
+
+```text
+Rank 1 → CH0
+Rank 2 → CH1
+Rank 3 → CH4
+Rank 4 → CH7
+```
+
+Luồng:
+
+```text
+Trigger
+ ↓
+CH0
+ ↓
+CH1
+ ↓
+CH4
+ ↓
+CH7
+```
+
+ADC tự chuyển sang channel tiếp theo sau mỗi conversion.
+
+Nếu:
+
+```text
+CONT = 0
+```
+
+thì:
+
+```text
+scan hết sequence
+→ dừng
+```
+
+Nếu:
+
+```text
+CONT = 1
+```
+
+thì:
+
+```text
+CH0 → CH1 → CH4 → CH7
+ ↑                    ↓
+ └────────────────────┘
+```
+
+### Regular Scan và DMA
+
+Regular conversion results đều đi qua một register:
+
+```text
+ADC_DR
+```
+
+Vì vậy khi Scan Mode dùng Regular Group, RM0008 yêu cầu:
+
+```text
+DMA = 1
+```
+
+và DMA chuyển từng result sang SRAM sau mỗi lần `ADC_DR` được cập nhật.
+
+Luồng:
+
+```text
+CH0 → ADC_DR → DMA → buffer[0]
+CH1 → ADC_DR → DMA → buffer[1]
+CH4 → ADC_DR → DMA → buffer[2]
+CH7 → ADC_DR → DMA → buffer[3]
+```
+
+Injected Group không cần cơ chế này vì có các register riêng:
+
+```text
+JDR1
+JDR2
+JDR3
+JDR4
+```
+
+---
+
+<a id="muc-08-12"></a>
+## 8.12. Discontinuous Mode
+
+Discontinuous Mode chia một sequence thành các phần nhỏ, mỗi trigger chạy một phần.
+
+### Regular Group
+
+Enable:
+
+```text
+DISCEN = 1
+```
+
+Số channel mỗi trigger:
+
+```text
+DISCNUM
+→ 1 → 8 conversions
+```
+
+Ví dụ sequence:
+
+```text
+CH0
+CH1
+CH2
+CH3
+CH6
+CH7
+CH9
+CH10
+```
+
+và:
+
+```text
+n = 3
+```
+
+Luồng:
+
+```text
+Trigger 1
+→ CH0 CH1 CH2
+
+Trigger 2
+→ CH3 CH6 CH7
+
+Trigger 3
+→ CH9 CH10
+
+Trigger 4
+→ CH0 CH1 CH2
+```
+
+### Injected Group
+
+Enable:
+
+```text
+JDISCEN = 1
+```
+
+Injected Discontinuous Mode convert:
+
+```text
+1 channel / trigger
+```
+
+Ví dụ:
+
+```text
+Injected Sequence:
+CH1 CH2 CH3
+```
+
+```text
+Trigger 1 → CH1
+Trigger 2 → CH2
+Trigger 3 → CH3
+Trigger 4 → CH1
+```
+
+### Hạn chế
+
+Không được dùng đồng thời:
+
+```text
+Auto-Injected
++
+Discontinuous
+```
+
+và không nên enable Discontinuous Mode cho cả Regular và Injected Group cùng lúc.
+
+---
+
+<a id="muc-08-13"></a>
+## 8.13. Software Trigger và External Trigger
+
+ADC conversion có thể được bắt đầu bằng software hoặc hardware event.
+
+### Software Trigger
+
+Regular Group:
+
+```text
+SWSTART
+```
+
+Injected Group:
+
+```text
+JSWSTART
+```
+
+Các bit nằm trong:
+
+```text
+ADC_CR2
+```
+
+### External Trigger
+
+Nguồn trigger có thể đến từ:
+
+```text
+Timer Capture/Compare
+Timer TRGO
+EXTI
+```
+
+Các lựa chọn cụ thể phụ thuộc:
+
+```text
+ADC instance
+device density
+```
+
+Regular Group dùng:
+
+```text
+EXTSEL
+EXTTRIG
+```
+
+Injected Group dùng:
+
+```text
+JEXTSEL
+JEXTTRIG
+```
+
+### Edge
+
+Đối với external trigger trong STM32F1 ADC:
+
+```text
+chỉ Rising Edge
+→ bắt đầu conversion
+```
+
+### Timer Trigger
+
+Một kiến trúc quan trọng:
+
+```text
+Timer
+  ↓
+TRGO / Compare Event
+  ↓
+ADC
+  ↓
+Sampling
+  ↓
+DMA
+```
+
+Ưu điểm:
+
+```text
+sample period do hardware quyết định
+→ đều hơn software delay
+→ CPU không phải tự start từng conversion
+```
+
+---
+
+<a id="muc-08-14"></a>
+## 8.14. EOC / JEOC và ADC Data Registers
+
+### ADC_SR
+
+Các flag chính:
+
+```text
+AWD
+→ Analog Watchdog
+
+EOC
+→ End Of Conversion
+
+JEOC
+→ Injected End Of Conversion
+
+JSTRT
+→ Injected Start
+
+STRT
+→ Regular Start
+```
+
+### EOC
+
+```text
+EOC = 1
+→ conversion result sẵn sàng
+```
+
+Regular result:
+
+```text
+ADC_DR
+```
+
+`EOC` có thể được clear:
+
+```text
+bằng software
+hoặc
+khi đọc ADC_DR
+```
+
+### JEOC
+
+```text
+JEOC = 1
+→ toàn bộ Injected Group đã hoàn tất
+```
+
+Injected result:
+
+```text
+ADC_JDR1
+ADC_JDR2
+ADC_JDR3
+ADC_JDR4
+```
+
+### Luồng Regular
+
+```text
+Trigger
+ ↓
+Sampling
+ ↓
+Conversion
+ ↓
+ADC_DR
+ ↓
+EOC = 1
+```
+
+### Luồng Injected
+
+```text
+Injected Trigger
+ ↓
+Injected Sequence
+ ↓
+JDR1 ... JDR4
+ ↓
+JEOC = 1
+```
+
+---
+
+<a id="muc-08-15"></a>
+## 8.15. Data Alignment
+
+ADC result là 12-bit nhưng data register là 16-bit.
+
+Bit:
+
+```text
+ADC_CR2.ALIGN
+```
+
+chọn:
+
+```text
+0 → Right Alignment
+1 → Left Alignment
+```
+
+### Right Alignment
+
+Regular data:
+
+```text
+Bit 15                         Bit 0
++----+----+----+----+------------+
+| 0  | 0  | 0  | 0  | D11 ... D0|
++----+----+----+----+------------+
+```
+
+Dùng thuận tiện khi muốn:
+
+```text
+0 → 4095
+```
+
+### Left Alignment
+
+```text
+Bit 15                         Bit 0
++--------------------+------------+
+| D11 ... D0         | 0000       |
++--------------------+------------+
+```
+
+### Injected Offset
+
+Injected channel có thể dùng:
+
+```text
+ADC_JOFR1
+ADC_JOFR2
+ADC_JOFR3
+ADC_JOFR4
+```
+
+để trừ một offset khỏi converted value.
+
+Do đó Injected result có thể:
+
+```text
+âm
+```
+
+và data alignment có sign extension tương ứng.
+
+Regular Group không áp dụng injected offset.
+
+---
+
+<a id="muc-08-16"></a>
+## 8.16. ADC Calibration
+
+STM32F1 ADC có self-calibration.
+
+Mục đích:
+
+```text
+giảm sai số do sai khác nội bộ của capacitor bank
+```
+
+RM0008 khuyến nghị:
+
+```text
+Calibration một lần sau mỗi power-up
+```
+
+### Các bit
+
+```text
+RSTCAL
+→ reset / initialize calibration register
+
+CAL
+→ bắt đầu calibration
+```
+
+### Điều kiện
+
+ADC phải được power-on:
+
+```text
+ADON = 1
+```
+
+ít nhất:
+
+```text
+2 ADCCLK cycles
+```
+
+trước khi bắt đầu calibration.
+
+### Quy trình
+
+```text
+ADON = 1
+ ↓
+đợi ít nhất 2 ADCCLK cycles
+ ↓
+RSTCAL = 1
+ ↓
+chờ RSTCAL = 0
+ ↓
+CAL = 1
+ ↓
+chờ CAL = 0
+ ↓
+ADC sẵn sàng
+```
+
+`CAL` được hardware tự clear khi calibration hoàn tất.
+
+Ví dụ register-level:
+
+```c
+ADC1->CR2 |= ADC_CR2_ADON;
+
+/* Bảo đảm ADC đã power-on đủ thời gian */
+
+ADC1->CR2 |= ADC_CR2_RSTCAL;
+while (ADC1->CR2 & ADC_CR2_RSTCAL)
+{
+}
+
+ADC1->CR2 |= ADC_CR2_CAL;
+while (ADC1->CR2 & ADC_CR2_CAL)
+{
+}
+```
+
+Trong code thực tế phải bảo đảm delay power-up/stabilization đáp ứng yêu cầu timing của device.
+
+---
+
+<a id="muc-08-17"></a>
+## 8.17. Analog Watchdog
+
+Analog Watchdog giám sát result của ADC so với hai threshold.
+
+Registers:
+
+```text
+ADC_HTR
+→ High Threshold
+
+ADC_LTR
+→ Low Threshold
+```
+
+Cả hai threshold sử dụng:
+
+```text
+12-bit value
+```
+
+Luồng:
+
+```text
+ADC Result
+    ↓
+Compare
+    ├── Result > HTR → AWD
+    ├── LTR ≤ Result ≤ HTR → trong vùng
+    └── Result < LTR → AWD
+```
+
+Khi vượt vùng:
+
+```text
+ADC_SR.AWD = 1
+```
+
+Nếu:
+
+```text
+AWDIE = 1
+```
+
+thì có thể tạo ADC interrupt.
+
+### Phạm vi giám sát
+
+Analog Watchdog có thể giám sát:
+
+```text
+tất cả Regular channels
+tất cả Injected channels
+Regular + Injected
+một channel cụ thể
+```
+
+Các bit:
+
+```text
+AWDEN
+JAWDEN
+AWDSGL
+AWDCH
+```
+
+điều khiển phạm vi.
+
+### Ứng dụng
+
+```text
+Over-voltage
+Under-voltage
+Battery threshold
+Sensor out-of-range
+Protection threshold
+```
+
+Ưu điểm:
+
+```text
+hardware tự so sánh
+→ CPU không phải liên tục kiểm tra từng sample
+```
+
+---
+
+<a id="muc-08-18"></a>
+## 8.18. Temperature Sensor và VREFINT
+
+ADC1 có hai internal channels:
+
+```text
+ADC1_IN16
+→ Temperature Sensor
+
+ADC1_IN17
+→ VREFINT
+```
+
+Hai channel này được enable bằng:
+
+```text
+ADC_CR2.TSVREFE
+```
+
+```text
+TSVREFE = 1
+→ enable Temperature Sensor + VREFINT
+```
+
+### Temperature Sensor
+
+Internal Temperature Sensor đo:
+
+```text
+junction temperature
+```
+
+Recommended sampling time:
+
+```text
+17.1 µs
+```
+
+Do sampling setting được chọn theo số `ADCCLK cycles`, phải chọn một mức `SMP16` tạo thời gian sample đáp ứng yêu cầu này.
+
+Ví dụ:
+
+```text
+ADCCLK = 12 MHz
+239.5 cycles
+```
+
+cho:
+
+```text
+Tsample
+= 239.5 / 12 MHz
+≈ 19.96 µs
+```
+
+đáp ứng thời gian sample lớn hơn 17.1 µs.
+
+### Quy trình
+
+```text
+TSVREFE = 1
+ ↓
+đợi sensor startup time
+ ↓
+select Channel 16
+ ↓
+sampling time phù hợp
+ ↓
+start ADC
+ ↓
+read VSENSE
+```
+
+RM0008 đưa quan hệ:
+
+```text
+Temperature
+=
+(V25 - VSENSE) / Avg_Slope + 25
+```
+
+Trong đó:
+
+```text
+V25
+Avg_Slope
+```
+
+phải lấy theo electrical characteristics của device.
+
+### Giới hạn
+
+Offset Temperature Sensor thay đổi giữa các chip.
+
+Vì vậy internal sensor phù hợp hơn với:
+
+```text
+theo dõi biến thiên junction temperature
+```
+
+hơn là đo nhiệt độ tuyệt đối có độ chính xác cao.
+
+### VREFINT
+
+```text
+ADC1_IN17
+→ Internal Reference Voltage
+```
+
+có thể được conversion giống một internal ADC channel sau khi `TSVREFE` được enable.
+
+---
+
+<a id="muc-08-19"></a>
+## 8.19. ADC Interrupt
+
+Ba interrupt event chính:
+
+```text
+EOC
+→ Regular End Of Conversion
+
+JEOC
+→ Injected End Of Conversion
+
+AWD
+→ Analog Watchdog
+```
+
+Enable bits:
+
+```text
+EOCIE
+JEOCIE
+AWDIE
+```
+
+Luồng:
+
+```text
+ADC Event
+   ↓
+ADC_SR Flag
+   ↓
+Interrupt Enable
+   ↓
+ADC IRQ
+   ↓
+NVIC
+   ↓
+ADC_IRQHandler()
+```
+
+### EOC Interrupt
+
+```text
+Regular conversion complete
+        ↓
+EOC = 1
+        ↓
+EOCIE = 1
+        ↓
+IRQ
+```
+
+### JEOC Interrupt
+
+```text
+Injected Group complete
+        ↓
+JEOC = 1
+        ↓
+JEOCIE = 1
+        ↓
+IRQ
+```
+
+### ADC1 / ADC2 IRQ
+
+ADC1 và ADC2:
+
+```text
+share cùng interrupt vector
+```
+
+ADC3:
+
+```text
+có vector riêng
+```
+
+trên các device có ADC3.
+
+Do ADC1/ADC2 share vector, handler phải kiểm tra:
+
+```text
+ADC1->SR
+ADC2->SR
+```
+
+để xác định nguồn.
+
+---
+
+<a id="muc-08-20"></a>
+## 8.20. ADC + DMA
+
+DMA rất quan trọng với Regular Group.
+
+Lý do:
+
+```text
+Regular result
+→ chỉ có một ADC_DR
+```
+
+Ví dụ Scan:
+
+```text
+CH0 → ADC_DR
+CH1 → ADC_DR ghi đè
+CH2 → ADC_DR ghi đè
+```
+
+Nếu software không đọc kịp:
+
+```text
+result cũ bị mất
+```
+
+Vì vậy RM0008 yêu cầu dùng DMA khi Scan Mode chuyển nhiều Regular channels.
+
+### Luồng
+
+```text
+ADC Conversion
+      ↓
+ADC_DR
+      ↓ DMA Request
+DMA Controller
+      ↓
+SRAM
+```
+
+Ví dụ:
+
+```text
+Rank 1 CH0 → buffer[0]
+Rank 2 CH1 → buffer[1]
+Rank 3 CH4 → buffer[2]
+Rank 4 CH7 → buffer[3]
+```
+
+### DMA Request
+
+Chỉ:
+
+```text
+End Of Conversion của Regular Channel
+```
+
+tạo ADC DMA request.
+
+Injected conversion:
+
+```text
+không dùng ADC DMA request theo cơ chế này
+```
+
+vì result có các `JDRx` riêng.
+
+### ADC Instance
+
+Trên STM32F10xxx:
+
+```text
+ADC1
+ADC3
+→ có DMA request capability
+
+ADC2
+→ không tự tạo ADC DMA request
+```
+
+ADC2 result có thể được chuyển qua DMA trong Dual ADC Mode thông qua master ADC1.
+
+### Kiến trúc thực tế
+
+```text
+Timer
+  ↓ Trigger
+ADC Regular Scan
+  ↓
+DMA
+  ↓
+Circular Buffer
+  ↓
+CPU xử lý block data
+```
+
+Đây là một kiến trúc quan trọng cho acquisition định kỳ.
+
+---
+
+<a id="muc-08-21"></a>
+## 8.21. Dual ADC Mode
+
+Trên device có từ hai ADC trở lên:
+
+```text
+ADC1
+→ Master
+
+ADC2
+→ Slave
+```
+
+có thể phối hợp bằng:
+
+```text
+Dual ADC Mode
+```
+
+Các mode được RM0008 mô tả gồm:
+
+```text
+Injected Simultaneous
+Regular Simultaneous
+Fast Interleaved
+Slow Interleaved
+Alternate Trigger
+Independent
+```
+
+và một số combined modes.
+
+### Simultaneous
+
+Hai ADC sample gần như đồng thời:
+
+```text
+ADC1 ── sample CH_A
+ADC2 ── sample CH_B
+```
+
+Ứng dụng:
+
+```text
+đo hai tín hiệu tại cùng thời điểm
+motor-control current sensing
+```
+
+Trong simultaneous mode, hai channel được sample đồng thời phải có cùng sampling time.
+
+### Interleaved
+
+Hai ADC convert luân phiên:
+
+```text
+ADC2 sample
+      ↓
+ADC1 sample
+      ↓
+ADC2 sample
+      ↓
+ADC1 sample
+```
+
+Mục tiêu:
+
+```text
+tăng effective sampling rate
+```
+
+Fast Interleaved sử dụng offset giữa hai ADC bằng:
+
+```text
+7 ADCCLK cycles
+```
+
+và yêu cầu sampling time đủ ngắn để không overlap khi convert cùng channel.
+
+### DMA trong Dual Mode
+
+Trong một số Dual ADC Mode:
+
+```text
+ADC1_DR 32-bit
+```
+
+có thể chứa:
+
+```text
+lower halfword
+→ ADC1 result
+
+upper halfword
+→ ADC2 result
+```
+
+và DMA chuyển word 32-bit sang SRAM.
+
+Phần Dual ADC nên học sau khi chắc:
+
+```text
+Single ADC
+Regular / Injected
+Trigger
+DMA
+```
+
+---
+
+<a id="muc-08-22"></a>
+## 8.22. Quy trình cấu hình ADC
+
+Ví dụ mục tiêu:
+
+```text
+ADC1
+Single Regular Conversion
+Channel 0
+Right Alignment
+Software Start
+```
+
+Quy trình:
+
+```text
+1. Xác định ADC Channel / Pin
+        ↓
+2. Bật GPIO Clock
+        ↓
+3. GPIO → Analog Mode
+        ↓
+4. Bật ADC Clock
+        ↓
+5. Cấu hình ADCPRE
+        ↓
+6. Bảo đảm ADCCLK ≤ 14 MHz
+        ↓
+7. Cấu hình Sampling Time
+        ↓
+8. Cấu hình Sequence / Rank
+        ↓
+9. Chọn ALIGN
+        ↓
+10. Chọn Single / Continuous / Scan
+        ↓
+11. Chọn Trigger
+        ↓
+12. Power-On ADC
+        ↓
+13. Calibration
+        ↓
+14. Start Conversion
+        ↓
+15. Chờ EOC hoặc dùng Interrupt / DMA
+        ↓
+16. Đọc ADC_DR
+```
+
+### Clock
+
+Ví dụ:
+
+```text
+PCLK2 = 72 MHz
+ADCPRE = /6
+```
+
+suy ra:
+
+```text
+ADCCLK = 12 MHz
+```
+
+### GPIO
+
+Ví dụ PA0:
+
+```text
+MODE = 00
+CNF  = 00
+```
+
+### Sampling Time
+
+Ví dụ:
+
+```text
+55.5 cycles
+```
+
+### Regular Sequence
+
+Một channel:
+
+```text
+Sequence Length = 1
+Rank 1 = Channel 0
+```
+
+### Alignment
+
+```text
+ALIGN = 0
+→ Right Alignment
+```
+
+### Start
+
+Có thể dùng:
+
+```text
+software start
+```
+
+sau khi ADC đã power-on và calibration hoàn tất.
+
+---
+
+<a id="muc-08-23"></a>
+## 8.23. Ví dụ đọc một Analog Channel
+
+Giả sử:
+
+```text
+ADC1
+PA0 / ADC_IN0
+PCLK2 = 72 MHz
+ADCPRE = /6
+ADCCLK = 12 MHz
+Sampling = 55.5 cycles
+Single Conversion
+```
+
+### Bước 1 — Clock
+
+```c
+RCC->APB2ENR |= RCC_APB2ENR_IOPAEN
+               | RCC_APB2ENR_ADC1EN;
+```
+
+ADC Prescaler:
+
+```text
+PCLK2 / 6
+→ 12 MHz
+```
+
+### Bước 2 — PA0 Analog Mode
+
+```c
+GPIOA->CRL &= ~(0xFU << 0);
+```
+
+Kết quả:
+
+```text
+MODE0 = 00
+CNF0  = 00
+```
+
+### Bước 3 — Sampling Time Channel 0
+
+Channel 0 nằm trong:
+
+```text
+ADC_SMPR2
+```
+
+Chọn:
+
+```text
+SMP0 = 101
+→ 55.5 cycles
+```
+
+Ví dụ:
+
+```c
+ADC1->SMPR2 &= ~(0x7U << 0);
+ADC1->SMPR2 |=  (0x5U << 0);
+```
+
+### Bước 4 — Regular Sequence
+
+Length:
+
+```text
+1 conversion
+```
+
+Rank 1:
+
+```text
+Channel 0
+```
+
+Khái niệm:
+
+```c
+ADC1->SQR1 &= ~(0xFU << 20);   /* L = 0 → 1 conversion */
+ADC1->SQR3 &= ~(0x1FU << 0);   /* SQ1 = Channel 0 */
+```
+
+### Bước 5 — Right Alignment
+
+```c
+ADC1->CR2 &= ~ADC_CR2_ALIGN;
+```
+
+### Bước 6 — Power-On và Calibration
+
+```c
+ADC1->CR2 |= ADC_CR2_ADON;
+
+/* Bảo đảm timing power-on */
+
+ADC1->CR2 |= ADC_CR2_RSTCAL;
+while (ADC1->CR2 & ADC_CR2_RSTCAL)
+{
+}
+
+ADC1->CR2 |= ADC_CR2_CAL;
+while (ADC1->CR2 & ADC_CR2_CAL)
+{
+}
+```
+
+### Bước 7 — Start Conversion
+
+Một cách theo cơ chế software của STM32F1 là chọn software trigger cho Regular Group rồi phát `SWSTART` theo cấu hình `EXTSEL/EXTTRIG` phù hợp của ADC instance.
+
+Luồng:
+
+```text
+Software Trigger
+      ↓
+Sampling
+      ↓
+Conversion
+      ↓
+EOC
+```
+
+### Bước 8 — Đọc Result
+
+```c
+while (!(ADC1->SR & ADC_SR_EOC))
+{
+}
+
+uint16_t adc_code = (uint16_t)ADC1->DR;
+```
+
+Do Right Alignment:
+
+```text
+adc_code
+→ 0 ... 4095
+```
+
+### Thời gian conversion
+
+```text
+Tconv
+= (55.5 + 12.5) / 12 MHz
+= 68 / 12 MHz
+≈ 5.67 µs
+```
+
+---
+
+<a id="muc-08-24"></a>
+## 8.24. Ví dụ Scan nhiều Channel bằng DMA
+
+Mục tiêu:
+
+```text
+ADC1
+Regular Scan
+CH0
+CH1
+CH4
+CH7
+Continuous
+DMA
+```
+
+Buffer:
+
+```c
+volatile uint16_t adc_buffer[4];
+```
+
+### Sequence
+
+```text
+Rank 1 → CH0
+Rank 2 → CH1
+Rank 3 → CH4
+Rank 4 → CH7
+```
+
+### ADC
+
+```text
+SCAN = 1
+CONT = 1
+DMA  = 1
+```
+
+Sequence length:
+
+```text
+4 conversions
+```
+
+### DMA
+
+Khái niệm:
+
+```text
+Peripheral Address
+→ &ADC1->DR
+
+Memory Address
+→ adc_buffer
+
+Peripheral Size
+→ 16-bit
+
+Memory Size
+→ 16-bit
+
+Memory Increment
+→ ON
+
+Circular Mode
+→ ON nếu muốn sampling liên tục
+
+Transfer Count
+→ 4
+```
+
+Luồng:
+
+```text
+ADC CH0
+ ↓
+ADC_DR
+ ↓ DMA
+buffer[0]
+
+ADC CH1
+ ↓
+ADC_DR
+ ↓ DMA
+buffer[1]
+
+ADC CH4
+ ↓
+ADC_DR
+ ↓ DMA
+buffer[2]
+
+ADC CH7
+ ↓
+ADC_DR
+ ↓ DMA
+buffer[3]
+
+ ↓
+sequence lặp lại
+```
+
+### Kết hợp Timer Trigger
+
+Nếu cần sample đều theo thời gian:
+
+```text
+Timer
+ ↓ TRGO
+ADC Scan
+ ↓
+DMA
+ ↓
+Buffer
+```
+
+Cách này tách:
+
+```text
+Sampling Rate
+→ Timer
+
+Conversion / Channel Sequence
+→ ADC
+
+Data Movement
+→ DMA
+
+Signal Processing
+→ CPU
+```
+
+Đây là kiến trúc phù hợp khi cần acquisition có chu kỳ ổn định.
+
+---
+
+### Các lỗi thường gặp
+
+#### ADCCLK vượt 14 MHz
+
+Sai:
+
+```text
+PCLK2 = 72 MHz
+ADCPRE = /4
+→ ADCCLK = 18 MHz
+```
+
+Đúng:
+
+```text
+ADCPRE = /6
+→ ADCCLK = 12 MHz
+```
+
+hoặc cấu hình khác bảo đảm giới hạn.
+
+#### GPIO chưa ở Analog Mode
+
+Sai:
+
+```text
+PA0 vẫn Input Floating
+```
+
+Đúng:
+
+```text
+MODE = 00
+CNF = 00
+```
+
+#### Sampling Time quá ngắn
+
+```text
+Source impedance cao
++
+sampling 1.5 cycles
+```
+
+có thể khiến sample-and-hold chưa ổn định đủ.
+
+#### Nhầm Sample Time với Conversion Time
+
+```text
+Tconv
+=
+Tsample
++
+12.5 cycles
+```
+
+#### Scan nhiều Regular Channels nhưng không dùng DMA
+
+Regular Group chỉ có:
+
+```text
+ADC_DR
+```
+
+nên result mới sẽ tiếp tục cập nhật cùng register.
+
+#### Không Calibration sau Power-Up
+
+RM0008 khuyến nghị calibration sau mỗi lần ADC power-up.
+
+#### Đọc Temperature Sensor với Sample Time quá ngắn
+
+Recommended:
+
+```text
+17.1 µs
+```
+
+không phải:
+
+```text
+17.1 ADC cycles
+```
+
+#### Sửa SQR / JSQR khi ADC đang Conversion
+
+Điều này reset current conversion và làm sequence mới bắt đầu.
+
+#### Nhầm Regular và Injected
+
+```text
+Regular
+→ tối đa 16 conversions
+→ ADC_DR
+
+Injected
+→ tối đa 4 conversions
+→ ADC_JDR1 ... JDR4
+```
+
+---
+
+<a id="muc-08-25"></a>
+## 8.25. Câu hỏi tự kiểm tra
+
+1. ADC viết tắt của gì?
+2. STM32F1 ADC sử dụng kiến trúc chuyển đổi nào?
+3. ADC có độ phân giải bao nhiêu bit?
+4. ADC 12-bit có bao nhiêu mức?
+5. Regular ADC code có dải bao nhiêu?
+6. ADC code có đơn vị Volt không?
+7. Muốn đổi ADC code sang Volt cần biết thông tin gì?
+8. `VDDA` dùng để làm gì?
+9. `VSSA` dùng để làm gì?
+10. `VREF+` có vai trò gì?
+11. `VREF-` có vai trò gì?
+12. ADC input phải nằm trong khoảng nào?
+13. ADC clock được tạo từ bus clock nào?
+14. Các ADC prescaler trên STM32F1 là gì?
+15. ADCCLK tối đa bao nhiêu?
+16. Với PCLK2=72 MHz, prescaler `/6`, ADCCLK bằng bao nhiêu?
+17. Vì sao `/4` không hợp lệ khi PCLK2=72 MHz?
+18. GPIO dùng làm ADC Input phải cấu hình mode nào?
+19. `ADC_SMPR1` cấu hình những channel nào?
+20. `ADC_SMPR2` cấu hình những channel nào?
+21. Các lựa chọn Sampling Time là gì?
+22. Vì sao nguồn trở kháng cao có thể cần Sampling Time dài hơn?
+23. Công thức total conversion time là gì?
+24. Sampling 1.5 cycles, ADCCLK=14 MHz cho Tconv bao nhiêu?
+25. Regular Group có tối đa bao nhiêu conversion?
+26. Injected Group có tối đa bao nhiêu conversion?
+27. Regular Sequence được cấu hình bằng những register nào?
+28. Injected Sequence được cấu hình bằng register nào?
+29. `Rank` có nghĩa gì?
+30. Một channel có thể xuất hiện nhiều lần trong sequence không?
+31. Điều gì xảy ra nếu SQR/JSQR bị sửa trong khi conversion đang chạy?
+32. `CONT=0` là mode gì?
+33. `CONT=1` là mode gì?
+34. Scan Mode dùng để làm gì?
+35. `SCAN` nằm trong register nào?
+36. Vì sao Regular Scan cần DMA?
+37. Injected result được lưu ở đâu?
+38. Discontinuous Mode dùng để làm gì?
+39. `DISCNUM` quy định gì?
+40. Injected Discontinuous Mode convert bao nhiêu channel mỗi trigger?
+41. Auto-Injected và Discontinuous Mode có dùng đồng thời được không?
+42. `SWSTART` dùng cho group nào?
+43. `JSWSTART` dùng cho group nào?
+44. External trigger có thể đến từ những loại peripheral nào?
+45. External ADC trigger trên STM32F1 kích ở cạnh nào?
+46. Vì sao Timer Trigger phù hợp với ADC sampling định kỳ?
+47. `EOC` có nghĩa gì?
+48. `JEOC` có nghĩa gì?
+49. Regular result nằm ở register nào?
+50. Injected result nằm ở những register nào?
+51. EOC được clear bằng những cách nào?
+52. Right Alignment và Left Alignment khác nhau thế nào?
+53. Injected offset được cấu hình bằng register nào?
+54. Vì sao Injected result có thể âm?
+55. Calibration dùng để làm gì?
+56. `RSTCAL` dùng để làm gì?
+57. `CAL` dùng để làm gì?
+58. ADC phải power-on ít nhất bao nhiêu ADCCLK cycles trước calibration?
+59. RM0008 khuyến nghị Calibration vào thời điểm nào?
+60. Analog Watchdog dùng để làm gì?
+61. `ADC_HTR` dùng để làm gì?
+62. `ADC_LTR` dùng để làm gì?
+63. `AWD` được set khi nào?
+64. Analog Watchdog có thể giám sát một channel riêng không?
+65. Temperature Sensor nằm ở channel nào?
+66. VREFINT nằm ở channel nào?
+67. Internal Temperature Sensor/VREFINT thuộc ADC nào?
+68. Bit nào enable hai internal channels này?
+69. Recommended Sampling Time của Temperature Sensor là bao nhiêu?
+70. Vì sao Internal Temperature Sensor không phù hợp làm thermometer tuyệt đối chính xác?
+71. Ba ADC interrupt event chính là gì?
+72. ADC1 và ADC2 có dùng chung interrupt vector không?
+73. ADC3 interrupt có dùng cùng vector ADC1/ADC2 không?
+74. ADC DMA request được tạo từ loại conversion nào?
+75. ADC nào có DMA request capability trực tiếp?
+76. ADC2 data có thể đi DMA bằng cơ chế nào?
+77. Dual ADC Mode dùng để làm gì?
+78. Regular Simultaneous khác Interleaved về mục tiêu thế nào?
+79. Trong một số Dual Mode, ADC1_DR 32-bit chứa data ADC1/ADC2 như thế nào?
+80. Hãy mô tả luồng `RCC → GPIO Analog → ADCCLK → Sampling → Conversion → ADC_DR`.
+81. Hãy mô tả quy trình đọc một Regular Channel bằng Polling.
+82. Hãy mô tả kiến trúc `Timer → ADC Scan → DMA → SRAM`.
+83. Nếu ADC code=2048 và VREF≈3.3 V, điện áp lý tưởng xấp xỉ bao nhiêu?
+84. Nếu ADCCLK=12 MHz và Sampling=55.5 cycles, Tconv xấp xỉ bao nhiêu?
+85. Vì sao `17.1 µs` của Temperature Sensor không phải `17.1 cycles`?
+
+---
+
+## 8.26. Tóm tắt
+
+ADC:
+
+```text
+Analog Voltage
+     ↓
+GPIO Analog
+     ↓
+ADC Channel
+     ↓
+Sample
+     ↓
+12-bit Conversion
+     ↓
+Digital Code
+```
+
+Clock:
+
+```text
+PCLK2
+  ↓
+ADCPRE
+  ↓
+ADCCLK ≤ 14 MHz
+```
+
+Timing:
+
+```text
+Tconv
+=
+Sampling Time
++
+12.5 ADCCLK cycles
+```
+
+Groups:
+
+```text
+Regular
+→ tối đa 16 conversions
+→ ADC_DR
+
+Injected
+→ tối đa 4 conversions
+→ ADC_JDR1 ... JDR4
+```
+
+Sequence:
+
+```text
+SQR1 / SQR2 / SQR3
+→ Regular
+
+JSQR
+→ Injected
+```
+
+Modes:
+
+```text
+Single
+Continuous
+Scan
+Discontinuous
+Injected
+```
+
+Trigger:
+
+```text
+Software
+Timer
+EXTI
+```
+
+Flags:
+
+```text
+EOC
+→ End Of Conversion
+
+JEOC
+→ Injected End Of Conversion
+
+AWD
+→ Analog Watchdog
+```
+
+DMA:
+
+```text
+Regular Conversion
+      ↓
+ADC_DR
+      ↓
+DMA
+      ↓
+SRAM Buffer
+```
+
+Calibration:
+
+```text
+Power-On
+ ↓
+RSTCAL
+ ↓
+CAL
+ ↓
+Conversion
+```
+
+Internal channels:
+
+```text
+ADC1_IN16
+→ Temperature Sensor
+
+ADC1_IN17
+→ VREFINT
+```
+
+**Điểm cần nhớ:**
+
+> **ADC STM32F1 phải được nhìn như một chuỗi hoàn chỉnh: reference → ADC clock → GPIO analog → channel → sampling time → conversion sequence → trigger → result. Khi Scan nhiều Regular channels, DMA là phần thiết yếu vì các result lần lượt đi qua cùng `ADC_DR`.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="chuong-09"></a>
+# 9. DMA
+
+`DMA` cho phép phần cứng di chuyển dữ liệu giữa peripheral và memory, hoặc giữa hai vùng memory, mà CPU không phải tự thực hiện từng phép đọc/ghi.
+
+Luồng tổng quát:
+
+```text
+Peripheral
+    ↕
+DMA Controller
+    ↕
+SRAM
+```
+
+CPU thường làm ba việc:
+
+```text
+1. Cấu hình DMA
+2. Khởi động transfer
+3. Xử lý Half Transfer / Transfer Complete / Transfer Error
+```
+
+Trong lúc transfer đang diễn ra, CPU có thể thực hiện công việc khác.
+
+<a id="muc-09-01"></a>
+## 9.1. DMA là gì?
+
+`DMA`:
+
+```text
+Direct Memory Access
+```
+
+Không dùng DMA:
+
+```text
+Peripheral
+    ↓
+   CPU
+    ↓
+  Memory
+```
+
+Ví dụ UART RX:
+
+```c
+while (!(USART1->SR & USART_SR_RXNE))
+{
+}
+
+rx_buffer[index++] = (uint8_t)USART1->DR;
+```
+
+CPU phải tham gia vào từng byte.
+
+Với DMA:
+
+```text
+USART RX
+   ↓
+USART_DR
+   ↓
+DMA
+   ↓
+rx_buffer[]
+```
+
+CPU không cần copy từng byte.
+
+### DMA làm gì?
+
+DMA chủ yếu thực hiện:
+
+```text
+đọc dữ liệu từ Source
+        ↓
+ghi dữ liệu vào Destination
+        ↓
+cập nhật địa chỉ nếu Increment được bật
+        ↓
+giảm CNDTR
+```
+
+DMA không tự:
+
+```text
+parse packet
+tính toán thuật toán
+giải mã protocol
+xử lý nội dung sensor
+```
+
+Những việc đó vẫn thuộc CPU.
+
+Có thể nhớ:
+
+> **DMA di chuyển dữ liệu; CPU xử lý ý nghĩa của dữ liệu.**
+
+---
+
+<a id="muc-09-02"></a>
+## 9.2. CPU Transfer và DMA Transfer
+
+### CPU Transfer
+
+Ví dụ Peripheral-to-Memory:
+
+```text
+Peripheral có data
+       ↓
+CPU phát hiện flag / nhận interrupt
+       ↓
+CPU đọc Peripheral Register
+       ↓
+CPU ghi Memory
+       ↓
+lặp lại
+```
+
+Nếu dữ liệu tới thường xuyên:
+
+```text
+CPU phải phục vụ nhiều lần
+→ tăng CPU load
+```
+
+### DMA Transfer
+
+```text
+Peripheral Event
+       ↓
+DMA Request
+       ↓
+DMA Channel
+       ↓
+đọc Peripheral
+       ↓
+ghi Memory
+       ↓
+CNDTR--
+```
+
+CPU chỉ cần xử lý khi:
+
+```text
+Half Transfer
+Transfer Complete
+Transfer Error
+```
+
+hoặc khi ứng dụng muốn kiểm tra trạng thái.
+
+### So sánh
+
+| Đặc điểm | CPU Transfer | DMA Transfer |
+|---|---|---|
+| Copy từng phần tử | CPU | DMA |
+| CPU load | Cao hơn | Thấp hơn |
+| Phù hợp dữ liệu liên tục | Hạn chế hơn | Tốt |
+| Cấu hình | Đơn giản hơn | Nhiều bước hơn |
+| Xử lý protocol/data | CPU | CPU |
+| Di chuyển block dữ liệu | CPU | DMA |
+
+---
+
+<a id="muc-09-03"></a>
+## 9.3. DMA1 / DMA2 và DMA Channel
+
+STM32F1 sử dụng kiến trúc:
+
+```text
+DMA Controller
+      ↓
+DMA Channel
+```
+
+DMA1 có:
+
+```text
+Channel 1
+Channel 2
+...
+Channel 7
+```
+
+Một số STM32F10xxx còn có:
+
+```text
+DMA2
+```
+
+Số channel và peripheral mapping của DMA2 phụ thuộc đúng device.
+
+Điểm cần phân biệt với một số STM32 đời khác:
+
+```text
+STM32F1
+→ DMA Channel
+
+không phải
+→ DMA Stream
+```
+
+### Mỗi Channel có Register riêng
+
+Ví dụ một channel:
+
+```text
+DMA_CCRx
+DMA_CNDTRx
+DMA_CPARx
+DMA_CMARx
+```
+
+Trong đó:
+
+```text
+x
+→ Channel number
+```
+
+Ví dụ DMA1 Channel 1:
+
+```text
+DMA1_Channel1->CCR
+DMA1_Channel1->CNDTR
+DMA1_Channel1->CPAR
+DMA1_Channel1->CMAR
+```
+
+---
+
+<a id="muc-09-04"></a>
+## 9.4. DMA Request và Channel Mapping
+
+Peripheral tạo:
+
+```text
+DMA Request
+```
+
+khi một event phù hợp xảy ra.
+
+Ví dụ:
+
+```text
+ADC conversion complete
+→ DMA Request
+
+USART RX data available
+→ DMA Request
+
+USART TX data register empty
+→ DMA Request
+
+SPI RX / TX
+→ DMA Request
+
+I2C RX / TX
+→ DMA Request
+
+Timer Update / Capture / Compare
+→ DMA Request
+```
+
+Luồng:
+
+```text
+Peripheral Event
+      ↓
+DMA Request
+      ↓
+DMA Channel đã được hardware mapping
+      ↓
+Transfer
+```
+
+### Mapping cố định
+
+STM32F1 không có một DMA request multiplexer linh hoạt kiểu các dòng mới hơn.
+
+```text
+Peripheral Request
+→ DMA Channel mapping được quy định bởi hardware
+```
+
+Do đó phải kiểm tra bảng mapping của đúng MCU.
+
+Ví dụ mapping phổ biến trên STM32F10xxx:
+
+```text
+ADC1
+→ DMA1 Channel 1
+
+SPI1_RX
+→ DMA1 Channel 2
+
+SPI1_TX
+→ DMA1 Channel 3
+
+USART1_TX
+→ DMA1 Channel 4
+
+USART1_RX
+→ DMA1 Channel 5
+
+I2C1_TX
+→ DMA1 Channel 6
+
+I2C1_RX
+→ DMA1 Channel 7
+```
+
+Không được chọn tùy ý:
+
+```text
+USART1_RX
+→ DMA1 Channel 2
+```
+
+nếu hardware mapping không hỗ trợ.
+
+### Channel Conflict
+
+Một DMA Channel chỉ thực hiện một cấu hình transfer tại một thời điểm.
+
+Nếu hai peripheral request cùng được mapping vào cùng một channel và ứng dụng cần dùng đồng thời:
+
+```text
+sẽ có xung đột thiết kế
+```
+
+Cần tổ chức hệ thống để hai request đó không dùng channel cùng lúc hoặc chọn kiến trúc khác nếu device cho phép.
+
+---
+
+<a id="muc-09-05"></a>
+## 9.5. Peripheral-to-Memory / Memory-to-Peripheral / Memory-to-Memory
+
+DMA hỗ trợ ba hướng chính.
+
+### Peripheral-to-Memory
+
+Ví dụ ADC:
+
+```text
+ADC_DR
+  ↓
+DMA
+  ↓
+adc_buffer[]
+```
+
+Ví dụ UART RX:
+
+```text
+USART_DR
+   ↓
+DMA
+   ↓
+rx_buffer[]
+```
+
+Trong mode này:
+
+```text
+DIR = 0
+```
+
+### Memory-to-Peripheral
+
+Ví dụ UART TX:
+
+```text
+tx_buffer[]
+    ↓
+DMA
+    ↓
+USART_DR
+    ↓
+TX
+```
+
+Trong mode này:
+
+```text
+DIR = 1
+```
+
+### Memory-to-Memory
+
+Ví dụ:
+
+```text
+source_buffer[]
+      ↓
+     DMA
+      ↓
+destination_buffer[]
+```
+
+Enable bằng:
+
+```text
+MEM2MEM = 1
+```
+
+Memory-to-Memory:
+
+```text
+không cần peripheral DMA request
+```
+
+Transfer bắt đầu khi channel được enable.
+
+Circular Mode không được sử dụng cùng Memory-to-Memory mode.
+
+---
+
+<a id="muc-09-06"></a>
+## 9.6. DMA_CCRx
+
+`DMA_CCRx` là:
+
+```text
+DMA Channel Configuration Register
+```
+
+Các bit quan trọng:
+
+```text
+EN
+→ Channel Enable
+
+TCIE
+→ Transfer Complete Interrupt Enable
+
+HTIE
+→ Half Transfer Interrupt Enable
+
+TEIE
+→ Transfer Error Interrupt Enable
+
+DIR
+→ Data Transfer Direction
+
+CIRC
+→ Circular Mode
+
+PINC
+→ Peripheral Increment Mode
+
+MINC
+→ Memory Increment Mode
+
+PSIZE
+→ Peripheral Size
+
+MSIZE
+→ Memory Size
+
+PL
+→ Channel Priority Level
+
+MEM2MEM
+→ Memory-to-Memory Mode
+```
+
+Có thể nhóm:
+
+```text
+DMA_CCRx
+├── Enable
+├── Interrupt
+├── Direction
+├── Circular
+├── Address Increment
+├── Data Width
+├── Priority
+└── Memory-to-Memory
+```
+
+### EN
+
+```text
+EN = 0
+→ Channel disabled
+
+EN = 1
+→ Channel enabled
+```
+
+Các register cấu hình của channel nên được lập trình khi:
+
+```text
+EN = 0
+```
+
+Trước khi thay đổi:
+
+```text
+CPAR
+CMAR
+CNDTR
+DIR
+CIRC
+PINC
+MINC
+PSIZE
+MSIZE
+PL
+MEM2MEM
+```
+
+nên disable channel.
+
+---
+
+<a id="muc-09-07"></a>
+## 9.7. DMA_CNDTRx
+
+`DMA_CNDTRx`:
+
+```text
+DMA Channel Number of Data Register
+```
+
+chứa số **data item** còn phải transfer.
+
+Ví dụ:
+
+```text
+CNDTR = 8
+```
+
+luồng:
+
+```text
+8
+↓
+7
+↓
+6
+↓
+...
+↓
+1
+↓
+0
+```
+
+Mỗi transfer thành công:
+
+```text
+CNDTR--
+```
+
+### Giới hạn
+
+`CNDTR` có độ rộng 16-bit.
+
+Giá trị transfer hợp lệ:
+
+```text
+1 → 65535 data items
+```
+
+### Data Item không nhất thiết là Byte
+
+Ví dụ:
+
+```text
+MSIZE = 8-bit
+CNDTR = 100
+```
+
+→ 100 byte.
+
+Nhưng:
+
+```text
+MSIZE = 16-bit
+CNDTR = 100
+```
+
+→ 100 halfword:
+
+```text
+200 byte
+```
+
+Và:
+
+```text
+MSIZE = 32-bit
+CNDTR = 100
+```
+
+→ 100 word:
+
+```text
+400 byte
+```
+
+### Normal Mode
+
+```text
+CNDTR → 0
+    ↓
+Transfer Complete
+    ↓
+Channel không tiếp tục transfer mới
+```
+
+### Circular Mode
+
+```text
+CNDTR → 0
+    ↓
+Transfer Complete
+    ↓
+CNDTR được reload
+    ↓
+transfer bắt đầu vòng mới
+```
+
+### Đọc CNDTR khi đang chạy
+
+`CNDTR` có thể được dùng để biết:
+
+```text
+còn bao nhiêu data item chưa transfer
+```
+
+Một ứng dụng rất thực tế với UART RX DMA:
+
+```text
+buffer_size = N
+remaining   = CNDTR
+
+received
+= N - remaining
+```
+
+Mô hình này thường được dùng cùng USART IDLE detection.
+
+---
+
+<a id="muc-09-08"></a>
+## 9.8. DMA_CPARx / DMA_CMARx
+
+Hai address register:
+
+```text
+DMA_CPARx
+→ Peripheral Address
+
+DMA_CMARx
+→ Memory Address
+```
+
+### Peripheral Address
+
+Ví dụ ADC:
+
+```text
+CPAR
+→ &ADC1->DR
+```
+
+UART:
+
+```text
+CPAR
+→ &USART1->DR
+```
+
+SPI:
+
+```text
+CPAR
+→ &SPI1->DR
+```
+
+Timer:
+
+```text
+CPAR
+→ &TIMx->CCRy
+```
+
+### Memory Address
+
+Ví dụ:
+
+```text
+CMAR
+→ adc_buffer
+```
+
+hoặc:
+
+```text
+CMAR
+→ uart_rx_buffer
+```
+
+### Peripheral-to-Memory
+
+```text
+CPAR
+Source: Peripheral Register
+      ↓
+DMA
+      ↓
+CMAR
+Destination: Memory
+```
+
+### Memory-to-Peripheral
+
+```text
+CMAR
+Source: Memory
+      ↓
+DMA
+      ↓
+CPAR
+Destination: Peripheral Register
+```
+
+### Địa chỉ phải phù hợp
+
+Phải bảo đảm:
+
+```text
+Address
++
+Data Width
++
+Alignment
+```
+
+phù hợp với transfer.
+
+Ví dụ:
+
+```text
+16-bit transfer
+→ memory address nên được align phù hợp cho halfword
+```
+
+---
+
+<a id="muc-09-09"></a>
+## 9.9. Data Width: PSIZE / MSIZE
+
+DMA có thể transfer:
+
+```text
+8-bit
+16-bit
+32-bit
+```
+
+### PSIZE
+
+```text
+Peripheral Size
+```
+
+Giá trị:
+
+```text
+00 → 8-bit
+01 → 16-bit
+10 → 32-bit
+11 → Reserved
+```
+
+### MSIZE
+
+```text
+Memory Size
+```
+
+Giá trị:
+
+```text
+00 → 8-bit
+01 → 16-bit
+10 → 32-bit
+11 → Reserved
+```
+
+### ADC
+
+ADC result nằm trong 16-bit data field.
+
+Cấu hình điển hình:
+
+```text
+PSIZE = 16-bit
+MSIZE = 16-bit
+```
+
+Buffer:
+
+```c
+uint16_t adc_buffer[16];
+```
+
+### UART
+
+UART byte stream thường dùng:
+
+```text
+PSIZE = 8-bit
+MSIZE = 8-bit
+```
+
+Buffer:
+
+```c
+uint8_t uart_buffer[64];
+```
+
+### Timer CCR
+
+Nếu Timer register được sử dụng theo 16-bit data:
+
+```text
+PSIZE = 16-bit
+MSIZE = 16-bit
+```
+
+thường là lựa chọn trực tiếp.
+
+### Khi PSIZE và MSIZE khác nhau
+
+DMA hỗ trợ một số trường hợp width conversion bằng cách ghi/đọc theo width đã cấu hình.
+
+Tuy nhiên phải hiểu rõ:
+
+```text
+Peripheral register width
+Memory element type
+Byte ordering
+Truncation / zero extension behavior
+```
+
+trước khi cố tình dùng `PSIZE != MSIZE`.
+
+Trong các driver cơ bản:
+
+```text
+PSIZE = MSIZE
+```
+
+thường dễ kiểm soát hơn.
+
+---
+
+<a id="muc-09-10"></a>
+## 9.10. Address Increment: PINC / MINC
+
+### MINC
+
+```text
+MINC
+→ Memory Increment Mode
+```
+
+Nếu:
+
+```text
+MINC = 1
+```
+
+sau mỗi transfer:
+
+```text
+Memory Address
+→ tăng theo MSIZE
+```
+
+Ví dụ:
+
+```text
+MSIZE = 8-bit
+→ +1 byte
+
+MSIZE = 16-bit
+→ +2 byte
+
+MSIZE = 32-bit
+→ +4 byte
+```
+
+### PINC
+
+```text
+PINC
+→ Peripheral Increment Mode
+```
+
+Nếu:
+
+```text
+PINC = 1
+```
+
+Peripheral Address tăng theo:
+
+```text
+PSIZE
+```
+
+### Peripheral Register thông thường
+
+Với:
+
+```text
+ADC_DR
+USART_DR
+SPI_DR
+I2C_DR
+TIMx_CCR1
+```
+
+địa chỉ peripheral register phải giữ cố định.
+
+Do đó thường:
+
+```text
+PINC = 0
+```
+
+### Memory Buffer
+
+Ví dụ:
+
+```c
+uint16_t adc_buffer[4];
+```
+
+muốn:
+
+```text
+sample 0 → buffer[0]
+sample 1 → buffer[1]
+sample 2 → buffer[2]
+sample 3 → buffer[3]
+```
+
+cần:
+
+```text
+MINC = 1
+```
+
+### Cấu hình điển hình
+
+Peripheral-to-Memory:
+
+```text
+PINC = 0
+MINC = 1
+```
+
+Memory-to-Peripheral:
+
+```text
+PINC = 0
+MINC = 1
+```
+
+khi một peripheral register được feed từ một memory buffer.
+
+---
+
+<a id="muc-09-11"></a>
+## 9.11. Circular Mode
+
+Bit:
+
+```text
+CIRC
+```
+
+### Normal Mode
+
+```text
+CIRC = 0
+```
+
+Luồng:
+
+```text
+N transfers
+    ↓
+CNDTR = 0
+    ↓
+Transfer Complete
+    ↓
+dừng
+```
+
+### Circular Mode
+
+```text
+CIRC = 1
+```
+
+Luồng:
+
+```text
+N transfers
+    ↓
+CNDTR = 0
+    ↓
+Transfer Complete
+    ↓
+CNDTR reload
+    ↓
+Memory/Peripheral address quay về đầu transfer
+    ↓
+N transfers tiếp
+```
+
+Ví dụ:
+
+```c
+uint16_t adc_buffer[4];
+```
+
+```text
+ADC_DR → buffer[0]
+ADC_DR → buffer[1]
+ADC_DR → buffer[2]
+ADC_DR → buffer[3]
+               ↓
+             wrap
+               ↓
+ADC_DR → buffer[0]
+...
+```
+
+Circular Mode phù hợp với:
+
+```text
+ADC continuous sampling
+Timer-triggered acquisition
+UART RX continuous block reception
+Audio / waveform acquisition
+```
+
+Circular Mode không dùng cho:
+
+```text
+MEM2MEM = 1
+```
+
+---
+
+<a id="muc-09-12"></a>
+## 9.12. DMA Priority
+
+Mỗi channel có:
+
+```text
+PL[1:0]
+```
+
+Các mức:
+
+| `PL` | Priority |
+|---|---|
+| `00` | Low |
+| `01` | Medium |
+| `10` | High |
+| `11` | Very High |
+
+Khi nhiều DMA channel cùng request:
+
+```text
+DMA Arbiter
+    ↓
+Software Priority
+    ↓
+Channel được phục vụ
+```
+
+Nếu hai channel có cùng `PL`:
+
+```text
+channel number nhỏ hơn
+→ hardware priority cao hơn
+```
+
+Ví dụ:
+
+```text
+DMA Channel 2
+DMA Channel 5
+
+cùng PL
+→ Channel 2 được ưu tiên
+```
+
+### DMA Priority khác NVIC Priority
+
+```text
+DMA PL
+→ quyết định arbitration giữa DMA channels
+
+NVIC Priority
+→ quyết định CPU xử lý interrupt nào trước
+```
+
+Hai hệ priority độc lập.
+
+Ví dụ:
+
+```text
+DMA Channel 1
+→ Very High DMA Priority
+
+nhưng
+
+DMA1_Channel1_IRQn
+→ có thể đặt NVIC priority thấp
+```
+
+---
+
+<a id="muc-09-13"></a>
+## 9.13. Transfer Complete / Half Transfer / Transfer Error
+
+Ba event quan trọng:
+
+```text
+TC
+→ Transfer Complete
+
+HT
+→ Half Transfer
+
+TE
+→ Transfer Error
+```
+
+### Transfer Complete
+
+Khi toàn bộ data item đã transfer:
+
+```text
+CNDTR
+↓
+0
+```
+
+DMA set:
+
+```text
+TCIFx = 1
+```
+
+Nếu:
+
+```text
+TCIE = 1
+```
+
+DMA tạo interrupt.
+
+### Half Transfer
+
+Giả sử:
+
+```text
+CNDTR ban đầu = 100
+```
+
+khi khoảng một nửa block đã transfer:
+
+```text
+HTIFx = 1
+```
+
+Nếu:
+
+```text
+HTIE = 1
+```
+
+DMA tạo interrupt.
+
+Half Transfer đặc biệt hữu ích với:
+
+```text
+Circular Buffer
+```
+
+### Transfer Error
+
+Khi DMA gặp lỗi transfer:
+
+```text
+TEIFx = 1
+```
+
+Nếu:
+
+```text
+TEIE = 1
+```
+
+DMA tạo interrupt.
+
+Khi Transfer Error xảy ra, channel có thể bị disable bởi hardware.
+
+Ứng dụng phải xem buffer hiện tại là:
+
+```text
+không chắc hoàn chỉnh
+```
+
+cho tới khi xử lý recovery.
+
+---
+
+<a id="muc-09-14"></a>
+## 9.14. DMA_ISR / DMA_IFCR
+
+DMA Controller có hai register status/clear chính:
+
+```text
+DMA_ISR
+→ Interrupt Status Register
+
+DMA_IFCR
+→ Interrupt Flag Clear Register
+```
+
+Mỗi channel có nhóm flag:
+
+```text
+GIFx
+→ Global Interrupt Flag
+
+TCIFx
+→ Transfer Complete Flag
+
+HTIFx
+→ Half Transfer Flag
+
+TEIFx
+→ Transfer Error Flag
+```
+
+Các bit clear:
+
+```text
+CGIFx
+→ Clear Global Interrupt Flag
+
+CTCIFx
+→ Clear Transfer Complete Flag
+
+CHTIFx
+→ Clear Half Transfer Flag
+
+CTEIFx
+→ Clear Transfer Error Flag
+```
+
+### Clear Flag
+
+`DMA_IFCR` sử dụng cơ chế:
+
+```text
+Write 1 to Clear
+```
+
+Ví dụ DMA1 Channel 1:
+
+```c
+DMA1->IFCR = DMA_IFCR_CTCIF1;
+```
+
+Clear Transfer Complete.
+
+Có thể clear toàn bộ flag channel:
+
+```c
+DMA1->IFCR = DMA_IFCR_CGIF1;
+```
+
+Điểm này tương tự tư duy đã gặp với:
+
+```text
+EXTI_PR
+```
+
+Không nên dùng read-modify-write kiểu:
+
+```c
+DMA1->IFCR &= ~DMA_IFCR_CTCIF1;
+```
+
+vì IFCR là register command để clear flag.
+
+---
+
+<a id="muc-09-15"></a>
+## 9.15. DMA Interrupt
+
+Mỗi DMA channel có IRQ tương ứng theo device/vector table.
+
+Ví dụ:
+
+```text
+DMA1 Channel 1
+→ DMA1_Channel1_IRQn
+→ DMA1_Channel1_IRQHandler()
+```
+
+### Enable Interrupt trong DMA
+
+Các bit:
+
+```text
+TCIE
+HTIE
+TEIE
+```
+
+### Enable NVIC
+
+```c
+NVIC_SetPriority(DMA1_Channel1_IRQn, 5);
+NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+```
+
+### ISR
+
+Ví dụ:
+
+```c
+void DMA1_Channel1_IRQHandler(void)
+{
+    if (DMA1->ISR & DMA_ISR_HTIF1)
+    {
+        DMA1->IFCR = DMA_IFCR_CHTIF1;
+
+        /* xử lý nửa đầu buffer */
+    }
+
+    if (DMA1->ISR & DMA_ISR_TCIF1)
+    {
+        DMA1->IFCR = DMA_IFCR_CTCIF1;
+
+        /* xử lý nửa sau / block hoàn tất */
+    }
+
+    if (DMA1->ISR & DMA_ISR_TEIF1)
+    {
+        DMA1->IFCR = DMA_IFCR_CTEIF1;
+
+        /* xử lý lỗi */
+    }
+}
+```
+
+### Phân biệt hai tầng
+
+```text
+DMA_ISR
+→ flag trong DMA peripheral
+
+NVIC Pending
+→ trạng thái IRQ tại NVIC
+```
+
+Trong ISR, phải xử lý:
+
+```text
+DMA flag
+```
+
+đúng cách; chỉ clear NVIC pending không thay thế việc clear DMA flag.
+
+---
+
+<a id="muc-09-16"></a>
+## 9.16. DMA + ADC
+
+Đây là một use case quan trọng nhất của DMA trên STM32F1.
+
+Regular ADC conversion:
+
+```text
+ADC Channel
+    ↓
+Conversion
+    ↓
+ADC_DR
+    ↓
+DMA Request
+    ↓
+DMA
+    ↓
+SRAM Buffer
+```
+
+### ADC1 Mapping
+
+Trên STM32F10xxx:
+
+```text
+ADC1
+→ DMA1 Channel 1
+```
+
+### Cấu hình DMA điển hình
+
+```text
+Direction
+→ Peripheral-to-Memory
+
+CPAR
+→ &ADC1->DR
+
+CMAR
+→ adc_buffer
+
+CNDTR
+→ số sample / số channel
+
+PINC
+→ 0
+
+MINC
+→ 1
+
+PSIZE
+→ 16-bit
+
+MSIZE
+→ 16-bit
+
+CIRC
+→ 1 nếu lấy mẫu liên tục
+```
+
+ADC:
+
+```text
+DMA = 1
+```
+
+### Scan nhiều Channel
+
+Ví dụ:
+
+```text
+Rank 1 → CH0
+Rank 2 → CH1
+Rank 3 → CH4
+Rank 4 → CH7
+```
+
+DMA:
+
+```text
+ADC_DR → buffer[0]
+ADC_DR → buffer[1]
+ADC_DR → buffer[2]
+ADC_DR → buffer[3]
+```
+
+### Timer + ADC + DMA
+
+Kiến trúc:
+
+```text
+Timer
+ ↓ Trigger
+ADC
+ ↓ Conversion
+DMA
+ ↓
+Circular Buffer
+ ↓
+CPU
+```
+
+Phân chia nhiệm vụ:
+
+```text
+Timer
+→ Sampling Rate
+
+ADC
+→ Analog-to-Digital Conversion
+
+DMA
+→ Data Movement
+
+CPU
+→ Signal Processing
+```
+
+Đây là kiến trúc tốt cho acquisition định kỳ.
+
+---
+
+<a id="muc-09-17"></a>
+## 9.17. DMA + UART
+
+### USART RX DMA
+
+Luồng:
+
+```text
+RX Pin
+  ↓
+USART Receiver
+  ↓
+USART_DR
+  ↓
+DMA
+  ↓
+rx_buffer[]
+```
+
+USART bật:
+
+```text
+DMAR
+```
+
+DMA:
+
+```text
+Peripheral-to-Memory
+
+CPAR = &USARTx->DR
+CMAR = rx_buffer
+
+PINC = 0
+MINC = 1
+
+PSIZE = 8-bit
+MSIZE = 8-bit
+```
+
+### USART1 RX Mapping
+
+Mapping phổ biến:
+
+```text
+USART1_RX
+→ DMA1 Channel 5
+```
+
+### USART TX DMA
+
+```text
+tx_buffer[]
+    ↓
+DMA
+    ↓
+USART_DR
+    ↓
+USART Shift Register
+    ↓
+TX Pin
+```
+
+USART bật:
+
+```text
+DMAT
+```
+
+DMA:
+
+```text
+Memory-to-Peripheral
+```
+
+USART1 TX:
+
+```text
+DMA1 Channel 4
+```
+
+### DMA TC không bằng USART TC
+
+Điểm cực kỳ quan trọng:
+
+```text
+DMA Transfer Complete
+→ DMA đã ghi byte cuối vào USART_DR
+```
+
+Nhưng:
+
+```text
+USART Shift Register
+→ vẫn có thể đang truyền byte cuối
+```
+
+Nếu ứng dụng cần biết:
+
+```text
+byte cuối đã ra hết khỏi TX
+```
+
+phải chờ:
+
+```text
+USART_SR.TC = 1
+```
+
+Ví dụ:
+
+```text
+DMA TC
+    ↓
+disable DMA request / channel
+    ↓
+wait USART TC
+    ↓
+có thể disable USART hoặc đổi hướng RS-485
+```
+
+---
+
+<a id="muc-09-18"></a>
+## 9.18. DMA + SPI
+
+SPI Full-Duplex truyền và nhận đồng thời.
+
+### TX
+
+```text
+TX Buffer
+   ↓
+TX DMA
+   ↓
+SPI_DR
+   ↓
+MOSI
+```
+
+### RX
+
+```text
+MISO
+ ↓
+SPI_DR
+ ↓
+RX DMA
+ ↓
+RX Buffer
+```
+
+### Mapping SPI1
+
+```text
+SPI1_RX
+→ DMA1 Channel 2
+
+SPI1_TX
+→ DMA1 Channel 3
+```
+
+### Full-Duplex DMA
+
+Một transaction block thường cần:
+
+```text
+RX DMA
++
+TX DMA
+```
+
+Ví dụ Master Read:
+
+```text
+dummy_tx_buffer[]
+       ↓ TX DMA
+SPI1
+       ↓ RX DMA
+rx_buffer[]
+```
+
+TX DMA tạo dữ liệu dummy để SPI Master phát SCK, đồng thời RX DMA thu dữ liệu.
+
+### Thứ tự khởi động
+
+Một cách an toàn:
+
+```text
+1. Cấu hình RX DMA
+2. Cấu hình TX DMA
+3. Enable RX path
+4. Enable TX path
+5. Bắt đầu SPI transfer
+```
+
+mục tiêu là tránh mất frame RX đầu tiên.
+
+### DMA TC không bằng SPI hoàn tất
+
+```text
+DMA TC
+→ DMA đã chuyển data cuối giữa memory và SPI_DR
+```
+
+nhưng SPI có thể vẫn đang shift bit.
+
+Trước khi:
+
+```text
+CS High
+```
+
+cần bảo đảm:
+
+```text
+SPI_SR.BSY = 0
+```
+
+theo sequence phù hợp.
+
+---
+
+<a id="muc-09-19"></a>
+## 9.19. DMA + I2C
+
+DMA có thể phục vụ:
+
+```text
+I2C TX
+I2C RX
+```
+
+để di chuyển data qua:
+
+```text
+I2C_DR
+```
+
+### TX
+
+```text
+tx_buffer[]
+    ↓
+DMA
+    ↓
+I2C_DR
+    ↓
+SDA
+```
+
+### RX
+
+```text
+SDA
+ ↓
+I2C_DR
+ ↓
+DMA
+ ↓
+rx_buffer[]
+```
+
+### DMA không thay thế I2C State Machine
+
+Software vẫn phải quản lý:
+
+```text
+BUSY
+START
+SB
+Address
+ADDR
+Repeated START
+ACK
+NACK
+STOP
+BERR
+ARLO
+AF
+```
+
+DMA chủ yếu thay CPU trong phần:
+
+```text
+TxE / RxNE data movement
+```
+
+Có thể nhớ:
+
+> **I2C protocol control vẫn do I2C peripheral + software quản lý; DMA chỉ chuyển payload.**
+
+### Byte cuối
+
+I2C Receive có sequence đặc biệt cho:
+
+```text
+1 byte
+2 byte
+N > 2 byte
+```
+
+Khi dùng DMA vẫn phải cấu hình:
+
+```text
+ACK
+LAST
+STOP
+```
+
+đúng thời điểm theo mode của peripheral.
+
+---
+
+<a id="muc-09-20"></a>
+## 9.20. DMA + Timer
+
+Timer có thể tạo DMA request từ nhiều event:
+
+```text
+Update
+Capture / Compare
+Trigger
+```
+
+### PWM Duty Sequence
+
+Ví dụ:
+
+```c
+uint16_t duty_table[] = {
+    100, 200, 300, 400, 500
+};
+```
+
+Luồng:
+
+```text
+Timer Update Event
+        ↓
+DMA Request
+        ↓
+DMA lấy duty_table[i]
+        ↓
+TIMx_CCR1
+        ↓
+PWM duty thay đổi
+```
+
+CPU không cần ghi `CCR1` mỗi chu kỳ.
+
+### Input Capture Logging
+
+```text
+External Edge
+    ↓
+TIMx_CCRy
+    ↓
+DMA
+    ↓
+timestamp_buffer[]
+```
+
+Ứng dụng:
+
+```text
+đo period
+đo frequency
+ghi timestamp liên tục
+```
+
+### Timer + DMA Burst
+
+Một số Timer còn hỗ trợ DMA burst để cập nhật nhiều Timer register theo sequence.
+
+Phần này chỉ cần nhận diện sau khi đã chắc DMA transfer cơ bản.
+
+---
+
+<a id="muc-09-21"></a>
+## 9.21. Quy trình cấu hình DMA
+
+Một sequence cấu hình tổng quát:
+
+```text
+1. Bật RCC Clock cho DMA
+        ↓
+2. Xác định Peripheral DMA Request
+        ↓
+3. Xác định đúng DMA Channel Mapping
+        ↓
+4. Disable Channel
+        ↓
+5. Clear DMA Flags cũ
+        ↓
+6. Cấu hình CPAR
+        ↓
+7. Cấu hình CMAR
+        ↓
+8. Cấu hình CNDTR
+        ↓
+9. Cấu hình DIR
+        ↓
+10. Cấu hình PSIZE / MSIZE
+        ↓
+11. Cấu hình PINC / MINC
+        ↓
+12. CIRC nếu cần
+        ↓
+13. Priority
+        ↓
+14. TCIE / HTIE / TEIE nếu cần
+        ↓
+15. Enable NVIC nếu dùng DMA Interrupt
+        ↓
+16. Enable DMA Request trong Peripheral
+        ↓
+17. Enable DMA Channel
+        ↓
+18. Khởi động Peripheral
+```
+
+### Bước 1 — DMA Clock
+
+DMA1 nằm trên AHB.
+
+```c
+RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+```
+
+Nếu dùng DMA2:
+
+```text
+enable DMA2 clock
+```
+
+trên device có DMA2.
+
+### Bước 2 — Disable
+
+```c
+DMA1_Channel1->CCR &= ~DMA_CCR1_EN;
+```
+
+Nên xác nhận channel đã disable trước khi sửa cấu hình.
+
+### Bước 3 — Clear Flags
+
+Ví dụ Channel 1:
+
+```c
+DMA1->IFCR = DMA_IFCR_CGIF1;
+```
+
+### Bước 4 — Address
+
+```c
+DMA1_Channel1->CPAR = (uint32_t)&ADC1->DR;
+DMA1_Channel1->CMAR = (uint32_t)adc_buffer;
+```
+
+### Bước 5 — Count
+
+```c
+DMA1_Channel1->CNDTR = 4;
+```
+
+### Bước 6 — CCR
+
+Cấu hình:
+
+```text
+DIR
+PINC
+MINC
+PSIZE
+MSIZE
+CIRC
+PL
+Interrupt
+```
+
+### Bước 7 — Peripheral DMA Request
+
+Ví dụ ADC:
+
+```text
+ADC_CR2.DMA = 1
+```
+
+UART:
+
+```text
+USART_CR3.DMAR / DMAT
+```
+
+SPI:
+
+```text
+SPI_CR2.RXDMAEN / TXDMAEN
+```
+
+### Bước 8 — Enable DMA Channel
+
+```c
+DMA1_Channel1->CCR |= DMA_CCR1_EN;
+```
+
+### Bước 9 — Start Peripheral
+
+Ví dụ ADC:
+
+```text
+Start Conversion
+```
+
+UART TX:
+
+```text
+USART TXE request sẽ drive DMA
+```
+
+SPI:
+
+```text
+enable SPI + TX/RX DMA flow
+```
+
+---
+
+<a id="muc-09-22"></a>
+## 9.22. Ví dụ Peripheral → Memory
+
+Ví dụ:
+
+```text
+ADC1
+→ DMA1 Channel 1
+→ 4 mẫu
+→ Circular Mode
+```
+
+Buffer:
+
+```c
+volatile uint16_t adc_buffer[4];
+```
+
+### DMA Configuration
+
+```c
+RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+
+/* Disable trước khi cấu hình */
+DMA1_Channel1->CCR &= ~DMA_CCR1_EN;
+
+/* Clear toàn bộ flag Channel 1 */
+DMA1->IFCR = DMA_IFCR_CGIF1;
+
+/* Address */
+DMA1_Channel1->CPAR = (uint32_t)&ADC1->DR;
+DMA1_Channel1->CMAR = (uint32_t)adc_buffer;
+
+/* 4 halfword */
+DMA1_Channel1->CNDTR = 4;
+
+/*
+ * Peripheral-to-Memory: DIR = 0
+ * PINC = 0
+ * MINC = 1
+ * PSIZE = 16-bit
+ * MSIZE = 16-bit
+ * CIRC = 1
+ */
+DMA1_Channel1->CCR =
+      DMA_CCR1_MINC
+    | DMA_CCR1_PSIZE_0
+    | DMA_CCR1_MSIZE_0
+    | DMA_CCR1_CIRC;
+
+/* Enable Channel */
+DMA1_Channel1->CCR |= DMA_CCR1_EN;
+```
+
+ADC cần enable DMA request:
+
+```c
+ADC1->CR2 |= ADC_CR2_DMA;
+```
+
+Luồng:
+
+```text
+ADC Conversion
+   ↓
+ADC1->DR
+   ↓
+DMA1 Channel 1
+   ↓
+adc_buffer[0]
+   ↓
+adc_buffer[1]
+   ↓
+adc_buffer[2]
+   ↓
+adc_buffer[3]
+   ↓
+wrap
+```
+
+---
+
+<a id="muc-09-23"></a>
+## 9.23. Ví dụ Memory → Peripheral
+
+Ví dụ USART1 TX DMA.
+
+Buffer:
+
+```c
+static const uint8_t message[] = {
+    'H', 'e', 'l', 'l', 'o', '\r', '\n'
+};
+```
+
+Mapping:
+
+```text
+USART1_TX
+→ DMA1 Channel 4
+```
+
+### DMA
+
+```c
+RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+
+DMA1_Channel4->CCR &= ~DMA_CCR4_EN;
+
+DMA1->IFCR = DMA_IFCR_CGIF4;
+
+DMA1_Channel4->CPAR = (uint32_t)&USART1->DR;
+DMA1_Channel4->CMAR = (uint32_t)message;
+DMA1_Channel4->CNDTR = sizeof(message);
+
+/*
+ * Memory-to-Peripheral
+ * MINC = 1
+ * PINC = 0
+ * PSIZE = 8-bit
+ * MSIZE = 8-bit
+ */
+DMA1_Channel4->CCR =
+      DMA_CCR4_DIR
+    | DMA_CCR4_MINC
+    | DMA_CCR4_TCIE;
+```
+
+Enable USART TX DMA request:
+
+```c
+USART1->CR3 |= USART_CR3_DMAT;
+```
+
+Enable DMA channel:
+
+```c
+DMA1_Channel4->CCR |= DMA_CCR4_EN;
+```
+
+### Khi DMA Complete
+
+```text
+DMA TC
+→ tất cả byte đã được đưa vào USART data path
+```
+
+Nếu cần xác nhận frame cuối ra khỏi TX:
+
+```c
+while (!(USART1->SR & USART_SR_TC))
+{
+}
+```
+
+Sau đó mới thực hiện các thao tác như:
+
+```text
+disable transmitter
+disable USART
+đổi direction RS-485
+```
+
+nếu ứng dụng cần.
+
+---
+
+<a id="muc-09-24"></a>
+## 9.24. Circular Buffer và Half-Transfer
+
+Circular + Half Transfer là một mô hình rất quan trọng cho stream liên tục.
+
+Giả sử:
+
+```c
+volatile uint16_t adc_buffer[100];
+```
+
+DMA:
+
+```text
+CIRC = 1
+HTIE = 1
+TCIE = 1
+```
+
+Luồng:
+
+```text
+DMA ghi:
+buffer[0]
+...
+buffer[49]
+    ↓
+HTIF
+    ↓
+DMA tiếp tục ghi:
+buffer[50]
+...
+buffer[99]
+    ↓
+TCIF
+    ↓
+DMA quay lại:
+buffer[0]
+```
+
+CPU có thể xử lý song song:
+
+```text
+DMA                         CPU
+
+ghi Half A
+      ↓
+HT ───────────────────→ xử lý Half A
+
+ghi Half B               xử lý Half A
+      ↓
+TC ───────────────────→ xử lý Half B
+
+ghi Half A               xử lý Half B
+```
+
+### Half A / Half B
+
+```text
+Half A
+→ buffer[0 ... 49]
+
+Half B
+→ buffer[50 ... 99]
+```
+
+### Ưu điểm
+
+```text
+DMA không phải dừng
+CPU xử lý theo block
+giảm số interrupt
+phù hợp data stream liên tục
+```
+
+Mô hình này thường được gọi theo tư duy:
+
+```text
+Ping-Pong Processing
+```
+
+dù DMA STM32F1 không có hardware double-buffer mode kiểu một số STM32 đời sau.
+
+### Điều kiện thiết kế
+
+CPU phải xử lý mỗi half đủ nhanh:
+
+```text
+Processing Time
+<
+thời gian DMA lấp đầy half còn lại
+```
+
+Nếu không:
+
+```text
+DMA có thể overwrite vùng CPU chưa xử lý xong
+```
+
+---
+
+<a id="muc-09-25"></a>
+## 9.25. Lỗi thường gặp
+
+### Sai DMA Channel Mapping
+
+```text
+Peripheral Request
+→ không nối tới channel đã cấu hình
+```
+
+Kết quả:
+
+```text
+DMA không chạy
+```
+
+### Quên bật DMA Clock
+
+```text
+RCC_AHBENR.DMAxEN = 0
+```
+
+→ register DMA không hoạt động như mong muốn.
+
+### Quên bật Peripheral DMA Request
+
+Ví dụ:
+
+```text
+DMA channel đã enable
+nhưng
+ADC DMA = 0
+```
+
+hoặc:
+
+```text
+USART DMAR/DMAT = 0
+```
+
+→ peripheral không phát request cho DMA.
+
+### Sai DIR
+
+Ví dụ UART RX:
+
+```text
+đáng lẽ Peripheral-to-Memory
+nhưng cấu hình Memory-to-Peripheral
+```
+
+→ transfer sai hướng.
+
+### Sai PSIZE / MSIZE
+
+Ví dụ:
+
+```text
+ADC buffer = uint16_t[]
+nhưng MSIZE = 8-bit
+```
+
+→ memory layout không đúng mong muốn.
+
+### Quên MINC
+
+```text
+MINC = 0
+```
+
+khi nhận block:
+
+```text
+mọi sample ghi lại cùng một địa chỉ
+```
+
+### Bật PINC cho Peripheral Register
+
+```text
+PINC = 1
+```
+
+có thể làm địa chỉ đi từ:
+
+```text
+USART_DR
+→ register kế tiếp
+→ register kế tiếp
+```
+
+thay vì luôn truy cập đúng data register.
+
+### Sai CNDTR
+
+```text
+CNDTR quá nhỏ
+→ thiếu data
+
+CNDTR quá lớn
+→ transfer vượt vùng buffer dự kiến
+```
+
+### Sửa cấu hình khi EN = 1
+
+Không nên sửa trực tiếp:
+
+```text
+CPAR
+CMAR
+CNDTR
+CCR config
+```
+
+trong khi channel đang enable.
+
+Trình tự:
+
+```text
+disable
+→ cấu hình
+→ enable lại
+```
+
+### Quên Clear Flag cũ
+
+Nếu:
+
+```text
+TCIF / HTIF / TEIF
+```
+
+còn từ transfer trước, ISR/state machine có thể hiểu sai trạng thái mới.
+
+### Nhầm DMA TC với Peripheral Complete
+
+Đây là lỗi khái niệm quan trọng.
+
+UART:
+
+```text
+DMA TC
+→ byte cuối đã được DMA ghi vào USART_DR
+
+USART TC
+→ frame cuối đã ra khỏi TX
+```
+
+SPI:
+
+```text
+DMA TC
+→ DMA chuyển xong data
+
+SPI BSY = 0
+→ SPI không còn shift data
+```
+
+I2C:
+
+```text
+DMA TC
+→ payload transfer xong
+
+STOP / ACK / protocol state
+→ vẫn phải hoàn thành đúng
+```
+
+### CPU xử lý Buffer quá chậm
+
+Trong Circular Mode:
+
+```text
+DMA có thể quay lại và overwrite data cũ
+```
+
+nếu CPU không xử lý kịp.
+
+---
+
+<a id="muc-09-26"></a>
+## 9.26. Câu hỏi tự kiểm tra
+
+1. DMA viết tắt của gì?
+2. DMA giải quyết vấn đề gì?
+3. DMA có thay CPU xử lý protocol không?
+4. DMA có tự xử lý nội dung dữ liệu không?
+5. STM32F1 dùng DMA Channel hay DMA Stream?
+6. DMA1 có bao nhiêu channel?
+7. DMA2 có tồn tại trên mọi STM32F1 không?
+8. Mỗi DMA Channel có những register chính nào?
+9. DMA Request là gì?
+10. DMA Request được tạo bởi ai?
+11. Peripheral-to-DMA Channel mapping trên STM32F1 có chọn tùy ý được không?
+12. ADC1 thường map vào DMA1 channel nào?
+13. SPI1_RX thường map vào DMA1 channel nào?
+14. SPI1_TX thường map vào DMA1 channel nào?
+15. USART1_TX thường map vào DMA1 channel nào?
+16. USART1_RX thường map vào DMA1 channel nào?
+17. I2C1_TX thường map vào DMA1 channel nào?
+18. I2C1_RX thường map vào DMA1 channel nào?
+19. Nếu hai peripheral cần cùng một DMA channel tại cùng thời điểm thì có vấn đề gì?
+20. DMA hỗ trợ ba hướng transfer chính nào?
+21. `DIR=0` là hướng nào?
+22. `DIR=1` là hướng nào?
+23. `MEM2MEM` dùng để làm gì?
+24. Memory-to-Memory có cần peripheral DMA request không?
+25. Memory-to-Memory có dùng Circular Mode không?
+26. `EN` trong CCR dùng để làm gì?
+27. `TCIE` dùng để làm gì?
+28. `HTIE` dùng để làm gì?
+29. `TEIE` dùng để làm gì?
+30. `CIRC` dùng để làm gì?
+31. `PINC` dùng để làm gì?
+32. `MINC` dùng để làm gì?
+33. `PSIZE` dùng để làm gì?
+34. `MSIZE` dùng để làm gì?
+35. `PL` dùng để làm gì?
+36. Tại sao nên cấu hình channel khi `EN=0`?
+37. `CNDTR` chứa gì?
+38. `CNDTR` giảm khi nào?
+39. `CNDTR=100`, `MSIZE=16-bit` tương ứng bao nhiêu byte memory data?
+40. Normal Mode làm gì khi `CNDTR=0`?
+41. Circular Mode làm gì khi `CNDTR=0`?
+42. Làm sao ước lượng số byte UART DMA RX đã nhận từ `CNDTR`?
+43. `CPAR` chứa gì?
+44. `CMAR` chứa gì?
+45. Trong Peripheral-to-Memory, source và destination tương ứng CPAR/CMAR thế nào?
+46. Trong Memory-to-Peripheral thì thế nào?
+47. DMA hỗ trợ những data width nào?
+48. `PSIZE=01` nghĩa là gì?
+49. `MSIZE=10` nghĩa là gì?
+50. ADC DMA thường dùng PSIZE/MSIZE bao nhiêu?
+51. UART byte DMA thường dùng PSIZE/MSIZE bao nhiêu?
+52. Với `MINC=1`, memory address tăng theo tham số nào?
+53. Với `PINC=1`, peripheral address tăng theo tham số nào?
+54. Vì sao `PINC` thường bằng 0 với USART/ADC/SPI?
+55. Circular Mode phù hợp với những use case nào?
+56. DMA Priority có những mức nào?
+57. Nếu hai channel cùng `PL`, channel nào được ưu tiên?
+58. DMA Priority và NVIC Priority khác nhau thế nào?
+59. `TC` là gì?
+60. `HT` là gì?
+61. `TE` là gì?
+62. `DMA_ISR` dùng để làm gì?
+63. `DMA_IFCR` dùng để làm gì?
+64. `TCIFx` có nghĩa gì?
+65. `HTIFx` có nghĩa gì?
+66. `TEIFx` có nghĩa gì?
+67. Clear DMA flag bằng cơ chế gì?
+68. Vì sao không dùng read-modify-write trên IFCR để clear flag?
+69. DMA interrupt handler cần xử lý những flag nào?
+70. DMA flag và NVIC pending state có phải cùng một thứ không?
+71. ADC + DMA đi theo hướng transfer nào?
+72. ADC + DMA thường bật PINC/MINC như thế nào?
+73. Vì sao ADC Scan rất phù hợp với DMA?
+74. Kiến trúc `Timer → ADC → DMA → Buffer` phân chia nhiệm vụ thế nào?
+75. UART RX DMA dùng hướng nào?
+76. UART TX DMA dùng hướng nào?
+77. USART1 RX/TX map vào channel nào?
+78. Vì sao DMA TC của UART TX chưa có nghĩa transmission hoàn tất?
+79. Sau UART TX DMA TC phải kiểm tra flag nào nếu cần biết frame cuối đã ra TX?
+80. SPI Full-Duplex DMA thường cần mấy DMA channel?
+81. Vì sao SPI Master Read vẫn có TX DMA?
+82. SPI1 RX/TX map vào channel nào?
+83. Sau SPI TX DMA complete, vì sao vẫn cần kiểm tra BSY?
+84. I2C DMA có tự tạo START/STOP không?
+85. I2C DMA thay CPU ở phần nào của transaction?
+86. Timer có thể tạo DMA request từ những event nào?
+87. DMA có thể cập nhật Timer CCR để làm gì?
+88. Hãy mô tả sequence cấu hình DMA từ RCC tới enable channel.
+89. Vì sao phải clear DMA flag cũ trước transfer mới?
+90. Hãy mô tả cấu hình ADC1 → DMA1 Channel 1 → uint16_t buffer.
+91. Hãy mô tả cấu hình USART1 TX DMA.
+92. Half Transfer giúp xử lý Circular Buffer thế nào?
+93. Ping-Pong Processing hoạt động ra sao?
+94. Điều kiện timing nào để CPU không bị DMA overwrite dữ liệu chưa xử lý?
+95. Sai `MINC` sẽ gây lỗi gì?
+96. Sai `PINC` có thể gây hậu quả gì?
+97. Sai `PSIZE/MSIZE` ảnh hưởng gì?
+98. Vì sao DMA TC và Peripheral Complete phải được phân biệt?
+99. Hãy so sánh ADC DMA, UART DMA và SPI DMA về hướng transfer.
+100. Hãy mô tả luồng `Peripheral Event → DMA Request → Channel → CPAR/CMAR → CNDTR → HT/TC`.
+
+---
+
+## 9.27. Tóm tắt
+
+DMA:
+
+```text
+Peripheral
+    ↕
+DMA Channel
+    ↕
+Memory
+```
+
+Các register chính:
+
+```text
+DMA_CCRx
+→ Configuration
+
+DMA_CNDTRx
+→ Number of Data
+
+DMA_CPARx
+→ Peripheral Address
+
+DMA_CMARx
+→ Memory Address
+```
+
+Cấu hình:
+
+```text
+DIR
+→ Transfer Direction
+
+PINC / MINC
+→ Address Increment
+
+PSIZE / MSIZE
+→ Data Width
+
+CIRC
+→ Circular Mode
+
+PL
+→ DMA Priority
+
+MEM2MEM
+→ Memory-to-Memory
+```
+
+Events:
+
+```text
+HT
+→ Half Transfer
+
+TC
+→ Transfer Complete
+
+TE
+→ Transfer Error
+```
+
+Flags:
+
+```text
+DMA_ISR
+→ đọc trạng thái
+
+DMA_IFCR
+→ Write 1 to Clear
+```
+
+Peripheral-to-Memory:
+
+```text
+Peripheral Register
+        ↓
+       DMA
+        ↓
+Memory Buffer
+```
+
+Memory-to-Peripheral:
+
+```text
+Memory Buffer
+      ↓
+     DMA
+      ↓
+Peripheral Register
+```
+
+Circular acquisition:
+
+```text
+DMA Fill Half A
+      ↓
+HT
+      ↓
+CPU Process Half A
+
+DMA Fill Half B
+      ↓
+TC
+      ↓
+CPU Process Half B
+```
+
+Các liên kết quan trọng:
+
+```text
+ADC
+→ DMA1 Channel 1
+→ Buffer
+
+USART
+→ DMA RX / TX
+
+SPI
+→ RX DMA + TX DMA
+
+I2C
+→ DMA chuyển payload
+
+Timer
+→ DMA update CCR / capture data
+```
+
+**Điểm cần nhớ:**
+
+> **DMA STM32F1 được tổ chức theo Channel và peripheral request mapping cố định. Cấu hình cốt lõi là `CPAR`, `CMAR`, `CNDTR`, `DIR`, `PSIZE/MSIZE`, `PINC/MINC` và `CIRC`. Khi DMA báo Transfer Complete, phải phân biệt việc DMA đã chuyển xong dữ liệu với việc peripheral đã hoàn tất hoạt động vật lý như `USART TC`, `SPI BSY` hoặc sequence `STOP` của I2C.**
 
 [↑ Về mục lục](#muc-luc)
