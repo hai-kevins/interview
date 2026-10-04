@@ -16,8 +16,8 @@
    - 1.6. Bus Architecture
    - 1.7. Memory Map
    - 1.8. Flash và SRAM
-   - **1.9. Stack cơ bản trên Cortex-M** ← đang triển khai
-   - 1.10. Startup Code
+   - 1.9. Stack cơ bản trên Cortex-M
+   - **1.10. Startup Code** ← đang triển khai
    - 1.11. Linker Script và các section
 2. **RCC + Clock**
 3. **GPIO**
@@ -6353,5 +6353,566 @@ Thread tiếp tục
 **Ý quan trọng nhất:**
 
 > **Stack trên Cortex-M là vùng RAM hoạt động theo mô hình Full Descending. MSP là Stack Pointer mặc định và luôn được Handler mode sử dụng, còn Thread mode có thể dùng MSP hoặc PSP. Stack còn đóng vai trò trung tâm trong AAPCS khi gọi hàm và trong cơ chế exception khi hardware tự động lưu/khôi phục context.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-10"></a>
+## 1.10. Startup Code
+
+### 1.10.1. Phạm vi của tài liệu Startup Code hiện có
+
+Tài liệu nguồn `Startup_Code.docx` tập trung vào một câu hỏi chính:
+
+> **Tại sao không được đặt Vector Table vào vùng `.data` đã khởi tạo trong RAM?**
+
+Nguồn không trình bày toàn bộ nội dung của một file `startup.s` hay `startup.c`.
+
+Vì vậy mục này chỉ triển khai các ý mà tài liệu hiện tại hỗ trợ:
+
+```text
+Reset
+→ CPU cần Vector Table ngay lập tức
+
+Vector Table
+→ phải tồn tại trước khi bất kỳ code khởi tạo nào chạy
+
+.data trong SRAM
+→ chỉ được tạo/copy sau khi Reset_Handler đã bắt đầu chạy
+
+Do đó:
+Vector Table không thể phụ thuộc vào .data trong RAM
+```
+
+Các phần như weak handler, toàn bộ danh sách vector, cú pháp Assembly của startup file hoặc implementation cụ thể của vendor chưa có trong tài liệu nguồn này nên chưa được triển khai ở đây.
+
+---
+
+### 1.10.2. Startup Code nằm ở đâu trong luồng khởi động?
+
+Có thể nối tài liệu này với các phần đã học:
+
+```text
+RESET
+  ↓
+CPU đọc Vector Table
+  ↓
+lấy initial SP
+  ↓
+lấy địa chỉ Reset_Handler
+  ↓
+nhảy vào Reset_Handler
+  ↓
+thực hiện khởi tạo
+  ↓
+main()
+```
+
+Điểm quan trọng:
+
+> **CPU phải đọc được Vector Table trước khi Reset_Handler có cơ hội chạy bất kỳ đoạn code khởi tạo nào.**
+
+Đây là nguyên nhân cốt lõi của toàn bộ mục này.
+
+---
+
+### 1.10.3. Hai word đầu của Vector Table được CPU dùng khi nào?
+
+Theo tài liệu:
+
+> Ngay khi reset, CPU đọc **2 word đầu của Vector Table**.
+
+Hai giá trị đó là:
+
+```text
+Word đầu tiên
+→ SP khởi tạo
+
+Word thứ hai
+→ địa chỉ Reset_Handler
+```
+
+Sơ đồ:
+
+```text
+Vector Table
++--------------------------+
+| Initial Stack Pointer    | ← CPU đọc ngay sau reset
++--------------------------+
+| Reset_Handler address    | ← CPU đọc ngay sau reset
++--------------------------+
+| ...                      |
++--------------------------+
+```
+
+Điểm cần nhớ:
+
+```text
+CPU cần hai giá trị này
+TRƯỚC
+khi code startup bắt đầu chạy
+```
+
+---
+
+### 1.10.4. Địa chỉ Vector Table trong ví dụ STM32F1
+
+Nguồn ghi:
+
+```text
+STM32F1:
+Flash được map ở 0x08000000
+```
+
+và mô tả CPU đọc Vector Table tại địa chỉ cố định trong quá trình reset.
+
+Ở mức tài liệu hiện tại, cần nhớ mối quan hệ:
+
+```text
+Flash
+→ chứa Vector Table
+
+Vector Table
+→ phải sẵn sàng ngay khi reset
+
+CPU
+→ đọc nó trước khi chạy code
+```
+
+Mục này không mở rộng thêm cơ chế remap hoặc các trường hợp boot khác vì nguồn chưa mô tả.
+
+---
+
+### 1.10.5. `.data` trong SRAM tồn tại khi nào?
+
+Tài liệu nhấn mạnh:
+
+> Vùng dữ liệu đã khởi tạo `.data` trong RAM chỉ được copy từ Flash xuống bởi `Reset_Handler` **sau khi CPU đã lấy được Vector Table và nhảy vào Reset_Handler**.
+
+Do đó thứ tự là:
+
+```text
+1. CPU đọc Vector Table
+        ↓
+2. CPU lấy SP và Reset_Handler
+        ↓
+3. CPU nhảy vào Reset_Handler
+        ↓
+4. Reset_Handler mới copy .data
+   từ Flash xuống SRAM
+```
+
+Điểm này rất quan trọng:
+
+```text
+Vector Table
+→ phải tồn tại trước
+
+.data trong SRAM
+→ chỉ có nội dung đúng sau đó
+```
+
+---
+
+### 1.10.6. Vì sao `.data` cần được copy từ Flash xuống SRAM?
+
+Phần Flash/SRAM trước đó đã chỉ ra:
+
+```text
+.data
+→ chứa initialized global/static variables
+```
+
+Các biến này cần:
+
+```text
+giá trị khởi tạo
++
+khả năng đọc/ghi khi chạy
+```
+
+Do đó bố cục đã học là:
+
+```text
+FLASH
+.data initial values
+        │
+        │ startup copy
+        ↓
+SRAM
+.data runtime values
+```
+
+Startup Code hiện tại không mô tả chi tiết vòng lặp copy, nhưng xác nhận rõ:
+
+> **Reset_Handler là phần thực hiện việc copy `.data` từ Flash xuống RAM.**
+
+---
+
+### 1.10.7. Tại sao không thể đặt Vector Table vào `.data`?
+
+Đây là câu hỏi chính của tài liệu nguồn.
+
+Giả sử Vector Table được đặt vào:
+
+```text
+.data
+→ SRAM
+```
+
+Nhưng `.data` chỉ được copy sau khi:
+
+```text
+CPU đã đọc Vector Table
+và
+đã nhảy vào Reset_Handler
+```
+
+Điều này tạo ra vòng phụ thuộc không thể thực hiện:
+
+```text
+CPU muốn chạy Reset_Handler
+        ↓
+phải đọc Vector Table trước
+        ↓
+nhưng Vector Table lại ở .data trong SRAM
+        ↓
+.data chỉ được tạo bởi Reset_Handler
+        ↓
+Reset_Handler chưa thể chạy
+```
+
+Kết quả theo tài liệu:
+
+```text
+CPU không tìm được SP / Reset
+→ không boot được
+```
+
+---
+
+### 1.10.8. Vòng phụ thuộc sai nếu Vector Table nằm trong `.data`
+
+Có thể biểu diễn rõ hơn:
+
+```text
+                RESET
+                  │
+                  ↓
+        CPU cần Vector Table
+                  │
+                  ↓
+       Vector Table ở .data?
+                  │
+                 Có
+                  ↓
+     .data trong SRAM chưa được copy
+                  │
+                  ↓
+       CPU chưa có SP / Reset_Handler
+                  │
+                  ↓
+        Không vào được Reset_Handler
+                  │
+                  ↓
+         Không thể copy .data
+                  │
+                  ↓
+              KHÔNG BOOT
+```
+
+Đây chính là lý do tài liệu yêu cầu Vector Table không phụ thuộc vào vùng `.data` runtime trong RAM.
+
+---
+
+### 1.10.9. Thứ tự đúng
+
+Theo nội dung nguồn, thứ tự đúng phải là:
+
+```text
+Flash đã chứa Vector Table
+        ↓
+RESET
+        ↓
+CPU đọc initial SP
+        ↓
+CPU đọc Reset_Handler address
+        ↓
+CPU nhảy vào Reset_Handler
+        ↓
+Reset_Handler copy .data
+Flash → SRAM
+        ↓
+sau đó chương trình mới tiếp tục các bước khởi tạo tiếp theo
+```
+
+Điểm phân biệt:
+
+```text
+Vector Table
+→ phải tồn tại từ trước reset
+
+.data trong SRAM
+→ được chuẩn bị sau khi Reset_Handler chạy
+```
+
+---
+
+### 1.10.10. Quan hệ giữa Startup Code và Reset Sequence
+
+Phần **1.5 Reset Sequence** trả lời:
+
+```text
+CPU làm gì ngay sau reset?
+```
+
+Phần **1.10 Startup Code** hiện tại bổ sung:
+
+```text
+Tại sao dữ liệu mà CPU cần ngay lúc reset
+không thể phụ thuộc vào vùng RAM
+chỉ được startup code khởi tạo sau đó?
+```
+
+Ghép hai phần:
+
+```text
+Reset Sequence
+      ↓
+CPU đọc Vector Table
+      ↓
+CPU vào Reset_Handler
+      ↓
+Startup Code
+      ↓
+khởi tạo runtime data như .data
+```
+
+---
+
+### 1.10.11. Quan hệ giữa Startup Code và Flash/SRAM
+
+Phần **1.8 Flash và SRAM** đã cho thấy:
+
+```text
+Flash
+├── Vector Table
+├── .text
+├── .rodata
+└── initial values của .data
+
+SRAM
+├── .data runtime
+├── .bss
+├── Heap
+└── Stack
+```
+
+Startup Code là cầu nối:
+
+```text
+Flash
+  │
+  │ copy initialized data
+  ↓
+SRAM
+```
+
+Trong phạm vi tài liệu hiện tại:
+
+```text
+Reset_Handler
+→ copy .data từ Flash xuống SRAM
+```
+
+---
+
+### 1.10.12. Vì sao Vector Table phải có sẵn trước code?
+
+Theo nguồn:
+
+> Việc CPU đọc hai word đầu của Vector Table xảy ra **trước khi bất kỳ code nào chạy**.
+
+Do đó:
+
+```text
+Vector Table
+≠ dữ liệu có thể chờ startup code tạo ra
+```
+
+Nó phải thuộc phần firmware mà processor có thể truy cập ngay khi reset.
+
+Cách nhớ:
+
+```text
+Vector Table
+→ điều kiện để bắt đầu chạy code
+
+.data initialization
+→ một công việc do code thực hiện sau đó
+```
+
+---
+
+### 1.10.13. Sai lầm thường gặp về thứ tự
+
+Sai:
+
+```text
+Reset_Handler chạy
+     ↓
+tạo Vector Table
+     ↓
+CPU đọc Vector Table
+```
+
+Đúng theo tài liệu:
+
+```text
+CPU đọc Vector Table
+     ↓
+CPU tìm Reset_Handler
+     ↓
+Reset_Handler chạy
+     ↓
+Reset_Handler copy .data
+```
+
+Không được đảo ngược thứ tự này.
+
+---
+
+### 1.10.14. Sơ đồ tổng hợp
+
+```text
+                 FLASH
++----------------------------------+
+| Vector Table                     |
+| ├── Initial SP                   |
+| └── Reset_Handler address        |
++----------------------------------+
+| .data initial values             |
++----------------------------------+
+
+          │ RESET
+          ↓
+
+CPU đọc Vector Table
+          │
+          ├── lấy SP
+          └── lấy Reset_Handler
+                  │
+                  ↓
+            Reset_Handler
+                  │
+                  │ copy
+                  ↓
+
+                 SRAM
++----------------------------------+
+| .data runtime                    |
++----------------------------------+
+```
+
+Thứ tự:
+
+```text
+Vector Table có trước
+        ↓
+Reset_Handler chạy
+        ↓
+.data mới được copy sang SRAM
+```
+
+---
+
+### 1.10.15. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Tại sao Vector Table không được đặt trong `.data` ở RAM?”**, có thể trả lời:
+
+> **Vì CPU cần đọc initial Stack Pointer và địa chỉ Reset_Handler từ Vector Table ngay khi reset, trước khi bất kỳ code nào chạy. Trong khi `.data` trong SRAM chỉ được Reset_Handler copy từ Flash xuống sau đó. Nếu Vector Table phụ thuộc vào `.data` trong RAM thì CPU chưa thể lấy SP và Reset_Handler để boot.**
+
+Nếu hỏi **“`.data` được chuẩn bị khi nào?”**:
+
+> **Theo tài liệu, `.data` trong RAM được Reset_Handler copy từ Flash xuống sau khi CPU đã đọc Vector Table và nhảy vào Reset_Handler.**
+
+Nếu hỏi **“CPU dùng gì từ Vector Table ngay sau reset?”**:
+
+> **Hai word đầu: initial Stack Pointer và địa chỉ Reset_Handler.**
+
+Nếu hỏi **“Startup Code có liên hệ thế nào với Flash và SRAM?”**:
+
+> **Trong nội dung nguồn hiện tại, Reset_Handler thuộc luồng startup và thực hiện việc copy `.data` từ Flash xuống SRAM để tạo bản dữ liệu runtime.**
+
+---
+
+### 1.10.16. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Startup Code trong tài liệu hiện tại tập trung vào vấn đề gì?
+2. CPU đọc bao nhiêu word đầu của Vector Table ngay khi reset?
+3. Word đầu tiên của Vector Table dùng để làm gì?
+4. Word thứ hai dùng để làm gì?
+5. Việc đọc Vector Table xảy ra trước hay sau khi code bắt đầu chạy?
+6. `.data` trong SRAM được tạo/copy khi nào?
+7. Ai thực hiện việc copy `.data` từ Flash xuống SRAM theo nguồn?
+8. Vì sao Vector Table không thể phụ thuộc vào `.data` trong SRAM?
+9. Điều gì xảy ra nếu CPU không lấy được initial SP và Reset_Handler?
+10. Hãy mô tả vòng phụ thuộc sai nếu Vector Table nằm trong `.data`.
+11. Hãy mô tả thứ tự đúng từ Reset tới lúc `.data` sẵn sàng trong SRAM.
+12. Startup Code liên hệ thế nào với Reset Sequence?
+13. Startup Code liên hệ thế nào với Flash/SRAM?
+14. Tại sao Vector Table phải tồn tại trước khi Reset_Handler chạy?
+15. Hãy trả lời câu phỏng vấn: “Tại sao không đặt Vector Table vào `.data`?”
+
+---
+
+### 1.10.17. Tóm tắt
+
+```text
+RESET
+  ↓
+CPU đọc Vector Table
+  ↓
+Initial SP
++
+Reset_Handler address
+  ↓
+CPU nhảy vào Reset_Handler
+  ↓
+Reset_Handler copy .data
+Flash → SRAM
+```
+
+Không được làm:
+
+```text
+Vector Table
+→ đặt phụ thuộc vào .data trong SRAM
+```
+
+vì:
+
+```text
+.data chưa được copy
+cho tới khi Reset_Handler chạy
+
+nhưng
+
+Reset_Handler chưa thể chạy
+nếu CPU chưa đọc được Vector Table
+```
+
+Kết quả:
+
+```text
+không có SP / Reset_Handler
+→ không boot được
+```
+
+**Ý quan trọng nhất:**
+
+> **Vector Table phải tồn tại và truy cập được ngay khi reset, vì CPU cần nó để lấy initial Stack Pointer và địa chỉ Reset_Handler. `.data` trong SRAM chỉ được tạo sau đó bởi Reset_Handler, nên Vector Table không thể phụ thuộc vào `.data`.**
 
 [↑ Về mục lục](#muc-luc)
