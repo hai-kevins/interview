@@ -14,8 +14,8 @@
    - 1.4. Core Registers
    - 1.5. Reset Sequence
    - 1.6. Bus Architecture
-   - **1.7. Memory Map** ← đang triển khai
-   - 1.8. Flash và SRAM
+   - 1.7. Memory Map
+   - **1.8. Flash và SRAM** ← đang triển khai
    - 1.9. Stack cơ bản trên Cortex-M
    - 1.10. Startup Code
    - 1.11. Linker Script và các section
@@ -4191,5 +4191,827 @@ CPU nhận dữ liệu
 **Ý quan trọng nhất:**
 
 > **Memory Map chia không gian địa chỉ 32-bit của processor thành các vùng Code, SRAM, Peripheral, External RAM, External Device và System/PPB. CPU dùng địa chỉ để xác định chính xác bộ nhớ hoặc peripheral register cần truy cập, còn bus là đường truyền địa chỉ và dữ liệu tới vùng đó.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-08"></a>
+## 1.8. Flash và SRAM
+
+### 1.8.1. Hai loại bộ nhớ chính cần phân biệt
+
+Theo tài liệu nguồn, hai loại bộ nhớ quan trọng được đặt cạnh nhau là:
+
+```text
+Code memory
+→ FLASH
+
+Data memory
+→ SRAM
+```
+
+Có thể nhớ ngắn:
+
+```text
+Flash
+→ giữ chương trình và dữ liệu chỉ đọc
+
+SRAM
+→ giữ dữ liệu cần đọc/ghi khi chương trình chạy
+```
+
+Hai vùng này có đặc điểm và mục đích sử dụng khác nhau.
+
+---
+
+### 1.8.2. Flash Memory là gì?
+
+Theo tài liệu:
+
+- Flash là bộ nhớ **không mất dữ liệu khi mất nguồn** — non-volatile.
+- Dùng để lưu:
+  - firmware;
+  - hằng số;
+  - mã chương trình.
+- Tài liệu mô tả Flash về bản chất thuộc nhóm ROM nhưng trong thực tế có thể xóa và ghi lại để nạp chương trình.
+- Khi chương trình đang chạy, Flash chủ yếu được CPU đọc để lấy lệnh hoặc dữ liệu.
+- Muốn ghi lại Flash phải đi qua thủ tục đặc biệt như:
+
+```text
+unlock
+  ↓
+erase
+  ↓
+program
+```
+
+Có thể hình dung:
+
+```text
+Mất nguồn
+   ↓
+Flash vẫn giữ nội dung
+```
+
+Đây là lý do firmware có thể vẫn tồn tại sau khi tắt nguồn và chạy lại khi MCU được cấp nguồn trở lại.
+
+---
+
+### 1.8.3. SRAM là gì?
+
+Theo tài liệu:
+
+```text
+SRAM
+= Static RAM
+```
+
+Đặc điểm:
+
+- Là bộ nhớ **mất dữ liệu** — volatile.
+- CPU có thể đọc/ghi trong khi chương trình chạy.
+- Dùng để lưu các dữ liệu có thể thay đổi trong quá trình thực thi, ví dụ:
+  - biến toàn cục;
+  - biến `static`;
+  - biến cục bộ trên Stack;
+  - Heap;
+  - context của task.
+- Khi mất nguồn hoặc reset, nội dung SRAM không được giữ lại theo tài liệu.
+
+Có thể hình dung:
+
+```text
+Chương trình đang chạy
+        ↓
+SRAM thay đổi liên tục
+
+Mất nguồn / reset
+        ↓
+dữ liệu SRAM không được giữ lại
+```
+
+---
+
+### 1.8.4. So sánh Flash và SRAM
+
+| Tiêu chí | Flash | SRAM |
+|---|---|---|
+| Khả năng giữ dữ liệu khi mất nguồn | Có | Không |
+| Vai trò chính theo tài liệu | Firmware, code, hằng số | Dữ liệu đọc/ghi khi chạy |
+| CPU sử dụng khi chạy | Chủ yếu đọc | Đọc và ghi |
+| Ghi dữ liệu mới | Cần thủ tục đặc biệt | Có thể đọc/ghi trực tiếp trong quá trình chạy |
+| Thành phần điển hình trong hình | Vector Table, `.text`, `.rodata`, bản sao khởi tạo `.data` | `.data`, `.bss`, Heap, Stack |
+
+Cách nhớ:
+
+```text
+Flash
+→ lưu lâu dài
+
+SRAM
+→ vùng làm việc khi chương trình đang chạy
+```
+
+---
+
+### 1.8.5. Bố cục Flash trong hình tài liệu
+
+Hình nguồn mô tả Code Memory bắt đầu tại:
+
+```text
+0x08000000
+```
+
+và có bố cục khái niệm:
+
+```text
+Code memory (FLASH)
+
++-----------------------------+
+| Unused code memory          |
++-----------------------------+
+| .data                       |
+| Initialized global/static   |
+| variables — bản lưu ban đầu |
++-----------------------------+
+| .rodata                     |
++-----------------------------+
+| .text                       |
++-----------------------------+
+| Vector Table                |
++-----------------------------+
+0x08000000
+```
+
+Các thành phần cần nhận diện:
+
+```text
+Vector Table
+.text
+.rodata
+.data (bản dữ liệu khởi tạo nằm trong Flash)
+```
+
+---
+
+### 1.8.6. Vector Table trong Flash
+
+Hình nguồn đặt:
+
+```text
+Vector Table
+```
+
+ở đầu vùng Flash minh họa.
+
+Điều này nối với phần **Reset Sequence**:
+
+```text
+Reset
+  ↓
+processor đọc vector
+  ↓
+initial MSP
+Reset Handler address
+```
+
+Có thể nhớ:
+
+> **Vector Table là một phần dữ liệu quan trọng được lưu trong Code Memory để processor sử dụng khi reset và khi xử lý các vector tương ứng.**
+
+Chi tiết vector table sẽ tiếp tục xuất hiện ở phần Interrupt/Exception sau này.
+
+---
+
+### 1.8.7. `.text` là gì trong sơ đồ?
+
+Hình nguồn đặt:
+
+```text
+.text
+```
+
+trong Flash.
+
+Ở mức tài liệu này, có thể hiểu:
+
+```text
+.text
+→ phần mã chương trình được lưu trong Code Memory
+```
+
+Sơ đồ:
+
+```text
+C source
+   ↓ biên dịch / liên kết
+machine instructions
+   ↓
+.text
+   ↓
+Flash
+```
+
+Khi CPU chạy chương trình:
+
+```text
+CPU
+ ↓ fetch instruction
+Flash / .text
+```
+
+---
+
+### 1.8.8. `.rodata` là gì?
+
+Hình nguồn đặt:
+
+```text
+.rodata
+```
+
+trong Flash, phía trên `.text`.
+
+Tài liệu `Flash & SRAM.txt` giải thích rằng các hằng số không cần đặt trong SRAM nếu chúng không thay đổi:
+
+```text
+const / read-only data
+→ CPU chỉ cần đọc
+→ không cần dùng SRAM để chứa một bản đọc/ghi
+```
+
+Nếu chuyển các hằng số từ Flash sang SRAM mỗi lần reset thì theo tài liệu sẽ:
+
+- tốn SRAM;
+- tốn thời gian khởi tạo do phải copy.
+
+Do đó trong sơ đồ:
+
+```text
+.rodata
+→ dữ liệu chỉ đọc
+→ đặt trong Flash
+```
+
+---
+
+### 1.8.9. `.data` đặc biệt ở điểm nào?
+
+Đây là phần quan trọng nhất của hình.
+
+Hình thể hiện `.data` xuất hiện **cả ở Flash và SRAM**:
+
+```text
+FLASH                         SRAM
+
+.data                         .data
+(initial values)    ----->    (runtime values)
+                       copy
+```
+
+`.data` chứa:
+
+```text
+Initialized global variables
+Initialized static variables
+```
+
+Ví dụ khái niệm:
+
+```c
+int counter = 10;
+static int state = 2;
+```
+
+Các biến này cần:
+
+```text
+1. Có giá trị khởi tạo ban đầu
+2. Có thể thay đổi trong quá trình chạy
+```
+
+Do đó tài liệu minh họa:
+
+```text
+Giá trị khởi tạo
+→ lưu trong Flash
+
+Khi startup
+→ copy sang SRAM
+
+Trong lúc chạy
+→ chương trình sử dụng bản ở SRAM
+```
+
+---
+
+### 1.8.10. Vì sao `.data` phải copy từ Flash sang SRAM?
+
+Có hai yêu cầu cùng lúc:
+
+```text
+Yêu cầu 1
+→ giá trị khởi tạo phải tồn tại sau khi mất nguồn
+
+Yêu cầu 2
+→ biến phải sửa được khi chương trình chạy
+```
+
+Theo bố cục tài liệu:
+
+```text
+Flash
+→ giữ giá trị khởi tạo
+
+SRAM
+→ giữ bản có thể đọc/ghi khi chạy
+```
+
+Do đó khi startup:
+
+```text
+Flash .data
+     │
+     │ Data copy
+     ↓
+SRAM .data
+```
+
+Hình nguồn gọi quá trình này là:
+
+```text
+Transferring of .data section to RAM
+('C' start-up)
+```
+
+---
+
+### 1.8.11. `_etext`, `_sdata`, `_edata` trong hình
+
+Hình minh họa ba boundary symbol:
+
+```text
+_etext
+_sdata
+_edata
+```
+
+Chúng được dùng để xác định các mốc phục vụ quá trình copy `.data`.
+
+Có thể đọc sơ đồ theo ý tưởng:
+
+```text
+Nguồn trong Flash
+→ vị trí chứa initial values của .data
+
+Đích trong SRAM
+→ bắt đầu tại _sdata
+→ kết thúc tại _edata
+```
+
+Sơ đồ khái niệm:
+
+```text
+Flash
+  |
+  | nguồn dữ liệu khởi tạo
+  |
+  +--------------------+
+                       |
+                       | copy
+                       v
+                 _sdata
+                    |
+                    | .data trong SRAM
+                    |
+                 _edata
+```
+
+Trong phạm vi hình nguồn, chỉ cần hiểu đây là các **boundary** dùng để xác định vùng dữ liệu cần copy.
+
+Chi tiết cách linker tạo các symbol này sẽ được học ở phần **Linker Script**.
+
+---
+
+### 1.8.12. `.bss` nằm ở đâu?
+
+Hình nguồn đặt `.bss` trong SRAM:
+
+```text
+SRAM
+
++-----------------------------+
+| Heap                        |
++-----------------------------+
+| .bss                        |
+| Uninitialized global/static |
+| variables                   |
++-----------------------------+
+| .data                       |
++-----------------------------+
+```
+
+Theo hình:
+
+```text
+.bss
+→ uninitialized global variables
+→ uninitialized static variables
+```
+
+Ví dụ:
+
+```c
+int counter;
+static int status;
+```
+
+Mục **Reset Sequence** trước đó đã cho thấy Reset Handler có bước:
+
+```text
+Initialize bss section
+```
+
+Vì vậy có thể nối kiến thức:
+
+```text
+Reset
+  ↓
+Reset Handler
+  ↓
+Initialize .bss
+  ↓
+main()
+```
+
+Hình Flash/SRAM hiện tại không thể hiện một bản `.bss` cần copy từ Flash như `.data`.
+
+---
+
+### 1.8.13. Heap và Stack trong SRAM
+
+Hình nguồn đặt cả:
+
+```text
+Heap
+Stack
+```
+
+trong Data Memory — SRAM.
+
+Bố cục minh họa:
+
+```text
+SRAM
+
++-----------------------------+
+| Stack                       |
++-----------------------------+
+| Unused SRAM                 |
++-----------------------------+
+| Heap                        |
++-----------------------------+
+| .bss                        |
++-----------------------------+
+| .data                       |
++-----------------------------+
+0x20000000
+```
+
+Điểm cần nhớ:
+
+```text
+Stack
+→ nằm trong SRAM
+
+Heap
+→ nằm trong SRAM
+```
+
+Phần Stack sẽ được triển khai kỹ ở mục **1.9. Stack cơ bản trên Cortex-M**.
+
+---
+
+### 1.8.14. Tại sao biến đọc/ghi đặt trong SRAM?
+
+Tài liệu giải thích:
+
+> Các biến của chương trình là dữ liệu đọc/ghi vì giá trị của chúng có thể thay đổi trong quá trình chạy.
+
+Do đó:
+
+```text
+Biến cần thay đổi
+     ↓
+cần vùng có thể đọc/ghi thuận tiện
+     ↓
+SRAM
+```
+
+Ví dụ:
+
+```c
+int counter = 0;
+
+counter++;
+counter++;
+```
+
+Giá trị `counter` thay đổi trong thời gian chạy, nên bản runtime của nó phải nằm ở vùng cho phép CPU đọc/ghi.
+
+---
+
+### 1.8.15. Vì sao `const` thường không cần chiếm SRAM?
+
+Theo tài liệu:
+
+```text
+const
+→ không thay đổi
+→ CPU chỉ cần đọc
+```
+
+Nếu vẫn đặt một bản `const` trong SRAM thì tài liệu nêu hai chi phí:
+
+```text
+1. Tốn RAM
+2. Tốn thời gian khởi tạo vì phải copy khi reset
+```
+
+Do đó hình bố trí:
+
+```text
+.rodata
+→ Flash
+```
+
+Có thể nhớ:
+
+> **Dữ liệu chỉ đọc phù hợp với Flash; dữ liệu cần thay đổi khi chạy phù hợp với SRAM.**
+
+---
+
+### 1.8.16. Quá trình từ Reset tới dữ liệu sẵn sàng trong SRAM
+
+Kết hợp hình Flash/SRAM với phần Reset Sequence đã học:
+
+```text
+RESET
+  ↓
+MSP được thiết lập
+  ↓
+Reset Handler
+  ↓
+copy .data:
+Flash → SRAM
+  ↓
+initialize .bss
+  ↓
+khởi tạo thư viện C
+  ↓
+main()
+```
+
+Đến khi vào `main()`:
+
+```text
+.text / .rodata
+→ vẫn ở Flash theo sơ đồ nguồn
+
+.data
+→ đã có bản runtime trong SRAM
+
+.bss
+→ đã được khởi tạo trong SRAM
+
+Heap / Stack
+→ sử dụng SRAM
+```
+
+---
+
+### 1.8.17. Sơ đồ tổng hợp Flash → SRAM
+
+```text
+                FLASH
+0x08000000
++-----------------------------+
+| Vector Table                |
++-----------------------------+
+| .text                       |
+| program code                |
++-----------------------------+
+| .rodata                     |
+| read-only data              |
++-----------------------------+
+| .data initial values        |
++-----------------------------+
+| Unused Flash                |
++-----------------------------+
+
+            |
+            | startup copy
+            | .data
+            v
+
+                SRAM
+0x20000000
++-----------------------------+
+| .data                       |
+| initialized global/static   |
++-----------------------------+
+| .bss                        |
+| uninitialized global/static |
++-----------------------------+
+| Heap                        |
++-----------------------------+
+| Unused SRAM                 |
++-----------------------------+
+| Stack                       |
++-----------------------------+
+```
+
+Ý quan trọng:
+
+```text
+Flash
+→ giữ nội dung lâu dài
+
+SRAM
+→ giữ trạng thái runtime
+```
+
+---
+
+### 1.8.18. Liên hệ với Memory Map
+
+Ở mục Memory Map trước đó:
+
+```text
+Code Region
+→ dành cho code memory
+
+SRAM Region
+→ dành cho data memory
+```
+
+Hình Flash/SRAM của STM32 minh họa cụ thể hơn:
+
+```text
+Flash base
+→ 0x08000000
+
+SRAM base
+→ 0x20000000
+```
+
+Do đó có thể nối:
+
+```text
+Memory Map
+→ cho biết vùng địa chỉ
+
+Flash / SRAM layout
+→ cho biết firmware và các section được bố trí như thế nào trong những vùng đó
+```
+
+---
+
+### 1.8.19. Phân biệt các section cần nhớ
+
+| Section / vùng | Nằm ở đâu theo hình | Nội dung |
+|---|---|---|
+| Vector Table | Flash | Vector dùng bởi processor |
+| `.text` | Flash | Mã chương trình |
+| `.rodata` | Flash | Dữ liệu chỉ đọc |
+| `.data` initial values | Flash | Giá trị khởi tạo ban đầu |
+| `.data` runtime | SRAM | Biến global/static đã khởi tạo và có thể thay đổi |
+| `.bss` | SRAM | Biến global/static chưa khởi tạo |
+| Heap | SRAM | Vùng Heap |
+| Stack | SRAM | Vùng Stack |
+
+Cách nhớ:
+
+```text
+.text
+.rodata
+→ Flash
+
+.data
+.bss
+Heap
+Stack
+→ SRAM khi chương trình chạy
+
+.data
+→ còn có initial values nằm trong Flash
+```
+
+---
+
+### 1.8.20. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Flash và SRAM khác nhau như thế nào?”**, có thể trả lời:
+
+> **Flash là bộ nhớ non-volatile dùng để giữ firmware và dữ liệu chỉ đọc; SRAM là bộ nhớ volatile dùng cho dữ liệu đọc/ghi trong lúc chương trình chạy như `.data`, `.bss`, Heap và Stack.**
+
+Nếu hỏi **“Tại sao `.data` xuất hiện cả ở Flash và SRAM?”**:
+
+> **Vì biến `.data` cần có giá trị khởi tạo tồn tại trong firmware nhưng đồng thời phải thay đổi được khi chạy. Giá trị ban đầu được lưu trong Flash, sau reset startup code copy nó sang SRAM để chương trình sử dụng.**
+
+Nếu hỏi **“`.bss` chứa gì?”**:
+
+> **Theo hình tài liệu, `.bss` chứa các biến global và static chưa khởi tạo và nằm trong SRAM. Reset Handler thực hiện bước khởi tạo `.bss` trước khi vào `main()`.**
+
+Nếu hỏi **“Tại sao `const` thường được giữ trong Flash?”**:
+
+> **Vì dữ liệu `const` không thay đổi và CPU chỉ cần đọc. Theo tài liệu, đưa chúng vào SRAM sẽ tốn RAM và còn tốn thời gian copy lúc startup.**
+
+Nếu hỏi **“Stack và Heap nằm ở đâu?”**:
+
+> **Theo sơ đồ nguồn, cả Stack và Heap đều nằm trong SRAM.**
+
+Nếu hỏi **“`_sdata` và `_edata` dùng để làm gì?”**:
+
+> **Trong hình chúng là các boundary xác định vùng `.data` trong SRAM để startup code biết phạm vi cần khởi tạo/copy; chi tiết cách linker tạo các symbol này sẽ học ở phần Linker Script.**
+
+---
+
+### 1.8.21. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Flash là volatile hay non-volatile?
+2. SRAM là volatile hay non-volatile?
+3. Firmware thường được lưu ở đâu theo tài liệu?
+4. Dữ liệu chỉ đọc thường nằm ở section nào trong hình?
+5. `.text` nằm ở Flash hay SRAM?
+6. `.data` chứa loại biến nào?
+7. Tại sao `.data` có bản trong cả Flash và SRAM?
+8. Khi startup, `.data` được chuyển theo hướng nào?
+9. `.bss` chứa loại biến nào?
+10. `.bss` nằm ở Flash hay SRAM theo hình?
+11. Stack nằm ở đâu?
+12. Heap nằm ở đâu?
+13. Tại sao dữ liệu `const` không cần một bản SRAM theo giải thích của tài liệu?
+14. Vì sao biến cần thay đổi trong lúc chạy phù hợp với SRAM?
+15. Vector Table nằm ở đâu trong sơ đồ nguồn?
+16. `_sdata` và `_edata` đại diện cho điều gì ở mức khái niệm?
+17. Phần Reset Handler liên quan thế nào tới `.data` và `.bss`?
+18. Hãy mô tả luồng `Flash .data → SRAM .data → main()`.
+19. Hãy phân biệt `.text`, `.rodata`, `.data` và `.bss`.
+20. Flash base và SRAM base trong hình lần lượt là gì?
+
+---
+
+### 1.8.22. Tóm tắt
+
+```text
+FLASH
+→ non-volatile
+→ firmware
+→ Vector Table
+→ .text
+→ .rodata
+→ initial values của .data
+```
+
+```text
+SRAM
+→ volatile
+→ runtime data
+→ .data
+→ .bss
+→ Heap
+→ Stack
+```
+
+Điểm quan trọng nhất của `.data`:
+
+```text
+Flash
+.data initial values
+        │
+        │ C startup copy
+        ↓
+SRAM
+.data runtime
+```
+
+Trước `main()`:
+
+```text
+Reset Handler
+   ↓
+copy .data
+   ↓
+initialize .bss
+   ↓
+main()
+```
+
+**Ý quan trọng nhất:**
+
+> **Flash giữ firmware và dữ liệu cần tồn tại lâu dài, còn SRAM là vùng làm việc đọc/ghi trong lúc chương trình chạy. `.data` đặc biệt vì giá trị khởi tạo nằm trong Flash nhưng bản runtime được copy sang SRAM trước khi `main()` bắt đầu.**
 
 [↑ Về mục lục](#muc-luc)
