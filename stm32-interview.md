@@ -10,9 +10,9 @@
 1. **STM32 architecture / memory map**
    - 1.1. Processor Core vs Processor vs Microcontroller
    - 1.2. Operation Modes
-   - **1.3. Access Level** ← đang triển khai
+   - 1.3. Access Level
    - 1.4. Core Registers
-   - 1.5. Reset Sequence
+   - **1.5. Reset Sequence** ← đang triển khai
    - 1.6. Bus Architecture
    - 1.7. Memory Map
    - 1.8. Memory-Mapped I/O
@@ -1370,5 +1370,1322 @@ Thread / Privileged
 **Ý quan trọng nhất:**
 
 > **Operation Mode cho biết processor đang chạy luồng ứng dụng hay handler; Access Level cho biết mức quyền truy cập của mã đang chạy. Thread mode có thể Privileged hoặc Non-Privileged, còn Handler mode luôn Privileged theo tài liệu.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-04"></a>
+## 1.4. Core Registers
+
+### 1.4.1. Tổng quan các thanh ghi của Processor Core
+
+Theo sơ đồ tài liệu, các thanh ghi của processor core được chia thành các nhóm chính:
+
+```text
+Core Registers
+│
+├── General-purpose registers
+│   ├── R0
+│   ├── R1
+│   ├── ...
+│   └── R12
+│
+├── R13
+│   └── SP — Stack Pointer
+│       ├── PSP
+│       └── MSP
+│
+├── R14
+│   └── LR — Link Register
+│
+├── R15
+│   └── PC — Program Counter
+│
+└── Special registers
+    ├── PSR
+    ├── PRIMASK
+    ├── FAULTMASK
+    ├── BASEPRI
+    └── CONTROL
+```
+
+Trong sơ đồ nguồn:
+
+- `R0` đến `R12` được gọi là **general-purpose registers**.
+- `R0` đến `R7` được đánh dấu là **low registers**.
+- `R8` đến `R12` được đánh dấu là **high registers**.
+- `R13` là **Stack Pointer (SP)**.
+- `R14` là **Link Register (LR)**.
+- `R15` là **Program Counter (PC)**.
+
+Các thanh ghi phía dưới như `PSR`, `PRIMASK`, `FAULTMASK`, `BASEPRI`, `CONTROL` được nhóm thành các **special registers**.
+
+---
+
+### 1.4.2. R0 → R12 — General-Purpose Registers
+
+Theo sơ đồ tài liệu:
+
+```text
+R0  ┐
+R1  │
+R2  │
+R3  │
+R4  ├── General-purpose registers
+R5  │
+R6  │
+R7  │
+R8  │
+R9  │
+R10 │
+R11 │
+R12 ┘
+```
+
+Trong đó:
+
+```text
+R0 → R7
+→ Low registers
+
+R8 → R12
+→ High registers
+```
+
+Ở mục này chỉ cần nhớ:
+
+> **R0 đến R12 là các thanh ghi đa dụng mà core dùng trong quá trình xử lý dữ liệu và thực thi chương trình.**
+
+Chi tiết quy ước thanh ghi nào thường dùng để truyền tham số, giữ biến cục bộ hay phải được caller/callee bảo toàn chưa được hình nguồn này mô tả đầy đủ, nên chưa triển khai ở đây.
+
+---
+
+### 1.4.3. R13 — Stack Pointer
+
+Theo sơ đồ:
+
+```text
+R13
+ ↓
+SP — Stack Pointer
+```
+
+Tài liệu còn cho thấy `SP` có hai phiên bản:
+
+```text
+SP
+├── PSP
+└── MSP
+```
+
+và ghi chú đây là **banked version of SP**.
+
+Có thể hình dung:
+
+```text
+R13 / SP
+   │
+   ├── PSP
+   │
+   └── MSP
+```
+
+Ở phần Core Registers hiện tại, chỉ cần ghi nhận rằng:
+
+> **R13 là Stack Pointer và tài liệu thể hiện hai phiên bản của Stack Pointer là PSP và MSP.**
+
+Cách PSP/MSP được chọn, mode nào dùng SP nào và cách Stack hoạt động sẽ được triển khai riêng trong phần **Stack cơ bản trên Cortex-M**.
+
+---
+
+### 1.4.4. R14 — Link Register
+
+Theo sơ đồ:
+
+```text
+R14
+ ↓
+LR — Link Register
+```
+
+Hình Caller/Callee minh họa vai trò của `LR` khi một hàm gọi hàm khác.
+
+Ví dụ:
+
+```c
+void fun1(void)
+{
+    fun1_ins_1;
+
+    fun2();
+
+    fun1_ins_2;
+}
+```
+
+và:
+
+```c
+void fun2(void)
+{
+    fun2_ins_1;
+    fun2_ins_2;
+}
+```
+
+Theo hình:
+
+```text
+fun1 gọi fun2
+      ↓
+PC nhảy tới địa chỉ của fun2
+      ↓
+LR giữ địa chỉ quay về
+      ↓
+fun2 thực thi
+      ↓
+khi hàm kết thúc:
+PC = LR
+      ↓
+quay lại fun1
+```
+
+Hình mô tả:
+
+```text
+LR = return address
+   = địa chỉ của lệnh tiếp theo
+```
+
+Có thể hình dung:
+
+```text
+fun1
+│
+├── fun1_ins_1
+│
+├── gọi fun2
+│      │
+│      ├── LR ← địa chỉ quay về
+│      └── PC ← địa chỉ fun2
+│
+│   fun2
+│   ├── fun2_ins_1
+│   ├── fun2_ins_2
+│   └── return
+│         ↓
+│       PC = LR
+│
+└── fun1_ins_2
+```
+
+Ý cần nhớ:
+
+> **LR giữ thông tin địa chỉ quay về khi thực hiện lời gọi hàm theo mô hình minh họa trong tài liệu.**
+
+---
+
+### 1.4.5. R15 — Program Counter
+
+Theo tài liệu:
+
+```text
+R15
+ ↓
+PC — Program Counter
+```
+
+Hình Program Counter ghi rõ:
+
+> `PC` là thanh ghi `R15` và chứa địa chỉ chương trình hiện tại.
+
+Có thể hiểu ở mức khái niệm:
+
+```text
+PC
+→ cho core biết vị trí lệnh trong luồng chương trình
+```
+
+Trong hình Caller/Callee:
+
+```text
+fun1 gọi fun2
+      ↓
+PC nhảy tới địa chỉ của fun2
+```
+
+Khi `fun2` kết thúc, hình minh họa:
+
+```text
+PC = LR
+```
+
+để quay về tiếp tục thực thi `fun1`.
+
+Do đó mối liên hệ quan trọng giữa PC và LR là:
+
+```text
+Gọi hàm:
+PC → địa chỉ hàm được gọi
+LR → giữ địa chỉ quay về
+
+Return:
+PC ← LR
+```
+
+---
+
+### 1.4.6. Program Counter khi Reset
+
+Hình tài liệu về `Program Counter` còn mô tả quá trình Reset:
+
+```text
+PC = R15
+```
+
+và khi reset:
+
+> Processor nạp `PC` bằng giá trị của **reset vector** tại địa chỉ `0x00000004`.
+
+Có thể hình dung:
+
+```text
+Reset
+  ↓
+đọc giá trị tại 0x00000004
+  ↓
+nạp giá trị đó vào PC
+  ↓
+bắt đầu thực thi tại địa chỉ Reset Handler
+```
+
+Tài liệu cũng ghi:
+
+```text
+Bit[0] của giá trị reset vector
+→ được nạp vào T-bit của EPSR lúc reset
+→ bit này phải bằng 1
+```
+
+Ở mục Core Registers chỉ cần ghi nhận thông tin trên.
+
+Cơ chế Reset Vector và trình tự khởi động sẽ được triển khai kỹ hơn trong phần **Reset Sequence**.
+
+---
+
+### 1.4.7. PSR — Program Status Register
+
+Theo sơ đồ Core Registers:
+
+```text
+PSR
+→ Program status register
+```
+
+PSR được xếp vào nhóm **special registers**.
+
+Trong phạm vi hình nguồn hiện tại, tài liệu chưa giải thích chi tiết từng trường bit của PSR, vì vậy ở đây chỉ cần nhớ:
+
+> **PSR là thanh ghi trạng thái chương trình của processor.**
+
+Chi tiết cấu trúc PSR sẽ chỉ nên bổ sung khi có tài liệu nguồn tương ứng.
+
+---
+
+### 1.4.8. PRIMASK, FAULTMASK và BASEPRI
+
+Theo sơ đồ:
+
+```text
+PRIMASK
+FAULTMASK
+BASEPRI
+```
+
+được nhóm chung dưới nhãn:
+
+```text
+Exception mask registers
+```
+
+Do đó, ở mức tài liệu hiện có:
+
+> **PRIMASK, FAULTMASK và BASEPRI là các thanh ghi liên quan đến việc mask exception.**
+
+Phần hình nguồn chưa mô tả cụ thể từng thanh ghi mask loại exception nào hay cách đặt bit, nên chưa đi sâu hơn trong mục này.
+
+Nội dung chi tiết phù hợp hơn với phần **Interrupt / Exception** sau này.
+
+---
+
+### 1.4.9. CONTROL Register
+
+Theo sơ đồ:
+
+```text
+CONTROL
+→ CONTROL register
+```
+
+và nó thuộc nhóm **special registers**.
+
+Mục Access Level trước đó đã sử dụng `CONTROL` để mô tả việc thay đổi mức truy cập trong Thread mode.
+
+Trong phần Core Registers, chỉ cần nối lại kiến thức:
+
+```text
+CONTROL
+→ một special register của processor core
+→ có liên quan tới trạng thái điều khiển processor
+→ trong tài liệu Access Level, được dùng để chuyển
+  Thread mode giữa Privileged và Non-Privileged
+```
+
+Chi tiết từng bit trong `CONTROL` chưa xuất hiện trong nhóm hình Core Registers hiện tại nên chưa bổ sung ngoài phạm vi nguồn.
+
+---
+
+### 1.4.10. Non-Memory-Mapped Registers là gì?
+
+Một hình trong tài liệu phân biệt:
+
+```text
+Non-memory mapped registers
+```
+
+và:
+
+```text
+Memory mapped registers
+```
+
+Các **processor core registers** được đặt phía **Non-memory mapped registers**.
+
+Tài liệu ghi:
+
+- Các core register này **không có địa chỉ duy nhất để truy cập như một địa chỉ trong memory map**.
+- Vì vậy chúng **không thuộc processor memory map**.
+- Không thể truy cập chúng trong chương trình C bằng cách lấy một địa chỉ cố định rồi giải tham chiếu như với peripheral register.
+- Tài liệu chỉ ra rằng để truy cập trực tiếp các thanh ghi này cần sử dụng instruction phù hợp ở mức Assembly.
+
+Có thể hình dung:
+
+```text
+R0, R1, ..., R15
+PSR
+PRIMASK
+FAULTMASK
+BASEPRI
+CONTROL
+
+→ Core Registers
+→ Non-Memory-Mapped
+→ không truy cập theo kiểu:
+
+volatile uint32_t *reg = (uint32_t *)ADDRESS;
+```
+
+Điểm quan trọng:
+
+> **Core register và peripheral register không phải cùng một loại register về cách được đặt trong không gian địa chỉ.**
+
+---
+
+### 1.4.11. Memory-Mapped Registers là gì?
+
+Hình tài liệu đặt ở phía **Memory mapped registers** hai nhóm:
+
+```text
+Processor-specific peripheral registers
+├── NVIC
+├── MPU
+├── SCB
+├── DEBUG
+└── ...
+
+Microcontroller-specific peripheral registers
+├── RTC
+├── I2C
+├── TIMER
+├── CAN
+├── USB
+└── ...
+```
+
+Theo tài liệu:
+
+> **Mỗi memory-mapped register có một địa chỉ trong processor memory map.**
+
+Do đó chương trình C có thể truy cập chúng bằng cơ chế địa chỉ và giải tham chiếu.
+
+Ý tưởng:
+
+```c
+volatile uint32_t *reg =
+    (volatile uint32_t *)ADDRESS;
+
+uint32_t value = *reg;
+```
+
+Sơ đồ:
+
+```text
+Memory Map
+    │
+    ├── địa chỉ A → register của peripheral
+    ├── địa chỉ B → register khác
+    └── ...
+```
+
+CPU đọc/ghi vào địa chỉ đó:
+
+```text
+CPU
+ ↓
+địa chỉ trong Memory Map
+ ↓
+Memory-Mapped Register
+ ↓
+Peripheral
+```
+
+Khái niệm này sẽ được triển khai sâu hơn ở mục **Memory-Mapped I/O**.
+
+---
+
+### 1.4.12. Core Register và Memory-Mapped Register khác nhau như thế nào?
+
+| Tiêu chí | Core Register | Memory-Mapped Register |
+|---|---|---|
+| Ví dụ trong tài liệu | `R0-R15`, `PSR`, `CONTROL`... | NVIC, MPU, SCB, RTC, I2C, TIMER... |
+| Có địa chỉ trong memory map | Không theo cách tài liệu mô tả | Có |
+| Truy cập bằng địa chỉ + giải tham chiếu trong C | Không | Có |
+| Thuộc processor core | Có | Thường là thanh ghi của khối/peripheral |
+
+Cách nhớ:
+
+```text
+Core Register
+→ nằm trong core
+→ dùng trực tiếp bởi instruction
+→ không phải một ô địa chỉ trong memory map
+
+Peripheral Register
+→ được ánh xạ vào memory map
+→ có địa chỉ
+→ C có thể đọc/ghi thông qua địa chỉ
+```
+
+---
+
+### 1.4.13. Quan hệ giữa PC và LR khi gọi hàm
+
+Đây là phần rất dễ được hỏi trong phỏng vấn.
+
+Theo hình:
+
+```text
+Caller = fun1
+Callee = fun2
+```
+
+Khi `fun1` gọi `fun2`:
+
+```text
+Trước lời gọi:
+
+PC → lệnh trong fun1
+
+        ↓ gọi fun2()
+
+LR ← địa chỉ lệnh tiếp theo của fun1
+PC ← địa chỉ của fun2
+
+        ↓
+
+fun2 thực thi
+
+        ↓ return
+
+PC ← LR
+
+        ↓
+
+fun1 tiếp tục tại lệnh sau lời gọi
+```
+
+Sơ đồ ngắn:
+
+```text
+Caller
+  │
+  │ call
+  ↓
+Callee
+  │
+  │ return
+  ↓
+Caller
+
+LR = return address
+PC = địa chỉ đang/tiếp tục được thực thi
+```
+
+---
+
+### 1.4.14. Sơ đồ tổng hợp Core Registers
+
+```text
+                    Processor Core Registers
+                              │
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+          ↓                   ↓                   ↓
+   General-purpose       Control Flow         Special
+      Registers           Registers           Registers
+          │                   │                   │
+       R0-R12             R13 = SP             PSR
+                              │                 PRIMASK
+                         ┌────┴────┐            FAULTMASK
+                         ↓         ↓             BASEPRI
+                        PSP       MSP            CONTROL
+
+                         R14 = LR
+                         R15 = PC
+```
+
+Mối liên hệ khi gọi hàm:
+
+```text
+PC
+↓
+địa chỉ hàm đang chạy
+
+LR
+↓
+địa chỉ quay về
+```
+
+Mối liên hệ với Memory Map:
+
+```text
+Core Registers
+→ Non-Memory-Mapped
+
+Peripheral Registers
+→ Memory-Mapped
+```
+
+---
+
+### 1.4.15. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Các core register chính của Cortex-M là gì?”**, có thể trả lời:
+
+> **Theo sơ đồ tài liệu, Cortex-M có các general-purpose register R0-R12, R13 là Stack Pointer, R14 là Link Register, R15 là Program Counter, cùng các special register như PSR, PRIMASK, FAULTMASK, BASEPRI và CONTROL.**
+
+Nếu hỏi **“R14/LR dùng để làm gì?”**:
+
+> **Trong mô hình gọi hàm của tài liệu, LR giữ địa chỉ quay về. Khi caller gọi callee, PC chuyển tới hàm được gọi còn LR giữ địa chỉ của lệnh tiếp theo để khi return có thể quay lại caller.**
+
+Nếu hỏi **“R15/PC dùng để làm gì?”**:
+
+> **PC là Program Counter, tức R15, chứa địa chỉ chương trình đang được processor dùng để điều khiển luồng thực thi. Khi gọi hàm PC chuyển tới địa chỉ callee, và hình tài liệu minh họa khi return thì PC nhận lại giá trị từ LR.**
+
+Nếu hỏi **“Core register có nằm trong memory map không?”**:
+
+> **Theo tài liệu, các core register như R0-R15 là non-memory-mapped register, không có địa chỉ riêng trong processor memory map như peripheral register.**
+
+Nếu hỏi **“Memory-mapped register là gì?”**:
+
+> **Là register có địa chỉ trong memory map. Tài liệu đưa ví dụ các register của NVIC, MPU, SCB hoặc peripheral của vi điều khiển như I2C, Timer, CAN, USB; chương trình C có thể truy cập chúng thông qua địa chỉ tương ứng.**
+
+Nếu hỏi **“R13 có gì đặc biệt?”**:
+
+> **R13 là Stack Pointer và tài liệu cho thấy nó có hai phiên bản banked là PSP và MSP.**
+
+---
+
+### 1.4.16. Câu hỏi phỏng vấn tự kiểm tra
+
+1. R0 đến R12 thuộc nhóm register nào?
+2. R0-R7 và R8-R12 được sơ đồ gọi là gì?
+3. R13 là register gì?
+4. Hai phiên bản Stack Pointer được tài liệu thể hiện là gì?
+5. R14 là register gì?
+6. R15 là register gì?
+7. Khi caller gọi callee, LR giữ thông tin gì?
+8. Khi gọi hàm, PC thay đổi như thế nào theo hình?
+9. Khi hàm return, mối quan hệ `PC = LR` trong hình có ý nghĩa gì?
+10. Khi reset, tài liệu nói PC được nạp từ địa chỉ nào?
+11. `PSR` được tài liệu mô tả là loại register gì?
+12. `PRIMASK`, `FAULTMASK` và `BASEPRI` được nhóm thành loại register gì?
+13. `CONTROL` thuộc nhóm register nào?
+14. Processor core register có thuộc memory map không theo tài liệu?
+15. Peripheral register memory-mapped khác core register ở điểm nào?
+16. Hãy kể các ví dụ processor-specific peripheral register trong hình.
+17. Hãy kể các ví dụ microcontroller-specific peripheral register trong hình.
+18. Vì sao có thể truy cập memory-mapped register trong C bằng địa chỉ?
+19. Hãy phân biệt ngắn gọn `SP`, `LR` và `PC`.
+20. Hãy mô tả luồng caller → callee → caller bằng `PC` và `LR`.
+
+---
+
+### 1.4.17. Tóm tắt
+
+```text
+R0-R12
+→ General-purpose registers
+
+R13
+→ SP
+→ PSP / MSP
+
+R14
+→ LR
+→ giữ return address theo mô hình lời gọi hàm
+
+R15
+→ PC
+→ Program Counter
+```
+
+Special registers trong sơ đồ:
+
+```text
+PSR
+PRIMASK
+FAULTMASK
+BASEPRI
+CONTROL
+```
+
+Khi gọi hàm:
+
+```text
+Caller
+  ↓ call
+
+LR ← return address
+PC ← callee address
+
+Callee
+  ↓ return
+
+PC ← LR
+
+Caller tiếp tục
+```
+
+Phân biệt loại register:
+
+```text
+Core Registers
+→ Non-Memory-Mapped
+→ không có địa chỉ riêng trong processor memory map
+
+Peripheral Registers
+→ Memory-Mapped
+→ có địa chỉ trong memory map
+→ có thể truy cập trong C bằng địa chỉ
+```
+
+**Ý quan trọng nhất:**
+
+> **R0-R12 là các general-purpose register, R13 là Stack Pointer, R14 là Link Register và R15 là Program Counter. Các core register này được tài liệu xếp vào nhóm non-memory-mapped, khác với các register của peripheral được ánh xạ vào memory map và có thể truy cập bằng địa chỉ.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-05"></a>
+## 1.5. Reset Sequence
+
+### 1.5.1. Reset Sequence là gì?
+
+**Reset Sequence** là chuỗi bước processor thực hiện ngay sau khi reset để:
+
+```text
+Khởi tạo Stack Pointer
+        ↓
+Xác định địa chỉ Reset Handler
+        ↓
+Nhảy tới Reset Handler
+        ↓
+Thực hiện các bước khởi tạo
+        ↓
+Gọi main()
+```
+
+Phần này nối trực tiếp với mục Core Registers trước đó vì Reset Sequence sử dụng hai thanh ghi rất quan trọng:
+
+```text
+MSP
+→ Main Stack Pointer
+
+PC
+→ Program Counter
+```
+
+---
+
+### 1.5.2. Hai giá trị đầu tiên trong vùng vector
+
+Theo tài liệu, sau reset processor đọc hai vị trí bộ nhớ đầu tiên:
+
+```text
+0x00000000
+0x00000004
+```
+
+Ý nghĩa theo tài liệu:
+
+```text
+Địa chỉ 0x00000000
+→ chứa giá trị khởi tạo cho MSP
+
+Địa chỉ 0x00000004
+→ chứa địa chỉ của Reset Handler
+```
+
+Có thể hình dung:
+
+```text
+Memory Address        Nội dung
+────────────────────────────────────────
+0x00000000        →   Initial MSP value
+0x00000004        →   Reset Handler address
+```
+
+Đây là phần đầu của **vector table** mà processor sử dụng khi reset.
+
+---
+
+### 1.5.3. Bước 1 — Processor bắt đầu chuỗi reset
+
+Tài liệu mô tả bước đầu tiên bằng việc processor bắt đầu tại vùng địa chỉ:
+
+```text
+0x00000000
+```
+
+Sau đó processor dùng các giá trị đầu tiên ở vùng vector để khởi tạo trạng thái cần thiết trước khi chạy Reset Handler.
+
+Ở mức học hiện tại, ý quan trọng không phải là ghi nhớ cách diễn đạt từng vi bước của PC, mà là nhớ thứ tự:
+
+```text
+Reset
+  ↓
+đọc vector đầu tiên
+  ↓
+khởi tạo MSP
+  ↓
+đọc vector tiếp theo
+  ↓
+nạp địa chỉ Reset Handler vào PC
+```
+
+---
+
+### 1.5.4. Bước 2 — Khởi tạo MSP
+
+Theo tài liệu:
+
+```text
+MSP = value @ 0x00000000
+```
+
+Trong đó:
+
+```text
+MSP
+= Main Stack Pointer
+```
+
+Tài liệu nhấn mạnh:
+
+> Processor trước tiên khởi tạo Stack Pointer.
+
+Ví dụ minh họa trong hình:
+
+```text
+Memory[0x00000000] = 0x20008000
+```
+
+thì:
+
+```text
+MSP = 0x20008000
+```
+
+Sơ đồ:
+
+```text
+0x00000000
+     │
+     │ đọc giá trị
+     ↓
+0x20008000
+     │
+     ↓
+MSP = 0x20008000
+```
+
+Địa chỉ `0x20008000` trong hình chỉ là **giá trị minh họa** cho initial MSP.
+
+---
+
+### 1.5.5. Tại sao phải khởi tạo MSP trước?
+
+Theo tài liệu, processor khởi tạo Main Stack Pointer trước khi đi tiếp tới Reset Handler.
+
+Có thể hiểu luồng:
+
+```text
+Reset
+  ↓
+MSP được thiết lập
+  ↓
+Processor đã có Stack Pointer ban đầu
+  ↓
+mới tiếp tục vào Reset Handler
+```
+
+Chi tiết Stack hoạt động ra sao, MSP khác PSP thế nào và Stack frame được tổ chức như thế nào sẽ được triển khai riêng ở mục **Stack cơ bản trên Cortex-M**.
+
+Ở đây chỉ cần nhớ:
+
+> **Initial MSP là giá trị đầu tiên processor lấy từ vector table khi reset.**
+
+---
+
+### 1.5.6. Bước 3 — Đọc địa chỉ Reset Handler
+
+Sau khi khởi tạo MSP, tài liệu mô tả processor đọc giá trị tại:
+
+```text
+0x00000004
+```
+
+Giá trị này chính là:
+
+```text
+địa chỉ của Reset Handler
+```
+
+Theo tài liệu:
+
+```text
+PC = value @ 0x00000004
+```
+
+Ví dụ minh họa:
+
+```text
+Memory[0x00000004] = 0x20001000
+```
+
+thì hình minh họa:
+
+```text
+PC = 0x20001000
+```
+
+và:
+
+```text
+0x20001000
+→ địa chỉ bắt đầu của Reset Handler trong ví dụ
+```
+
+Địa chỉ trên chỉ là **địa chỉ minh họa trong hình nguồn**, không nên ghi nhớ như một địa chỉ cố định cho mọi STM32.
+
+---
+
+### 1.5.7. Bước 4 — PC nhảy tới Reset Handler
+
+Sau khi PC nhận địa chỉ Reset Handler:
+
+```text
+PC
+ ↓
+Reset Handler address
+```
+
+processor bắt đầu thực thi lệnh tại Reset Handler.
+
+Sơ đồ:
+
+```text
+0x00000004
+     │
+     │ chứa địa chỉ Reset Handler
+     ↓
+    PC
+     │
+     │ jump
+     ↓
+Reset_Handler
+```
+
+Hình nguồn mô tả:
+
+```text
+First instruction
+      ↓
+Next instruction
+      ↓
+...
+```
+
+tức là processor bắt đầu chạy các lệnh của Reset Handler.
+
+---
+
+### 1.5.8. Reset Handler là gì?
+
+Theo tài liệu:
+
+> **Reset Handler là một hàm C hoặc Assembly dùng để thực hiện các bước khởi tạo cần thiết sau reset.**
+
+Có thể hình dung:
+
+```text
+Reset_Handler()
+{
+    // các bước khởi tạo cần thiết
+
+    main();
+}
+```
+
+Reset Handler là phần mã chạy **trước `main()`**.
+
+Do đó:
+
+```text
+Reset
+  ↓
+Reset Handler
+  ↓
+Initialization
+  ↓
+main()
+```
+
+---
+
+### 1.5.9. Vector Table đưa processor tới Reset Handler như thế nào?
+
+Một hình trong tài liệu mô tả:
+
+```text
+Vector Table
+     ↓
+chỉ ra địa chỉ Reset Handler
+     ↓
+Processor thực thi Reset Handler sau reset
+```
+
+Sơ đồ:
+
+```text
+Vector Table
+     │
+     │ Reset vector
+     ↓
+Reset_Handler()
+     │
+     │ Initialization
+     ↓
+main()
+```
+
+Ở mức này cần nhớ:
+
+> **Vector table chứa thông tin để processor tìm được Reset Handler sau reset.**
+
+Chi tiết đầy đủ của vector table và các entry exception/interrupt sẽ được học ở phần Interrupt/Exception sau này.
+
+---
+
+### 1.5.10. Reset Handler làm gì trước `main()`?
+
+Theo hình tài liệu, Reset Handler có các trách nhiệm chính trước khi gọi `main()`:
+
+```text
+Processor reset
+      ↓
+Initialize data section
+      ↓
+Initialize bss section
+      ↓
+Initialize C standard library
+      ↓
+main()
+```
+
+Hình còn chỉ ra lời gọi:
+
+```c
+__libc_init_array();
+```
+
+ở bước khởi tạo thư viện C.
+
+Ở phần này chỉ cần nhớ thứ tự khái niệm:
+
+```text
+.data
+  ↓
+.bss
+  ↓
+C library
+  ↓
+main()
+```
+
+Chi tiết `.data`, `.bss`, cách chúng nằm trong Flash/RAM và linker bố trí chúng sẽ được để sang các mục:
+
+```text
+Startup Code
+Linker Script
+Flash và SRAM
+```
+
+---
+
+### 1.5.11. Luồng Reset Sequence hoàn chỉnh
+
+Ghép các hình và file lý thuyết lại:
+
+```text
+                 RESET
+                   │
+                   ↓
+     đọc value tại 0x00000000
+                   │
+                   ↓
+            khởi tạo MSP
+                   │
+                   ↓
+     đọc value tại 0x00000004
+                   │
+                   ↓
+        lấy địa chỉ Reset Handler
+                   │
+                   ↓
+            nạp địa chỉ vào PC
+                   │
+                   ↓
+            Reset_Handler
+                   │
+                   ↓
+          Initialize .data
+                   │
+                   ↓
+          Initialize .bss
+                   │
+                   ↓
+      Initialize C standard library
+                   │
+                   ↓
+                 main()
+```
+
+Đây là sơ đồ quan trọng nhất của mục này.
+
+---
+
+### 1.5.12. Mối liên hệ giữa MSP, PC và Reset Handler
+
+Có thể tóm tắt bằng bảng:
+
+| Thành phần | Vai trò trong Reset Sequence |
+|---|---|
+| `MSP` | Nhận initial Main Stack Pointer từ giá trị tại `0x00000000`. |
+| `PC` | Nhận địa chỉ Reset Handler từ giá trị tại `0x00000004`. |
+| Vector table | Cung cấp initial MSP và địa chỉ Reset Handler. |
+| Reset Handler | Thực hiện các bước khởi tạo trước `main()`. |
+| `main()` | Điểm bắt đầu của mã ứng dụng sau các bước khởi tạo. |
+
+Sơ đồ ngắn:
+
+```text
+0x00000000 → MSP
+
+0x00000004 → PC → Reset_Handler → main()
+```
+
+---
+
+### 1.5.13. Ví dụ theo hình minh họa
+
+Hình nguồn sử dụng ví dụ:
+
+```text
+Memory[0x00000000] = 0x20008000
+Memory[0x00000004] = 0x20001000
+```
+
+Processor thực hiện:
+
+```text
+MSP = 0x20008000
+
+PC = 0x20001000
+```
+
+Sau đó:
+
+```text
+PC
+ ↓
+0x20001000
+ ↓
+First instruction của Reset Handler
+ ↓
+Next instruction
+ ↓
+...
+ ↓
+main()
+```
+
+Hai giá trị `0x20008000` và `0x20001000` trong hình là **ví dụ minh họa cho cơ chế**, không phải giá trị bắt buộc của mọi chương trình STM32.
+
+---
+
+### 1.5.14. Reset Sequence khác `main()` như thế nào?
+
+Một điểm dễ nhầm:
+
+```text
+Reset
+≠
+nhảy thẳng vào main()
+```
+
+Theo tài liệu:
+
+```text
+Reset
+  ↓
+MSP initialization
+  ↓
+Reset Handler
+  ↓
+các bước initialization
+  ↓
+main()
+```
+
+Vì vậy:
+
+> **`main()` không phải đoạn mã đầu tiên được chạy ngay sau reset; Reset Handler chạy trước và chuẩn bị môi trường cần thiết rồi mới gọi `main()`.**
+
+---
+
+### 1.5.15. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Cortex-M làm gì ngay sau reset?”**, có thể trả lời:
+
+> **Processor lấy initial MSP từ giá trị tại địa chỉ `0x00000000`, sau đó lấy địa chỉ Reset Handler từ `0x00000004`, nạp địa chỉ đó vào PC và bắt đầu chạy Reset Handler.**
+
+Nếu hỏi **“Giá trị tại `0x00000000` dùng làm gì?”**:
+
+> **Theo tài liệu, đó là initial value được nạp vào MSP — Main Stack Pointer.**
+
+Nếu hỏi **“Giá trị tại `0x00000004` là gì?”**:
+
+> **Đó là địa chỉ của Reset Handler, được processor đọc để đưa luồng thực thi tới Reset Handler.**
+
+Nếu hỏi **“Reset Handler làm gì?”**:
+
+> **Reset Handler thực hiện các bước khởi tạo cần thiết trước khi gọi `main()`. Hình tài liệu minh họa việc khởi tạo data section, bss section, C standard library rồi gọi `main()`.**
+
+Nếu hỏi **“`main()` có phải lệnh đầu tiên chạy sau reset không?”**:
+
+> **Không. Theo tài liệu, processor chạy Reset Handler trước; Reset Handler thực hiện các bước khởi tạo rồi mới gọi `main()`.**
+
+Nếu hỏi **“MSP và PC liên quan gì tới Reset Sequence?”**:
+
+> **MSP được khởi tạo từ vector đầu tiên tại `0x00000000`, còn PC nhận địa chỉ Reset Handler từ vector tại `0x00000004`.**
+
+---
+
+### 1.5.16. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Reset Sequence là gì?
+2. Hai địa chỉ đầu tiên mà tài liệu nhấn mạnh là gì?
+3. Giá trị tại `0x00000000` được nạp vào thanh ghi nào?
+4. MSP viết tắt của gì?
+5. Tại sao tài liệu nói Stack Pointer được khởi tạo trước?
+6. Giá trị tại `0x00000004` đại diện cho gì?
+7. Thanh ghi nào nhận địa chỉ Reset Handler?
+8. Sau khi PC nhận địa chỉ Reset Handler thì processor làm gì?
+9. Reset Handler là gì?
+10. Reset Handler có thể được viết bằng ngôn ngữ nào theo tài liệu?
+11. Reset Handler chạy trước hay sau `main()`?
+12. Vector table có vai trò gì trong quá trình reset?
+13. Hình tài liệu liệt kê những bước khởi tạo nào trước `main()`?
+14. `__libc_init_array()` xuất hiện ở bước nào trong hình?
+15. `.data` và `.bss` được xử lý trước hay sau `main()`?
+16. Hai địa chỉ `0x20008000` và `0x20001000` trong hình có phải giá trị cố định cho mọi STM32 không?
+17. Hãy mô tả Reset Sequence bằng MSP và PC.
+18. Hãy vẽ lại chuỗi `Reset → MSP → PC → Reset_Handler → main()`.
+
+---
+
+### 1.5.17. Tóm tắt
+
+```text
+RESET
+  ↓
+đọc 0x00000000
+  ↓
+MSP = initial stack pointer
+  ↓
+đọc 0x00000004
+  ↓
+PC = Reset Handler address
+  ↓
+Reset_Handler
+  ↓
+Initialize data section
+  ↓
+Initialize bss section
+  ↓
+Initialize C standard library
+  ↓
+main()
+```
+
+Hai vector đầu tiên cần nhớ:
+
+```text
+0x00000000
+→ Initial MSP
+
+0x00000004
+→ Reset Handler address
+```
+
+Quan hệ với Core Registers:
+
+```text
+MSP
+→ thiết lập Stack Pointer ban đầu
+
+PC
+→ đưa luồng thực thi tới Reset Handler
+```
+
+**Ý quan trọng nhất:**
+
+> **Sau reset, processor lấy initial MSP từ `0x00000000`, lấy địa chỉ Reset Handler từ `0x00000004`, chạy Reset Handler để thực hiện các bước khởi tạo cần thiết, rồi mới gọi `main()`.**
 
 [↑ Về mục lục](#muc-luc)
