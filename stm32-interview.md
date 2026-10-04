@@ -34,8 +34,6 @@
 <a id="chuong-01"></a>
 # 1. STM32 architecture / memory map
 
-> **Trạng thái rà soát:** Chương 1 đã được bổ sung các hiệu chỉnh kỹ thuật quan trọng về thuật ngữ Cortex-M, Thread/Privilege, `CONTROL`, T-bit, boot alias/remap, bit-band, SRAM khi reset, AAPCS, Startup Code và Linker Script. Các mục “Bổ sung kỹ thuật” được thêm để sửa những chỗ slide nguồn diễn đạt quá rút gọn hoặc chưa bao phủ đủ cho phỏng vấn Intern Embedded Firmware.
-
 <a id="muc-01-01"></a>
 ## 1.1. Processor Core vs Processor vs Microcontroller
 
