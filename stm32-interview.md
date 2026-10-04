@@ -15,8 +15,8 @@
    - 1.5. Reset Sequence
    - 1.6. Bus Architecture
    - 1.7. Memory Map
-   - **1.8. Flash và SRAM** ← đang triển khai
-   - 1.9. Stack cơ bản trên Cortex-M
+   - 1.8. Flash và SRAM
+   - **1.9. Stack cơ bản trên Cortex-M** ← đang triển khai
    - 1.10. Startup Code
    - 1.11. Linker Script và các section
 2. **RCC + Clock**
@@ -5013,5 +5013,1345 @@ main()
 **Ý quan trọng nhất:**
 
 > **Flash giữ firmware và dữ liệu cần tồn tại lâu dài, còn SRAM là vùng làm việc đọc/ghi trong lúc chương trình chạy. `.data` đặc biệt vì giá trị khởi tạo nằm trong Flash nhưng bản runtime được copy sang SRAM trước khi `main()` bắt đầu.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-09"></a>
+## 1.9. Stack cơ bản trên Cortex-M
+
+### 1.9.1. Stack Memory là gì?
+
+Theo tài liệu, **Stack Memory** là một phần của bộ nhớ chính, thường nằm trong RAM, được dành cho việc lưu trữ dữ liệu tạm thời trong lúc chương trình chạy.
+
+Nguồn mô tả Stack có thể thuộc:
+
+```text
+Internal RAM
+hoặc
+External RAM
+```
+
+và chủ yếu được dùng trong:
+
+```text
+Function call
+Interrupt handling
+Exception handling
+```
+
+Stack làm việc theo nguyên tắc:
+
+```text
+LIFO
+= Last In, First Out
+= vào sau, ra trước
+```
+
+Ví dụ:
+
+```text
+PUSH A
+PUSH B
+PUSH C
+
+POP → C
+POP → B
+POP → A
+```
+
+---
+
+### 1.9.2. Stack được dùng để lưu những gì?
+
+Theo các slide nguồn, Stack thường được dùng để lưu tạm:
+
+- Giá trị của các thanh ghi processor.
+- Biến cục bộ của hàm.
+- Dữ liệu tạm thời trong quá trình gọi hàm.
+- Context khi xảy ra interrupt/exception, ví dụ:
+  - general-purpose registers;
+  - processor status register;
+  - return address.
+
+Có thể hình dung:
+
+```text
+Stack
+├── local variables
+├── saved registers
+├── return information
+└── exception / interrupt context
+```
+
+Điểm cần nhớ:
+
+> **Stack là vùng lưu trạng thái tạm thời phục vụ luồng thực thi hiện tại.**
+
+---
+
+### 1.9.3. Stack nằm ở đâu trong SRAM?
+
+Một hình trong tài liệu chia SRAM thành các vùng khái niệm:
+
+```text
+RAM_START
+   ↓
++------------------+
+| Global data      |
++------------------+
+| Heap             |
++------------------+
+| Stack            |
++------------------+
+   ↑
+RAM_END
+```
+
+Trong ví dụ này:
+
+```text
+Global data
+→ dùng cho dữ liệu toàn cục / static
+
+Heap
+→ dùng cho cấp phát động
+
+Stack
+→ dùng cho function call, local variables,
+  register/context tạm thời
+```
+
+Điều này nối trực tiếp với mục **1.8 Flash và SRAM**:
+
+```text
+.data / .bss
+Heap
+Stack
+→ đều sử dụng SRAM trong lúc chương trình chạy
+```
+
+---
+
+### 1.9.4. Stack Pointer — SP / R13
+
+Stack được theo dõi bằng thanh ghi:
+
+```text
+SP
+= Stack Pointer
+= R13
+```
+
+Theo tài liệu:
+
+- `PUSH` và `POP` làm thay đổi Stack Pointer.
+- Stack cũng có thể được truy cập bằng các lệnh load/store như `LDR`/`STR` ở mức Assembly.
+- SP cho biết vị trí hiện tại của Stack theo mô hình đang sử dụng.
+
+Có thể nhớ:
+
+```text
+Stack
+   ↑
+   │
+  SP
+```
+
+SP là một trong các core register đã học ở mục **1.4 Core Registers**.
+
+---
+
+### 1.9.5. Bốn mô hình hoạt động của Stack
+
+Tài liệu liệt kê bốn mô hình:
+
+```text
+1. Full Ascending
+2. Full Descending
+3. Empty Ascending
+4. Empty Descending
+```
+
+Hai từ khóa cần hiểu:
+
+```text
+Full / Empty
+→ SP đang trỏ tới ô đã có dữ liệu
+  hay ô trống kế tiếp
+
+Ascending / Descending
+→ Stack mở rộng theo địa chỉ tăng
+  hay địa chỉ giảm
+```
+
+---
+
+### 1.9.6. Full Ascending Stack
+
+Theo file nguồn:
+
+```text
+Full Ascending
+```
+
+có đặc điểm:
+
+- SP trỏ tới ô đã chứa dữ liệu cuối cùng.
+- Khi `PUSH`, SP tăng lên.
+- Khi `POP`, lấy dữ liệu tại SP rồi SP giảm.
+- Stack mở rộng theo hướng địa chỉ tăng.
+
+Sơ đồ khái niệm:
+
+```text
+Địa chỉ tăng ↑
+
+[ data mới  ] ← SP sau PUSH
+[ data cũ   ]
+[ ...       ]
+```
+
+---
+
+### 1.9.7. Full Descending Stack
+
+Theo tài liệu:
+
+```text
+Full Descending
+```
+
+có đặc điểm:
+
+- SP trỏ tới ô đã chứa dữ liệu cuối cùng.
+- Khi `PUSH`, SP giảm.
+- Khi `POP`, lấy dữ liệu tại SP rồi SP tăng.
+- Stack mở rộng theo hướng địa chỉ giảm.
+
+File nguồn ghi:
+
+> **Đây là mô hình mặc định của ARM Cortex-M.**
+
+Có thể hình dung:
+
+```text
+Địa chỉ cao
+   ↑
+   |
+[ dữ liệu cũ ]
+[ dữ liệu cũ ]
+[ dữ liệu mới ] ← SP
+   |
+   ↓ Stack phát triển xuống địa chỉ thấp
+Địa chỉ thấp
+```
+
+Cách nhớ:
+
+```text
+Full
+→ SP trỏ vào dữ liệu hiện tại
+
+Descending
+→ PUSH làm SP đi xuống địa chỉ thấp hơn
+```
+
+---
+
+### 1.9.8. Empty Ascending Stack
+
+Theo tài liệu:
+
+- SP trỏ tới ô trống kế tiếp.
+- Khi `PUSH`, dữ liệu được ghi vào ô SP rồi SP tăng.
+- Khi `POP`, SP giảm trước rồi mới lấy dữ liệu.
+- Stack mở rộng theo địa chỉ tăng.
+
+```text
+Empty
+→ SP chỉ vào vị trí trống kế tiếp
+
+Ascending
+→ Stack phát triển lên địa chỉ cao
+```
+
+---
+
+### 1.9.9. Empty Descending Stack
+
+Theo tài liệu:
+
+- SP trỏ tới ô trống kế tiếp.
+- Khi `PUSH`, SP giảm trước rồi mới ghi dữ liệu.
+- Khi `POP`, lấy dữ liệu rồi SP tăng.
+- Stack mở rộng theo địa chỉ giảm.
+
+```text
+Empty
+→ SP trỏ ô trống
+
+Descending
+→ Stack phát triển xuống địa chỉ thấp
+```
+
+---
+
+### 1.9.10. So sánh bốn Stack Model
+
+| Mô hình | SP trỏ tới | Hướng Stack phát triển |
+|---|---|---|
+| Full Ascending | Ô đã có dữ liệu cuối cùng | Địa chỉ tăng |
+| Full Descending | Ô đã có dữ liệu cuối cùng | Địa chỉ giảm |
+| Empty Ascending | Ô trống kế tiếp | Địa chỉ tăng |
+| Empty Descending | Ô trống kế tiếp | Địa chỉ giảm |
+
+Điểm cần nhớ cho Cortex-M:
+
+```text
+ARM Cortex-M
+→ Full Descending
+```
+
+---
+
+### 1.9.11. Ví dụ PUSH/POP trên Full Descending Stack
+
+Một slide nguồn minh họa chuỗi thao tác:
+
+```text
+PUSH LR
+PUSH R0
+PUSH R1
+POP  R2
+POP  R3
+POP  PC
+```
+
+Ý chính của ví dụ không phải là ghi nhớ các giá trị cụ thể, mà là quan sát:
+
+```text
+PUSH
+→ SP dịch xuống địa chỉ thấp hơn
+
+POP
+→ SP dịch lên địa chỉ cao hơn
+```
+
+với mô hình Full Descending.
+
+Do LIFO:
+
+```text
+giá trị được PUSH sau
+→ sẽ được POP trước
+```
+
+---
+
+### 1.9.12. Stack có thể được đặt ở đâu trong RAM?
+
+Các slide cho thấy Stack có thể được bố trí ở những vị trí khác nhau trong RAM tùy thiết kế/linker script.
+
+Ví dụ 1:
+
+```text
+RAM
++-------------------+
+| Unused            |
++-------------------+
+| Stack             |
++-------------------+
+| Heap              |
++-------------------+
+| Data              |
++-------------------+
+```
+
+Ví dụ 2:
+
+```text
+RAM
++-------------------+
+| Stack             | ← gần cuối RAM
++-------------------+
+| Unused            |
++-------------------+
+| Heap              |
++-------------------+
+| Data              |
++-------------------+
+```
+
+Một slide minh họa symbol:
+
+```text
+_estack
+```
+
+và mô tả nó là linker symbol dùng để chỉ **cuối RAM làm điểm bắt đầu của Stack** trong cách bố trí đó.
+
+Điểm cần nhớ:
+
+> **Vị trí Stack không phải tự nhiên xuất hiện; linker/startup code phải biết biên Stack hợp lệ.**
+
+---
+
+### 1.9.13. Vì sao Stack thường bắt đầu ở địa chỉ cao?
+
+Do Cortex-M sử dụng Full Descending Stack theo tài liệu:
+
+```text
+PUSH
+→ SP giảm
+```
+
+nên một cách bố trí phổ biến là đặt initial SP gần cuối vùng RAM:
+
+```text
+RAM_END / _estack
+        ↓
+      Stack
+        ↓
+        ↓ phát triển về địa chỉ thấp
+```
+
+Sơ đồ:
+
+```text
+Địa chỉ cao
+RAM_END / _estack
+        ↓
++------------------+
+| Stack            |
+|        ↓         |
+|        ↓         |
++------------------+
+| Unused RAM       |
++------------------+
+| Heap             |
++------------------+
+| Data             |
++------------------+
+Địa chỉ thấp
+```
+
+---
+
+### 1.9.14. MSP và PSP
+
+Tài liệu về **Banked Stack Pointers** giới thiệu:
+
+```text
+MSP
+= Main Stack Pointer
+
+PSP
+= Process Stack Pointer
+```
+
+và:
+
+```text
+SP / R13
+→ current stack pointer
+```
+
+Có thể hình dung:
+
+```text
+             SP / R13
+                │
+                │ chọn một Stack Pointer hiện hành
+          ┌─────┴─────┐
+          ↓           ↓
+         MSP         PSP
+```
+
+#### Lưu ý về cách diễn đạt trong nguồn
+
+Trong ZIP có hai cách diễn đạt:
+
+- File `Banked stack pointer registers.txt` gọi `SP`, `MSP`, `PSP` là “3 stack pointers”.
+- Slide `MSP, PSP summary` lại ghi Cortex-M có **2 stack pointer registers**, là `MSP` và `PSP`.
+
+Để giữ hai nguồn nhất quán, tài liệu này dùng cách biểu diễn:
+
+```text
+MSP và PSP
+→ hai banked Stack Pointer
+
+SP / R13
+→ Stack Pointer hiện đang được chọn
+```
+
+---
+
+### 1.9.15. MSP — Main Stack Pointer
+
+Theo nguồn:
+
+- Sau reset, **MSP được chọn làm current Stack Pointer mặc định**.
+- MSP được processor khởi tạo tự động từ giá trị ở:
+
+```text
+0x00000000
+```
+
+Điều này nối với phần Reset Sequence:
+
+```text
+Reset
+  ↓
+value @ 0x00000000
+  ↓
+MSP
+```
+
+Nguồn cũng mô tả:
+
+```text
+Handler mode
+→ luôn dùng MSP
+```
+
+Điểm cần nhớ:
+
+> **MSP là Stack Pointer mặc định sau reset và là Stack Pointer được Handler mode sử dụng.**
+
+---
+
+### 1.9.16. PSP — Process Stack Pointer
+
+Theo tài liệu:
+
+```text
+PSP
+→ Stack Pointer thay thế
+→ có thể được Thread mode sử dụng
+```
+
+Thread mode có thể chọn PSP bằng bit:
+
+```text
+CONTROL.SPSEL
+```
+
+Nguồn nhấn mạnh:
+
+> Nếu muốn sử dụng PSP, chương trình phải khởi tạo PSP tới một địa chỉ Stack hợp lệ.
+
+Có thể hình dung:
+
+```text
+Thread mode
+     │
+     ├── dùng MSP
+     │
+     └── dùng PSP
+```
+
+Trong khi:
+
+```text
+Handler mode
+→ luôn MSP
+```
+
+---
+
+### 1.9.17. Quan hệ Thread mode, Handler mode, MSP và PSP
+
+Ghép với các phần Operation Modes đã học:
+
+```text
+Thread mode
+├── MSP
+└── PSP
+
+Handler mode
+└── MSP
+```
+
+Theo tài liệu:
+
+- Thread mode có thể đổi current SP sang PSP bằng `CONTROL.SPSEL`.
+- Handler mode luôn dùng MSP.
+- Thay đổi `SPSEL` trong Handler mode không có ý nghĩa theo file nguồn và thao tác ghi sẽ bị bỏ qua.
+
+Sơ đồ:
+
+```text
+                 Processor
+                     │
+        ┌────────────┴────────────┐
+        ↓                         ↓
+   Thread mode               Handler mode
+        │                         │
+   ┌────┴────┐                    ↓
+   ↓         ↓                   MSP
+  MSP       PSP
+```
+
+---
+
+### 1.9.18. Tại sao Thread mode dùng PSP lại hữu ích?
+
+File `Question.txt` đưa ra hai ý chính.
+
+#### 1. Phân tách Stack ứng dụng và Stack hệ thống
+
+```text
+Thread / task
+→ PSP
+
+Interrupt / exception
+→ MSP
+```
+
+Nhờ vậy:
+
+```text
+Stack ứng dụng
+≠
+Stack xử lý exception
+```
+
+Nguồn giải thích rằng sự tách biệt này giúp Stack của ứng dụng không “đụng” trực tiếp vào Stack dành cho ngắt/exception.
+
+#### 2. Hỗ trợ RTOS / đa nhiệm
+
+Theo file nguồn:
+
+```text
+Task A → PSP riêng
+Task B → PSP riêng
+Task C → PSP riêng
+
+ISR → MSP
+```
+
+Khi chuyển task, kernel có thể thay đổi PSP để chuyển sang Stack của task khác.
+
+Ở mức hiện tại chỉ cần biết ý tưởng:
+
+> **PSP giúp tách Stack của từng task/application khỏi Stack hệ thống dùng cho exception.**
+
+FreeRTOS chi tiết sẽ được học sau nếu cần.
+
+---
+
+### 1.9.19. Thay đổi Stack Pointer
+
+Một slide trong nguồn ghi rằng ở Assembly có thể truy cập MSP và PSP bằng các instruction:
+
+```text
+MRS
+MSR
+```
+
+và trong C có thể cần mã mức thấp/naked function nếu muốn trực tiếp thay đổi Stack Pointer.
+
+Ở mức Intern, không cần nhớ cú pháp Assembly cụ thể trong mục này.
+
+Điểm cần nhớ:
+
+```text
+MSP / PSP
+→ là các thanh ghi đặc biệt
+→ việc đổi current Stack Pointer là thao tác mức thấp
+```
+
+---
+
+### 1.9.20. AAPCS là gì?
+
+Bộ tài liệu Stack còn có phần:
+
+```text
+AAPCS
+= Procedure Call Standard for the Arm Architecture
+```
+
+Đây là chuẩn quy định **cách các hàm gọi nhau trên ARM**.
+
+Nguồn mô tả nó như một “hợp đồng” giữa:
+
+```text
+Caller
+→ hàm gọi
+
+Callee
+→ hàm được gọi
+```
+
+AAPCS thuộc ABI:
+
+```text
+ABI
+= Application Binary Interface
+```
+
+Mục tiêu:
+
+> Các module được viết/biên dịch riêng vẫn có thể gọi nhau đúng cách nếu cùng tuân thủ quy ước.
+
+---
+
+### 1.9.21. Caller và Callee
+
+Ví dụ:
+
+```c
+void caller(void)
+{
+    int ret;
+    ret = callee(1, 2, 4, 5);
+}
+```
+
+```c
+int callee(int a, int b, int c, int d)
+{
+    return a + b + c + d;
+}
+```
+
+Trong đó:
+
+```text
+caller()
+→ Caller
+
+callee()
+→ Callee
+```
+
+AAPCS quy định cách truyền:
+
+```text
+tham số
+register
+Stack
+giá trị trả về
+```
+
+giữa hai hàm.
+
+---
+
+### 1.9.22. Truyền tham số theo AAPCS trong tài liệu
+
+File nguồn nêu:
+
+```text
+4 tham số đầu
+→ R0, R1, R2, R3
+
+Nếu có thêm tham số
+→ Stack
+```
+
+Sơ đồ:
+
+```text
+Caller
+  │
+  ├── arg1 → R0
+  ├── arg2 → R1
+  ├── arg3 → R2
+  ├── arg4 → R3
+  └── arg5... → Stack
+        ↓
+      Callee
+```
+
+#### Lưu ý về một hình nguồn
+
+Một slide minh họa bốn tham số nhưng nhãn register trên hình bị ghi thành:
+
+```text
+R0, R1, R3, R4
+```
+
+trong khi file AAPCS dạng text và các slide giải thích khác ghi rõ:
+
+```text
+R0-R3
+```
+
+Tài liệu này giữ quy tắc **R0-R3** vì đó là nội dung được nguồn text mô tả trực tiếp; hình trên được xem là không nhất quán về nhãn.
+
+---
+
+### 1.9.23. Caller-saved Registers
+
+Theo slide AAPCS:
+
+```text
+R0
+R1
+R2
+R3
+R12
+R14 / LR
+```
+
+được mô tả là nhóm **caller-saved registers**.
+
+Ý tưởng:
+
+```text
+Caller cần giữ giá trị nào
+sau khi gọi hàm?
+       │
+       └── caller tự lưu trước khi call
+```
+
+Callee có thể sử dụng các register này mà không phải khôi phục lại đúng giá trị cũ theo cách mô tả của nguồn.
+
+---
+
+### 1.9.24. Callee-saved Registers
+
+Theo tài liệu:
+
+```text
+R4 → R11
+```
+
+được gọi là:
+
+```text
+callee-saved registers
+```
+
+Nếu callee muốn thay đổi chúng:
+
+```text
+Callee
+  ↓
+save giá trị cũ
+  ↓
+sử dụng register
+  ↓
+restore giá trị
+  ↓
+return
+```
+
+Stack thường được dùng để lưu/khôi phục các giá trị này.
+
+Có thể nhớ:
+
+```text
+R0-R3, R12, LR
+→ caller-saved theo slide
+
+R4-R11
+→ callee-saved
+```
+
+---
+
+### 1.9.25. Giá trị trả về theo tài liệu AAPCS
+
+Các slide nguồn mô tả kết quả trả về qua:
+
+```text
+R0
+```
+
+và có slide nói `R0`/`R1` có thể được dùng để gửi result về caller.
+
+Ở mức này nên nhớ:
+
+```text
+Giá trị trả về
+→ bắt đầu từ R0 theo ví dụ nguồn
+```
+
+Việc chính xác cần bao nhiêu register phụ thuộc kiểu dữ liệu/kích thước kết quả và sẽ không đi sâu trong mục Stack cơ bản.
+
+---
+
+### 1.9.26. Luồng gọi hàm theo AAPCS
+
+Có thể tóm tắt tài liệu thành:
+
+```text
+1. Caller đặt tham số vào R0-R3
+   nếu nhiều hơn → Stack
+
+2. Caller lưu những caller-saved value
+   mà nó còn cần sau lời gọi
+
+3. Nhảy tới callee
+
+4. Callee có thể dùng R0-R3, R12...
+   nếu dùng R4-R11 thì phải bảo toàn
+
+5. Callee đặt result vào register trả về
+
+6. Callee return
+
+7. Caller tiếp tục thực thi
+```
+
+Sơ đồ:
+
+```text
+Caller
+  │
+  │ args
+  ↓
+Registers / Stack
+  │
+  ↓
+Callee
+  │
+  │ result
+  ↓
+R0...
+  │
+  ↓
+Caller
+```
+
+---
+
+### 1.9.27. Stack trong Interrupt và Exception
+
+Một nhóm slide nguồn mô tả **Stack activities during interrupt and exception**.
+
+Khi exception xảy ra, processor tự động lưu một nhóm register để tạo:
+
+```text
+Stack Frame
+```
+
+Nguồn liệt kê:
+
+```text
+R0
+R1
+R2
+R3
+R12
+LR
+PC
+xPSR
+```
+
+Sơ đồ:
+
+```text
+Thread mode đang chạy
+        ↓
+Exception / Interrupt
+        ↓
+Hardware tự động stacking
+        ↓
+R0-R3, R12, LR, PC, xPSR
+        ↓
+Handler mode
+```
+
+---
+
+### 1.9.28. Vì sao Hardware tự động Stacking?
+
+Slide nguồn giải thích rằng việc tự động lưu context cho phép một hàm C thông thường được dùng làm exception/interrupt handler mà không phải tự xử lý toàn bộ quy ước lưu các caller-saved register ngay từ đầu.
+
+Có thể hiểu:
+
+```text
+Exception xảy ra
+      ↓
+Processor tự save context cần thiết
+      ↓
+Handler chạy
+      ↓
+Processor restore context khi thoát
+      ↓
+Chương trình bị ngắt tiếp tục
+```
+
+Mục tiêu:
+
+> Khi quay lại chương trình cũ, các giá trị cần thiết phải trở về trạng thái như trước lúc exception.
+
+---
+
+### 1.9.29. Stack Frame khi Exception
+
+Theo hình `Analyzing stack frame`, một Stack Frame không có FPU chứa tám word:
+
+```text
+xPSR
+PC
+LR
+R12
+R3
+R2
+R1
+R0
+```
+
+Tổng cộng:
+
+```text
+8 register
+× 4 byte
+= 32 byte
+```
+
+Trong hình Full Descending:
+
+```text
+SP trước exception
+        ↓
+processor stacking
+        ↓
+SP sau exception thấp hơn 32 byte
+```
+
+Sơ đồ:
+
+```text
+Địa chỉ cao
++------------------+
+| Previous stack   |
++------------------+
+| xPSR             |
+| PC               |
+| LR               |
+| R12              |
+| R3               |
+| R2               |
+| R1               |
+| R0               | ← SP sau stacking
++------------------+
+Địa chỉ thấp
+```
+
+Hình nguồn ghi rõ:
+
+```text
+Stack Frame (No FPU)
+```
+
+nên cấu trúc này đang nói tới trường hợp minh họa **không có FPU context**.
+
+---
+
+### 1.9.30. Un-stacking khi thoát Exception
+
+Khi handler kết thúc, slide mô tả processor tự động:
+
+```text
+Un-stacking
+```
+
+Tức là các giá trị trước đó được khôi phục từ Stack.
+
+Luồng:
+
+```text
+Thread mode
+   ↓ exception
+Stacking
+   ↓
+Handler mode
+   ↓ handler exit
+Un-stacking
+   ↓
+Thread mode tiếp tục
+```
+
+Có thể nhớ:
+
+```text
+Exception entry
+→ stacking
+
+Exception return
+→ un-stacking
+```
+
+---
+
+### 1.9.31. Stack Frame hữu ích khi Debug Fault
+
+Phần `Analyzing stack frame` cho thấy khi exception/fault xảy ra, Stack Frame chứa:
+
+```text
+PC
+LR
+xPSR
+R0-R3
+R12
+```
+
+Vì vậy ở mức khái niệm, Stack Frame có thể giúp xác định:
+
+```text
+PC
+→ chương trình đang ở đâu khi fault xảy ra
+
+LR
+→ thông tin liên quan tới luồng quay về
+
+R0-R3 / R12
+→ dữ liệu register tại thời điểm exception
+
+xPSR
+→ trạng thái processor
+```
+
+Đây là nền tảng để sau này debug HardFault/UsageFault bằng debugger.
+
+---
+
+### 1.9.32. Khởi tạo Stack
+
+Nguồn `Stack initialization` nhấn mạnh:
+
+> Trước khi `main()` chạy, Stack Pointer đã phải được khởi tạo.
+
+Điều này nối với Reset Sequence:
+
+```text
+Reset
+  ↓
+processor đọc vector table
+  ↓
+MSP được khởi tạo
+  ↓
+Reset Handler
+  ↓
+main()
+```
+
+Nguồn cũng nói sau khi vào `main()` chương trình có thể cấu hình lại Stack Pointer nếu thiết kế cần.
+
+---
+
+### 1.9.33. Các lưu ý khi thiết kế Stack theo tài liệu
+
+Slide `Stack initialization tips` đưa ra các ý:
+
+1. Ước lượng lượng Stack cần trong tình huống xấu nhất của ứng dụng.
+2. Biết mô hình Stack mà processor sử dụng:
+   - Full Ascending;
+   - Full Descending;
+   - Empty Ascending;
+   - Empty Descending.
+3. Quyết định vị trí Stack trong RAM:
+   - đầu;
+   - giữa;
+   - cuối vùng RAM.
+4. Có thể đặt Stack trong internal RAM hoặc external memory nếu hệ thống đã khởi tạo vùng đó phù hợp.
+5. ARM Cortex-M lấy initial MSP từ entry đầu của vector table.
+6. Linker script thường quyết định biên Stack, Heap và các vùng RAM.
+7. Trong RTOS, kernel có thể dùng MSP cho Stack hệ thống và cấu hình PSP cho các task.
+
+Các chi tiết về Linker Script sẽ được học ở mục **1.11**.
+
+---
+
+### 1.9.34. Sơ đồ tổng hợp
+
+```text
+                         STACK
+                           │
+        ┌──────────────────┼──────────────────┐
+        ↓                  ↓                  ↓
+  Function call       Exception/IRQ       RTOS task
+        │                  │                  │
+        ↓                  ↓                  ↓
+ local variables      HW stacking           PSP
+ saved registers      R0-R3, R12             │
+ return info          LR, PC, xPSR            │
+        │                  │                  │
+        └──────────────┬───┴──────────────────┘
+                       ↓
+                    SRAM
+```
+
+Stack Pointer:
+
+```text
+SP / R13
+   │
+   ├── MSP
+   │   ├── default sau reset
+   │   └── Handler mode luôn dùng
+   │
+   └── PSP
+       └── Thread mode có thể dùng
+```
+
+Cortex-M Stack model:
+
+```text
+Full Descending
+→ PUSH: SP giảm
+→ POP : SP tăng
+```
+
+---
+
+### 1.9.35. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Stack là gì?”**, có thể trả lời:
+
+> **Stack là vùng RAM dùng để lưu dữ liệu tạm thời theo nguyên tắc LIFO, như biến cục bộ, register cần bảo toàn, return information và context khi xảy ra exception/interrupt.**
+
+Nếu hỏi **“Cortex-M dùng Stack model nào?”**:
+
+> **Theo tài liệu, Cortex-M sử dụng Full Descending Stack: SP trỏ vào phần tử đang ở đỉnh Stack và Stack phát triển về địa chỉ thấp hơn.**
+
+Nếu hỏi **“MSP và PSP khác nhau thế nào?”**:
+
+> **MSP là Main Stack Pointer, được chọn mặc định sau reset và Handler mode luôn dùng MSP. PSP là Process Stack Pointer mà Thread mode có thể chọn sử dụng, thường hữu ích để tách Stack ứng dụng/task khỏi Stack hệ thống.**
+
+Nếu hỏi **“MSP được khởi tạo khi nào?”**:
+
+> **Sau reset, processor tự động lấy initial MSP từ entry đầu tại địa chỉ `0x00000000` theo tài liệu.**
+
+Nếu hỏi **“AAPCS liên quan Stack như thế nào?”**:
+
+> **AAPCS quy định cách caller và callee sử dụng register và Stack khi gọi hàm, ví dụ bốn tham số đầu đi qua R0-R3, các tham số dư có thể đặt trên Stack và R4-R11 là nhóm callee phải bảo toàn nếu sử dụng theo tài liệu.**
+
+Nếu hỏi **“Exception entry lưu những register nào?”**:
+
+> **Theo slide nguồn, hardware tự động stacking R0-R3, R12, LR, PC và xPSR để tạo Stack Frame trước khi handler chạy.**
+
+Nếu hỏi **“Stack Frame khi exception có ích gì cho debug?”**:
+
+> **Nó giữ PC, LR và các register tại thời điểm exception, nên debugger có thể dùng chúng để phân tích vị trí và trạng thái chương trình khi fault xảy ra.**
+
+---
+
+### 1.9.36. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Stack Memory là gì?
+2. Stack thường nằm trong loại bộ nhớ nào?
+3. LIFO nghĩa là gì?
+4. Stack thường lưu những loại dữ liệu nào?
+5. SP là register nào?
+6. Cortex-M sử dụng Stack model nào theo tài liệu?
+7. Full và Empty khác nhau ở điểm nào?
+8. Ascending và Descending khác nhau ở điểm nào?
+9. Khi PUSH trên Full Descending Stack thì SP tăng hay giảm?
+10. Khi POP trên Full Descending Stack thì SP tăng hay giảm?
+11. `_estack` được hình nguồn dùng để biểu diễn gì?
+12. MSP viết tắt của gì?
+13. PSP viết tắt của gì?
+14. Stack Pointer mặc định sau reset là MSP hay PSP?
+15. Thread mode có thể dùng những Stack Pointer nào?
+16. Handler mode dùng Stack Pointer nào?
+17. Bit nào trong `CONTROL` được tài liệu nhắc tới để chọn PSP?
+18. Vì sao phải khởi tạo PSP tới địa chỉ Stack hợp lệ trước khi dùng?
+19. Dùng PSP cho Thread mode có lợi gì?
+20. RTOS có thể sử dụng PSP như thế nào theo tài liệu?
+21. AAPCS là gì?
+22. Caller và Callee là gì?
+23. Bốn tham số đầu của hàm được truyền qua những register nào theo nguồn text?
+24. Nếu có nhiều hơn bốn tham số thì phần dư có thể được đặt ở đâu?
+25. Những register nào được slide gọi là caller-saved?
+26. Những register nào được gọi là callee-saved?
+27. Khi callee sử dụng R4-R11 thì phải làm gì?
+28. Khi exception xảy ra, hardware tự động lưu những register nào?
+29. Một basic exception Stack Frame không FPU trong hình có bao nhiêu word?
+30. Stacking và un-stacking xảy ra khi nào?
+31. PC trong exception Stack Frame có ích gì khi debug?
+32. MSP được processor khởi tạo từ vị trí nào trong vector table?
+33. Linker script liên quan gì tới Stack?
+34. Hãy mô tả luồng `Thread → exception → stacking → Handler → un-stacking → Thread`.
+
+---
+
+### 1.9.37. Tóm tắt
+
+```text
+Stack
+→ vùng RAM tạm thời
+→ LIFO
+→ function / interrupt / exception
+```
+
+Cortex-M:
+
+```text
+Full Descending Stack
+
+PUSH
+→ SP giảm
+
+POP
+→ SP tăng
+```
+
+Stack Pointer:
+
+```text
+SP / R13
+   │
+   ├── MSP
+   │   ├── mặc định sau reset
+   │   └── Handler mode
+   │
+   └── PSP
+       └── Thread mode có thể dùng
+```
+
+AAPCS:
+
+```text
+R0-R3
+→ argument registers
+
+Tham số dư
+→ Stack
+
+R0-R3, R12, LR
+→ caller-saved theo slide
+
+R4-R11
+→ callee-saved
+```
+
+Exception entry:
+
+```text
+Thread mode
+   ↓
+Exception
+   ↓
+Hardware stacking
+   ↓
+R0 R1 R2 R3
+R12 LR PC xPSR
+   ↓
+Handler mode
+```
+
+Exception return:
+
+```text
+Handler
+   ↓
+Hardware un-stacking
+   ↓
+Thread tiếp tục
+```
+
+**Ý quan trọng nhất:**
+
+> **Stack trên Cortex-M là vùng RAM hoạt động theo mô hình Full Descending. MSP là Stack Pointer mặc định và luôn được Handler mode sử dụng, còn Thread mode có thể dùng MSP hoặc PSP. Stack còn đóng vai trò trung tâm trong AAPCS khi gọi hàm và trong cơ chế exception khi hardware tự động lưu/khôi phục context.**
 
 [↑ Về mục lục](#muc-luc)
