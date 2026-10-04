@@ -146,9 +146,9 @@ Có thể hình dung một STM32 ở mức khái niệm:
 |   | processor        |                           |
 |   +------------------+                           |
 |                                                  |
-|   Flash             SRAM                        |
+|   Flash             SRAM                         |
 |                                                  |
-|   GPIO   Timer   UART   SPI   I2C   ADC   ...   |
+|   GPIO   Timer   UART   SPI   I2C   ADC   ...    |
 +--------------------------------------------------+
 ```
 
