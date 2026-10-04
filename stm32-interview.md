@@ -13,8 +13,8 @@
    - 1.3. Access Level
    - 1.4. Core Registers
    - 1.5. Reset Sequence
-   - **1.6. Bus Architecture** ← đang triển khai
-   - 1.7. Memory Map
+   - 1.6. Bus Architecture
+   - **1.7. Memory Map** ← đang triển khai
    - 1.8. Memory-Mapped I/O
    - 1.9. Flash và SRAM
    - 1.10. Stack cơ bản trên Cortex-M
@@ -3384,5 +3384,813 @@ Processor
 **Ý quan trọng nhất:**
 
 > **Cortex-Mx sử dụng các bus interface dựa trên AMBA. AHB-Lite phục vụ các giao tiếp chính và tốc độ cao hơn, APB phục vụ nhiều peripheral tốc độ thấp hơn thông qua AHB-APB Bridge; còn I-CODE, D-CODE và System bus đảm nhiệm các loại truy cập khác nhau giữa processor và các vùng trong hệ thống.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="muc-01-07"></a>
+## 1.7. Memory Map
+
+### 1.7.1. Memory Map là gì?
+
+Theo tài liệu:
+
+> **Memory map mô tả cách các vùng bộ nhớ và các thanh ghi peripheral được ánh xạ vào không gian địa chỉ mà processor có thể truy cập.**
+
+Có thể hiểu:
+
+```text
+Không gian địa chỉ của processor
+        ↓
+được chia thành nhiều vùng
+        ↓
+mỗi vùng dành cho một loại tài nguyên
+```
+
+Ví dụ:
+
+```text
+Code
+SRAM
+Peripheral
+External RAM
+External Device
+System / PPB
+```
+
+Nói ngắn gọn:
+
+> **Memory Map là bản đồ cho biết mỗi loại bộ nhớ hoặc thiết bị nằm ở vùng địa chỉ nào.**
+
+---
+
+### 1.7.2. Không gian địa chỉ phụ thuộc vào Address Bus
+
+Tài liệu nêu:
+
+> Phạm vi địa chỉ mà processor có thể truy cập phụ thuộc vào kích thước của address bus.
+
+Một hình nguồn thể hiện:
+
+```text
+32-bit address channel
+32-bit data channel
+```
+
+và ghi:
+
+```text
+The processor has a fixed default memory map
+that provides up to 4GB of addressable memory
+```
+
+Từ kênh địa chỉ 32-bit:
+
+```text
+2^32 địa chỉ byte
+= 4 GB không gian địa chỉ
+```
+
+Có thể hình dung:
+
+```text
+0x00000000
+    ↓
+    ↓  toàn bộ không gian địa chỉ
+    ↓
+0xFFFFFFFF
+```
+
+Tổng phạm vi:
+
+```text
+0x00000000 → 0xFFFFFFFF
+```
+
+---
+
+### 1.7.3. Bản đồ tổng thể 4 GB
+
+Theo sơ đồ tổng thể trong tài liệu, không gian địa chỉ được chia thành các vùng lớn:
+
+| Vùng | Khoảng địa chỉ theo hình | Kích thước |
+|---|---:|---:|
+| Code | `0x00000000` → `0x1FFFFFFF` | 0.5 GB |
+| SRAM | `0x20000000` → `0x3FFFFFFF` | 0.5 GB |
+| Peripheral | `0x40000000` → `0x5FFFFFFF` | 0.5 GB |
+| External RAM | `0x60000000` → `0x9FFFFFFF` | 1 GB |
+| External Device | `0xA0000000` → `0xDFFFFFFF` | 1 GB |
+| System / PPB | `0xE0000000` → `0xFFFFFFFF` | phần còn lại của không gian địa chỉ |
+
+Sơ đồ rút gọn:
+
+```text
+0xFFFFFFFF  +-----------------------------+
+            | System / PPB                |
+0xE0000000  +-----------------------------+
+            | External Device             |
+0xA0000000  +-----------------------------+
+            | External RAM                |
+0x60000000  +-----------------------------+
+            | Peripheral                  |
+0x40000000  +-----------------------------+
+            | SRAM                        |
+0x20000000  +-----------------------------+
+            | Code                        |
+0x00000000  +-----------------------------+
+```
+
+Đây là sơ đồ trung tâm của phần Memory Map.
+
+---
+
+### 1.7.4. Code Region
+
+Theo hình tài liệu:
+
+```text
+Code Region
+0x00000000 → 0x1FFFFFFF
+512 MB
+```
+
+Tài liệu mô tả đây là vùng mà nhà sản xuất MCU có thể kết nối **CODE memory**, ví dụ:
+
+```text
+Embedded Flash
+ROM
+OTP
+EEPROM
+...
+```
+
+Hình cũng ghi:
+
+> Processor mặc định lấy thông tin vector table từ vùng này ngay sau reset.
+
+Điều này nối trực tiếp với phần Reset Sequence trước đó:
+
+```text
+Reset
+  ↓
+đọc vector table
+  ↓
+initial MSP
+Reset Handler address
+```
+
+Có thể nhớ:
+
+```text
+Code Region
+→ nơi chứa bộ nhớ chương trình theo mô hình tài liệu
+→ processor fetch thông tin vector table từ đây sau reset
+```
+
+---
+
+### 1.7.5. Quan hệ Code Region với I-CODE và D-CODE
+
+Ở phần Bus Architecture trước đó, tài liệu mô tả:
+
+```text
+I-CODE
+→ instruction fetch
+→ vector table read
+
+D-CODE
+→ data access tới CODE region
+```
+
+Do đó có thể nối hai phần:
+
+```text
+                    CODE region
+                   /           \
+                  /             \
+             I-CODE           D-CODE
+                  \             /
+                   \           /
+                    Processor
+```
+
+Trong đó:
+
+```text
+I-CODE
+→ lấy lệnh / đọc vector table
+
+D-CODE
+→ đọc dữ liệu trong CODE region
+```
+
+---
+
+### 1.7.6. SRAM Region
+
+Theo hình tài liệu:
+
+```text
+SRAM Region
+0x20000000 → 0x3FFFFFFF
+512 MB
+```
+
+Tài liệu mô tả:
+
+- Đây là 512 MB tiếp theo sau CODE region.
+- Chủ yếu dùng để kết nối SRAM, thường là on-chip SRAM.
+- Có thể thực thi program code từ vùng này.
+- Phần đầu của vùng có liên quan tới bit-band theo sơ đồ nguồn.
+
+Có thể nhớ:
+
+```text
+SRAM Region
+→ vùng dành chủ yếu cho SRAM
+→ processor có thể đọc/ghi dữ liệu ở đây
+→ tài liệu cho phép thực thi code từ vùng này
+```
+
+---
+
+### 1.7.7. Bit-Band trong SRAM Region — chỉ nhận diện
+
+Hình nguồn thể hiện:
+
+```text
+0x20000000
+    ↓
+1 MB Bit-Band Region
+    ↓
+0x20100000
+```
+
+và vùng alias:
+
+```text
+0x22000000
+    ↓
+32 MB Bit-Band Alias
+    ↓
+0x24000000
+```
+
+Có thể biểu diễn:
+
+```text
+SRAM region
+
+0x20000000
++----------------------+
+| 1 MB Bit-Band Region |
++----------------------+
+0x20100000
+|                      |
+|      31 MB           |
+|                      |
+0x22000000
++----------------------+
+| 32 MB Bit-Band Alias |
++----------------------+
+0x24000000
+```
+
+Ở mục Memory Map hiện tại **chưa học cơ chế bit-band hoạt động như thế nào**.
+
+Chỉ cần nhận diện:
+
+```text
+Bit-Band Region
+Bit-Band Alias
+```
+
+và địa chỉ của chúng theo sơ đồ tài liệu.
+
+---
+
+### 1.7.8. Peripheral Region
+
+Theo hình:
+
+```text
+Peripheral Region
+0x40000000 → 0x5FFFFFFF
+512 MB
+```
+
+Tài liệu mô tả:
+
+- Chủ yếu dành cho các on-chip peripherals.
+- Phần 1 MB đầu có thể là vùng bit-addressable nếu tính năng bit-band tùy chọn được hỗ trợ.
+- Đây là vùng **Execute Never (XN)**.
+- Cố thực thi code từ vùng này sẽ gây fault exception theo hình tài liệu.
+
+Có thể nhớ:
+
+```text
+Peripheral Region
+→ register / vùng của peripheral
+→ không phải nơi để chạy chương trình
+```
+
+---
+
+### 1.7.9. Bit-Band trong Peripheral Region — chỉ nhận diện
+
+Theo sơ đồ tổng thể:
+
+```text
+0x40000000
+    ↓
+1 MB Bit-Band Region
+    ↓
+0x40100000
+```
+
+và:
+
+```text
+0x42000000
+    ↓
+32 MB Bit-Band Alias
+    ↓
+0x44000000
+```
+
+Sơ đồ:
+
+```text
+Peripheral region
+
+0x40000000
++----------------------+
+| 1 MB Bit-Band Region |
++----------------------+
+0x40100000
+|                      |
+|      31 MB           |
+|                      |
+0x42000000
++----------------------+
+| 32 MB Bit-Band Alias |
++----------------------+
+0x44000000
+```
+
+Chi tiết công thức bit-band sẽ để sang phần riêng nếu sau này cần học.
+
+---
+
+### 1.7.10. External RAM Region
+
+Theo hình tài liệu:
+
+```text
+External RAM Region
+0x60000000 → 0x9FFFFFFF
+1 GB
+```
+
+Tài liệu mô tả:
+
+- Dành cho memory on-chip hoặc off-chip.
+- Có thể thực thi code trong vùng này.
+- Ví dụ: kết nối external SDRAM.
+
+Có thể nhớ:
+
+```text
+External RAM
+→ vùng dành cho RAM ngoài / memory mở rộng
+→ ví dụ SDRAM
+```
+
+---
+
+### 1.7.11. External Device Region
+
+Theo hình:
+
+```text
+External Device Region
+0xA0000000 → 0xDFFFFFFF
+1 GB
+```
+
+Tài liệu mô tả:
+
+- Dành cho external devices và/hoặc shared memory.
+- Đây là vùng **Execute Never (XN)**.
+
+Có thể nhớ:
+
+```text
+External Device
+→ thiết bị ngoài / shared memory
+→ XN
+```
+
+---
+
+### 1.7.12. Private Peripheral Bus và System Region
+
+Sơ đồ tổng thể của tài liệu đặt phần cuối của không gian địa chỉ từ:
+
+```text
+0xE0000000
+```
+
+trở lên cho các vùng liên quan tới:
+
+```text
+Private Peripheral Bus - Internal
+Private Peripheral Bus - External
+System
+```
+
+Sơ đồ tổng thể thể hiện:
+
+```text
+0xE0000000
+    ↓
+Private Peripheral Bus - Internal
+
+0xE0040000
+    ↓
+Private Peripheral Bus - External
+
+0xE0100000
+    ↓
+System
+
+...
+0xFFFFFFFF
+```
+
+Bên trong vùng PPB, hình tổng thể còn minh họa các khối như:
+
+```text
+ITM
+DWT
+FPB
+SCS
+TPIU
+ETM
+ROM Table
+```
+
+Trong phạm vi mục này chỉ cần nhận diện rằng:
+
+> **Phần địa chỉ từ `0xE0000000` trở lên chứa các vùng system/private peripheral liên quan tới processor.**
+
+---
+
+### 1.7.13. Lưu ý về một điểm không nhất quán trong hình nguồn
+
+Một hình riêng có tiêu đề **Private Peripheral Bus Region** nhưng lại gắn khoảng:
+
+```text
+0xA0000000 → 0xDFFFFFFF
+```
+
+trong khi sơ đồ tổng thể của cùng bộ tài liệu đặt khoảng đó là:
+
+```text
+External Device Region
+```
+
+và đặt PPB từ:
+
+```text
+0xE0000000
+```
+
+trở lên.
+
+Vì nguồn hình ảnh không nhất quán ở điểm này, tài liệu này:
+
+- Dùng **sơ đồ Memory Map tổng thể** làm nguồn cho địa chỉ vùng PPB.
+- Chỉ lấy từ hình riêng ý nghĩa rằng vùng PPB có thể chứa các khối như:
+
+```text
+NVIC
+System timer
+System Control Block
+```
+
+và được hình mô tả là vùng **Execute Never**.
+
+---
+
+### 1.7.14. Memory Map và Peripheral Register
+
+File `readme.txt` đưa ra ví dụ với ADC:
+
+```text
+ADC có dữ liệu
+     ↓
+dữ liệu nằm trong một thanh ghi của ADC
+     ↓
+CPU cần đọc thanh ghi đó
+```
+
+Tài liệu mô tả CPU thực hiện:
+
+```text
+CPU tạo địa chỉ của thanh ghi ADC
+        ↓
+đưa địa chỉ lên address bus
+        ↓
+địa chỉ khớp register tương ứng
+        ↓
+dữ liệu được đưa lên data bus
+        ↓
+CPU nhận dữ liệu
+        ↓
+CPU có thể lưu dữ liệu vào memory
+```
+
+Có thể hình dung:
+
+```text
+ADC register
+     ↓
+   CPU
+     ↓
+ Memory
+```
+
+File nguồn tóm tắt:
+
+```text
+ADC → CPU → Memory
+```
+
+Phần này mới chỉ dùng để giải thích **tại sao Memory Map quan trọng**:
+
+> CPU phải biết **địa chỉ** của register/peripheral để truy cập đúng tài nguyên.
+
+Cơ chế **Memory-Mapped I/O** sẽ được triển khai kỹ hơn ở mục 1.8.
+
+---
+
+### 1.7.15. Memory Map và Bus Architecture liên hệ thế nào?
+
+Hai phần trả lời hai câu hỏi khác nhau:
+
+```text
+Bus Architecture
+→ đi bằng đường nào?
+
+Memory Map
+→ tài nguyên nằm ở địa chỉ nào?
+```
+
+Ví dụ:
+
+```text
+CPU muốn đọc ADC
+        ↓
+Memory Map cho biết địa chỉ ADC register
+        ↓
+Bus truyền địa chỉ và dữ liệu
+        ↓
+CPU đọc được register
+```
+
+Sơ đồ:
+
+```text
+CPU
+ ↓
+Address
+ ↓
+Bus
+ ↓
+Memory Map
+ ↓
+Peripheral Register
+```
+
+---
+
+### 1.7.16. Memory Map không có nghĩa MCU có thật 4 GB RAM
+
+Hình tài liệu ghi processor có:
+
+```text
+up to 4GB of addressable memory
+```
+
+Điều này nói về:
+
+```text
+không gian địa chỉ
+```
+
+chứ không có nghĩa chip STM32 thực tế phải chứa:
+
+```text
+4 GB SRAM
+hoặc
+4 GB Flash
+```
+
+Trong phạm vi nguồn, các vùng 512 MB hoặc 1 GB thể hiện **phạm vi được dành trong bản đồ địa chỉ** cho từng loại tài nguyên.
+
+Có thể nhớ:
+
+```text
+Address space
+≠
+dung lượng bộ nhớ vật lý thực tế
+```
+
+---
+
+### 1.7.17. Tóm tắt các vùng chính
+
+| Vùng | Base address | Vai trò chính theo tài liệu |
+|---|---:|---|
+| Code | `0x00000000` | Code memory, vector table |
+| SRAM | `0x20000000` | SRAM / data memory |
+| Peripheral | `0x40000000` | On-chip peripherals |
+| External RAM | `0x60000000` | RAM ngoài / SDRAM |
+| External Device | `0xA0000000` | Thiết bị ngoài / shared memory |
+| PPB / System | `0xE0000000` | Processor/system-specific region |
+
+Cách nhớ các base address:
+
+```text
+Code        → 0x00000000
+SRAM        → 0x20000000
+Peripheral  → 0x40000000
+External RAM→ 0x60000000
+Ext Device  → 0xA0000000
+System/PPB  → 0xE0000000
+```
+
+---
+
+### 1.7.18. Sơ đồ tổng hợp
+
+```text
+0xFFFFFFFF
++----------------------------------+
+| System / processor-specific      |
+| PPB                              |
++----------------------------------+ 0xE0000000
+| External Device                  |
+| XN                               |
++----------------------------------+ 0xA0000000
+| External RAM                     |
+| Có thể chứa/excute code theo     |
+| hình tài liệu                    |
++----------------------------------+ 0x60000000
+| Peripheral                       |
+| XN                               |
++----------------------------------+ 0x40000000
+| SRAM                             |
+| Data / có thể execute code       |
++----------------------------------+ 0x20000000
+| Code                             |
+| Program memory / vector table    |
++----------------------------------+ 0x00000000
+```
+
+Luồng tư duy:
+
+```text
+Địa chỉ
+  ↓
+Memory Map xác định vùng
+  ↓
+Bus đưa truy cập tới vùng đó
+  ↓
+Memory / Peripheral phản hồi
+```
+
+---
+
+### 1.7.19. Ý cần nhớ khi phỏng vấn
+
+Nếu nhà tuyển dụng hỏi **“Memory Map là gì?”**, có thể trả lời:
+
+> **Memory Map là cách processor chia không gian địa chỉ thành các vùng dành cho code, SRAM, peripheral, external memory và system resources. Nó cho biết một địa chỉ cụ thể tương ứng với loại tài nguyên nào.**
+
+Nếu hỏi **“Cortex-M có không gian địa chỉ bao nhiêu?”**:
+
+> **Theo tài liệu, processor có kênh địa chỉ 32-bit nên có tối đa 4 GB không gian địa chỉ, từ `0x00000000` đến `0xFFFFFFFF`.**
+
+Nếu hỏi **“Code, SRAM và Peripheral bắt đầu ở đâu?”**:
+
+> **Theo sơ đồ nguồn: Code bắt đầu tại `0x00000000`, SRAM tại `0x20000000`, và Peripheral tại `0x40000000`.**
+
+Nếu hỏi **“Peripheral Region dùng để làm gì?”**:
+
+> **Đây là vùng chủ yếu dành cho on-chip peripheral. Hình tài liệu mô tả vùng này là Execute Never, vì vậy không dùng để thực thi code.**
+
+Nếu hỏi **“Memory Map liên quan gì đến peripheral register?”**:
+
+> **Mỗi peripheral register có thể được gắn với một địa chỉ trong không gian địa chỉ. CPU đưa địa chỉ đó lên bus để truy cập đúng register; file nguồn minh họa bằng việc CPU đọc dữ liệu từ ADC register rồi chuyển dữ liệu vào memory.**
+
+Nếu hỏi **“4 GB addressable memory có nghĩa STM32 có 4 GB RAM không?”**:
+
+> **Không. 4 GB là không gian địa chỉ mà processor có thể biểu diễn; từng MCU thực tế chỉ triển khai một phần trong các vùng đó.**
+
+---
+
+### 1.7.20. Câu hỏi phỏng vấn tự kiểm tra
+
+1. Memory Map là gì?
+2. Kích thước address bus ảnh hưởng tới điều gì?
+3. Kênh địa chỉ trong hình có độ rộng bao nhiêu bit?
+4. 32-bit address space cho tối đa bao nhiêu không gian địa chỉ?
+5. Không gian địa chỉ bắt đầu và kết thúc ở đâu?
+6. Code Region bắt đầu tại địa chỉ nào?
+7. Code Region có kích thước bao nhiêu theo hình?
+8. Processor dùng Code Region cho những loại memory nào theo tài liệu?
+9. Vector table liên quan gì tới Code Region?
+10. SRAM Region bắt đầu tại địa chỉ nào?
+11. Peripheral Region bắt đầu tại địa chỉ nào?
+12. Peripheral Region được hình mô tả là Execute Never nghĩa là gì ở mức khái niệm?
+13. External RAM Region nằm trong khoảng nào?
+14. External Device Region nằm trong khoảng nào?
+15. System/PPB region bắt đầu từ vùng địa chỉ nào theo sơ đồ tổng thể?
+16. Bit-Band Region của SRAM bắt đầu tại đâu theo hình?
+17. Bit-Band Alias của SRAM bắt đầu tại đâu?
+18. Bit-Band Region của Peripheral bắt đầu tại đâu?
+19. Bit-Band Alias của Peripheral bắt đầu tại đâu?
+20. Memory Map và Bus Architecture khác nhau ở điểm nào?
+21. CPU đọc ADC register bằng địa chỉ như thế nào theo `readme.txt`?
+22. Vì sao 4 GB address space không có nghĩa MCU có 4 GB bộ nhớ vật lý?
+23. Hãy kể các base address chính: Code, SRAM, Peripheral, External RAM, External Device và PPB/System.
+
+---
+
+### 1.7.21. Tóm tắt
+
+```text
+32-bit address bus
+        ↓
+4 GB address space
+        ↓
+0x00000000 → 0xFFFFFFFF
+```
+
+Các vùng chính:
+
+```text
+0x00000000
+→ Code
+
+0x20000000
+→ SRAM
+
+0x40000000
+→ Peripheral
+
+0x60000000
+→ External RAM
+
+0xA0000000
+→ External Device
+
+0xE0000000
+→ PPB / System
+```
+
+Memory Map trả lời:
+
+```text
+“Địa chỉ này thuộc vùng nào?”
+```
+
+Bus Architecture trả lời:
+
+```text
+“Processor truy cập vùng đó qua đường nào?”
+```
+
+Ví dụ với peripheral:
+
+```text
+CPU tạo địa chỉ register
+        ↓
+Address Bus
+        ↓
+Peripheral register được chọn
+        ↓
+Data Bus
+        ↓
+CPU nhận dữ liệu
+```
+
+**Ý quan trọng nhất:**
+
+> **Memory Map chia không gian địa chỉ 32-bit của processor thành các vùng Code, SRAM, Peripheral, External RAM, External Device và System/PPB. CPU dùng địa chỉ để xác định chính xác bộ nhớ hoặc peripheral register cần truy cập, còn bus là đường truyền địa chỉ và dữ liệu tới vùng đó.**
 
 [↑ Về mục lục](#muc-luc)
