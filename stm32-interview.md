@@ -15,11 +15,10 @@
    - 1.5. Reset Sequence
    - 1.6. Bus Architecture
    - **1.7. Memory Map** ← đang triển khai
-   - 1.8. Memory-Mapped I/O
-   - 1.9. Flash và SRAM
-   - 1.10. Stack cơ bản trên Cortex-M
-   - 1.11. Startup Code
-   - 1.12. Linker Script và các section
+   - 1.8. Flash và SRAM
+   - 1.9. Stack cơ bản trên Cortex-M
+   - 1.10. Startup Code
+   - 1.11. Linker Script và các section
 2. **RCC + Clock**
 3. **GPIO**
 4. **Interrupt + NVIC + EXTI**
@@ -1851,7 +1850,7 @@ Memory-Mapped Register
 Peripheral
 ```
 
-Khái niệm này sẽ được triển khai sâu hơn ở mục **Memory-Mapped I/O**.
+Khái niệm **Memory-Mapped Register / Memory-Mapped I/O** đã được giới thiệu ngay trong mục **1.4. Core Registers**; mục **1.7. Memory Map** tiếp tục làm rõ các vùng địa chỉ mà những tài nguyên đó được ánh xạ vào.
 
 ---
 
@@ -3103,7 +3102,7 @@ PPB
 → một bus/interface và vùng truy cập riêng được thể hiện trong sơ đồ
 ```
 
-Chi tiết về các thanh ghi memory-mapped liên quan tới processor/peripheral sẽ được học ở mục **Memory-Mapped I/O**.
+Khái niệm các thanh ghi memory-mapped liên quan tới processor/peripheral đã được giới thiệu ở mục **1.4. Core Registers**. Phần **1.7. Memory Map** tập trung vào vị trí các vùng đó trong không gian địa chỉ.
 
 ---
 
@@ -3933,7 +3932,7 @@ Phần này mới chỉ dùng để giải thích **tại sao Memory Map quan tr
 
 > CPU phải biết **địa chỉ** của register/peripheral để truy cập đúng tài nguyên.
 
-Cơ chế **Memory-Mapped I/O** sẽ được triển khai kỹ hơn ở mục 1.8.
+Cơ chế **Memory-Mapped I/O** đã được giải thích ở mục **1.4. Core Registers**; trong mục **1.7. Memory Map**, ví dụ ADC được dùng để nối khái niệm đó với address bus, data bus và vùng Peripheral.
 
 ---
 
