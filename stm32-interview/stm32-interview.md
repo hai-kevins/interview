@@ -2797,101 +2797,66 @@ LSE thuộc backup domain và có thể tiếp tục phục vụ RTC khi nguồn
 <a id="muc-02-03"></a>
 ## 2.3. Clock Tree
 
-Clock tree mô tả **đường phân phối clock** từ clock source tới các clock domain và peripheral.
+Clock tree mô tả **đường phân phối clock** từ clock source tới processor, bus và peripheral.
 
-Sơ đồ rút gọn:
+**Hình minh họa — Clock tree của STM32F1**
 
-```text
-              HSI 8 MHz
-                 │
-                 ├───────────────┐
-                 │               │
-                 │            HSI / 2
-                 │               │
-                 │               ↓
-                 │              PLL
-                 │               │
-HSE ─────────────┼───────────────┤
-                 │               │
-                 └──────┬────────┘
-                        ↓
-                      SYSCLK
-                        │
-                  AHB prescaler
-                        │
-                        ↓
-                       HCLK
-                        │
-           ┌────────────┴────────────┐
-           ↓                         ↓
-    APB1 prescaler             APB2 prescaler
-           ↓                         ↓
-         PCLK1                     PCLK2
-           │                         │
-           ↓                         ↓
-    APB1 peripheral            APB2 peripheral
-```
+![Clock tree STM32F1](assets/clock-tree.png)
 
-Đường chính:
+> **Cách đọc hình:** đọc từ trái sang phải. Bên trái là các clock source `HSI/HSE/LSI/LSE`; vùng giữa là khối chọn nguồn, PLL và SYSCLK; sau `SYSCLK` là AHB prescaler tạo `HCLK`, rồi APB1/APB2 prescaler tạo `PCLK1/PCLK2`; các nhánh phía phải là clock đi tới timer và các peripheral. Không cần học thuộc toàn bộ hình trong một lần — mỗi nhánh được giải thích tại mục tương ứng bên dưới.
+
+Đường chính cần nhớ khi tính clock cho phần lớn peripheral:
 
 ```text
 clock source
     ↓
 SYSCLK
     ↓
-AHB prescaler
-    ↓
 HCLK
     ↓
-APB1 / APB2 prescaler
+PCLK1 hoặc PCLK2
     ↓
-PCLK1 / PCLK2
-    ↓
-peripheral
+clock thực tế của peripheral
 ```
 
-Một số nhánh riêng:
+Từ hình này, cần nhận ra ba điểm:
+
+1. `SYSCLK` chỉ là một nút trong clock tree, không phải clock cuối cùng của mọi peripheral.
+2. Sau `SYSCLK`, AHB/APB prescaler tiếp tục tạo `HCLK`, `PCLK1` và `PCLK2`.
+3. Một số peripheral có nhánh clock riêng, vì vậy phải xác định đúng clock cuối cùng trước khi tính timing.
+
+Các chi tiết đã được tách sang đúng mục để tránh lặp:
 
 ```text
-PCLK2
-  ↓
-ADC prescaler
-  ↓
-ADCCLK
+HSI / HSE / LSI / LSE
+→ 2.2
+
+PLL
+→ 2.4
+
+SYSCLK / HCLK / PCLK1 / PCLK2
+→ 2.5
+
+Prescaler và cách tính tần số
+→ 2.6
+
+Timer clock
+→ 2.8
+
+ADC / USB / SysTick / RTC / IWDG / USART / SPI / I2C
+→ 2.9
 ```
+
+Khi đọc clock tree cho một peripheral cụ thể, dùng một chuỗi duy nhất:
 
 ```text
-PCLK1 / PCLK2
-  ↓
-timer clock logic
-  ↓
-TIMxCLK
+1. Xác định clock source
+2. Xác định PLL nếu đường clock đi qua PLL
+3. Xác định SYSCLK
+4. Xác định HCLK
+5. Xác định PCLK của bus tương ứng
+6. Áp dụng quy tắc clock riêng của peripheral nếu có
 ```
-
-```text
-PLLCLK
-  ↓
-USB prescaler
-  ↓
-USBCLK
-```
-
-```text
-HCLK
-  ├── AHB domain / processor
-  └── HCLK / 8 → một lựa chọn clock cho SysTick
-```
-
-Khi đọc clock tree, luôn trả lời theo thứ tự:
-
-```text
-1. Clock source là gì?
-2. Clock đi qua PLL/prescaler nào?
-3. Clock domain hoặc peripheral cuối cùng nhận clock nào?
-4. Tần số cuối cùng bằng bao nhiêu?
-```
-
-Tên và vai trò của `SYSCLK/HCLK/PCLK1/PCLK2` được trình bày tại **2.5**; công thức prescaler nằm ở **2.6**; nhánh timer và các peripheral đặc biệt nằm ở **2.8–2.9**.
 
 ---
 
