@@ -3518,6 +3518,8 @@ PCLK2 = 72 MHz
 ADCCLK = 12 MHz
 ```
 
+Mục này tập trung vào **thứ tự cấu hình và lý do cần từng bước**. Các khái niệm HSI/HSE, PLL, prescaler và peripheral clock đã được trình bày ở các mục trước nên không lặp lại toàn bộ định nghĩa.
+
 ### Bước 1 — Bắt đầu từ trạng thái reset
 
 Sau system reset:
@@ -3526,9 +3528,33 @@ Sau system reset:
 SYSCLK = HSI
 ```
 
-Đặc điểm của HSI đã được nêu tại **2.2**, vì vậy ở đây chỉ dùng nó làm clock ban đầu để cấu hình hệ thống.
+HSI đóng vai trò clock ban đầu để Cortex-M3 và phần mềm có thể chạy trước khi HSE/PLL được cấu hình.
 
-### Bước 2 — Cấu hình Flash latency
+```text
+Reset
+  ↓
+HSI làm SYSCLK
+  ↓
+CPU đã có clock để chạy startup code
+  ↓
+software bắt đầu cấu hình clock tree mới
+```
+
+**Vì sao cần hiểu bước này?**
+
+Ta không bắt đầu từ một hệ thống “không có clock”. Sau reset, HSI đã là system clock mặc định, nên phần mềm có một nguồn clock ổn định ban đầu để thực hiện các thao tác cấu hình RCC.
+
+Do đó trong trường hợp reset bình thường:
+
+```text
+không cần chuyển sang HSI trước rồi mới cấu hình
+```
+
+vì hệ thống đã ở trạng thái này.
+
+---
+
+### Bước 2 — Cấu hình Flash latency trước khi tăng SYSCLK
 
 Khi tăng system frequency, Flash phải dùng số wait state phù hợp.
 
@@ -3551,17 +3577,111 @@ Với mục tiêu 72 MHz:
 FLASH_ACR.LATENCY = 2 wait states
 ```
 
-### Bước 3 — Enable HSE và chờ ready
+**Vì sao cần bước này?**
+
+Ở 72 MHz:
+
+```text
+Tclock = 1 / 72 MHz
+       ≈ 13.9 ns
+```
+
+Tức là một chu kỳ SYSCLK chỉ kéo dài khoảng `13.9 ns`.
+
+Flash nội bộ có **access time** riêng và không phải lúc nào cũng trả instruction/data kịp trong một chu kỳ ngắn như vậy. Vì thế Flash interface phải chèn thêm wait state để processor chỉ tiếp tục khi dữ liệu đã sẵn sàng.
+
+Có thể hình dung:
+
+```text
+CPU yêu cầu instruction
+        ↓
+Flash bắt đầu đọc
+        ↓
+dữ liệu chưa sẵn sàng
+        ↓
+wait state
+        ↓
+wait state
+        ↓
+dữ liệu sẵn sàng
+        ↓
+CPU tiếp tục
+```
+
+Ý nghĩa:
+
+```text
+0 wait state
+→ không chèn thêm chu kỳ chờ
+
+1 wait state
+→ chèn thêm 1 chu kỳ chờ
+
+2 wait states
+→ chèn thêm 2 chu kỳ chờ
+```
+
+Vì vậy phải chuẩn bị Flash cho tần số mới **trước khi thực sự chuyển SYSCLK lên 72 MHz**.
+
+```text
+đúng:
+Flash latency phù hợp
+        ↓
+sau đó tăng SYSCLK
+
+không nên:
+tăng SYSCLK
+        ↓
+sau đó mới tăng Flash latency
+```
+
+> Việc enable HSE tự nó chưa làm SYSCLK tăng. Điểm quan trọng là Flash latency phải đúng trước thời điểm system clock thực sự được chuyển sang tần số cao hơn.
+
+---
+
+### Bước 3 — Enable HSE và chờ `HSERDY`
 
 ```text
 HSEON = 1
     ↓
+HSE oscillator bắt đầu hoạt động
+    ↓
 chờ HSERDY = 1
 ```
 
-Ý nghĩa `HSEON/HSERDY` đã được định nghĩa tại **2.2**.
+**Vì sao phải chờ?**
 
-### Bước 4 — Cấu hình prescaler
+Khi vừa enable HSE, oscillator cần thời gian để khởi động và ổn định. `HSEON` chỉ là yêu cầu bật HSE, còn `HSERDY` là xác nhận từ hardware rằng HSE đã sẵn sàng để sử dụng.
+
+```text
+HSEON
+→ yêu cầu HSE chạy
+
+HSERDY
+→ HSE đã ổn định
+```
+
+Do đó:
+
+```text
+HSEON = 1
+không đồng nghĩa
+HSE đã dùng được ngay
+```
+
+Trình tự rõ ràng:
+
+```text
+enable HSE
+    ↓
+chờ HSERDY
+    ↓
+mới dùng HSE làm PLL input hoặc SYSCLK
+```
+
+---
+
+### Bước 4 — Cấu hình prescaler trước khi tăng SYSCLK
 
 Dùng các giá trị đã tính ở **2.6**:
 
@@ -3571,6 +3691,51 @@ PPRE1  = /2
 PPRE2  = /1
 ADCPRE = /6
 ```
+
+**Vì sao phải cấu hình trước khi switch SYSCLK?**
+
+Các prescaler quyết định tần số của các clock domain sau khi SYSCLK thay đổi.
+
+Ví dụ nếu chuyển thẳng:
+
+```text
+SYSCLK = 72 MHz
+HPRE   = /1
+PPRE1  = /1
+```
+
+thì:
+
+```text
+HCLK  = 72 MHz
+PCLK1 = 72 MHz
+```
+
+trong khi giới hạn của APB1 là:
+
+```text
+PCLK1 ≤ 36 MHz
+```
+
+Vì vậy phải đặt:
+
+```text
+PPRE1 = /2
+```
+
+trước khi switch, để ngay khi SYSCLK trở thành 72 MHz:
+
+```text
+PCLK1 = 36 MHz
+```
+
+Tư duy cần nhớ:
+
+> **Chuẩn bị toàn bộ clock tree cho trạng thái mới trước khi kích hoạt trạng thái mới.**
+
+Tương tự, `ADCPRE` phải được chọn sao cho `ADCCLK` không vượt giới hạn sau khi `PCLK2` tăng.
+
+---
 
 ### Bước 5 — Cấu hình PLL khi PLL đang OFF
 
@@ -3582,23 +3747,159 @@ PLLMUL   = ×9
 
 Chi tiết PLL nằm tại **2.4**.
 
-### Bước 6 — Enable PLL và chờ ready
+**Vì sao PLL phải OFF?**
+
+Các field:
+
+```text
+PLLSRC
+PLLXTPRE
+PLLMUL
+```
+
+quyết định nguồn vào và hệ số của PLL.
+
+Có thể hình dung:
+
+```text
+HSE 8 MHz
+   ↓
+PLLSRC
+   ↓
+PLLXTPRE
+   ↓
+PLLMUL ×9
+   ↓
+PLLCLK 72 MHz
+```
+
+Các tham số này phải được cấu hình trước khi PLL hoạt động. Khi PLL đã enable, không được thay đổi cấu hình nguồn/multiplier theo cách thông thường.
+
+Do đó:
+
+```text
+PLL OFF
+  ↓
+cấu hình PLL source / predivider / multiplier
+  ↓
+PLL ON
+```
+
+---
+
+### Bước 6 — Enable PLL và chờ `PLLRDY`
 
 ```text
 PLLON = 1
     ↓
+PLL bắt đầu lock
+    ↓
 chờ PLLRDY = 1
 ```
 
-### Bước 7 — Chuyển SYSCLK sang PLLCLK
+**Vì sao phải chờ?**
+
+Sau khi `PLLON = 1`, PLL cần thời gian để khóa tần số/pha với nguồn đầu vào.
+
+```text
+PLLON
+→ yêu cầu PLL chạy
+
+PLLRDY
+→ PLL đã lock và ổn định
+```
+
+Vì vậy:
+
+```text
+PLLON = 1
+không đồng nghĩa
+PLLCLK đã ổn định ngay
+```
+
+Quan hệ này tương tự:
+
+```text
+HSEON  ↔ HSERDY
+PLLON  ↔ PLLRDY
+```
+
+Chỉ sau khi `PLLRDY = 1` mới nên coi `PLLCLK` là nguồn clock sẵn sàng để được chọn làm SYSCLK.
+
+---
+
+### Bước 7 — Chuyển SYSCLK sang PLLCLK và kiểm tra `SWS`
 
 ```text
 SW = PLL
     ↓
+hardware thực hiện clock switch
+    ↓
 chờ SWS = PLL
 ```
 
-`SW` là lựa chọn phần mềm yêu cầu; `SWS` là trạng thái nguồn SYSCLK đang thực sự được dùng.
+Hai field cần phân biệt:
+
+```text
+SW
+→ software yêu cầu chọn nguồn SYSCLK
+
+SWS
+→ hardware báo nguồn SYSCLK đang thực sự được dùng
+```
+
+Do đó:
+
+```text
+SW = PLL
+```
+
+có nghĩa:
+
+```text
+"hãy chuyển SYSCLK sang PLL"
+```
+
+chứ chưa nên hiểu ngay rằng việc chuyển đã hoàn tất.
+
+Chỉ khi:
+
+```text
+SWS = PLL
+```
+
+mới xác nhận:
+
+```text
+SYSCLK thực sự đang lấy từ PLLCLK
+```
+
+Luồng:
+
+```text
+PLLRDY = 1
+→ PLL đã ổn định
+
+SW = PLL
+→ yêu cầu switch
+
+SWS = PLL
+→ xác nhận switch hoàn tất
+```
+
+Cần phân biệt hai loại xác nhận:
+
+```text
+PLLRDY
+→ bản thân PLL đã ready
+
+SWS
+→ PLL thực sự đã trở thành SYSCLK
+```
+
+Hardware của STM32F1 còn bảo vệ quá trình switch: nếu target clock source chưa ready thì việc chuyển system clock chưa được hoàn tất cho tới khi nguồn đó sẵn sàng. Tuy vậy, phần mềm vẫn nên chờ ready flag trước để trình tự cấu hình rõ ràng và dễ kiểm soát.
+
+---
 
 ### Bước 8 — Enable clock cho peripheral cần sử dụng
 
@@ -3617,6 +3918,46 @@ DMA1
 
 Cơ chế clock gating đã được trình bày tại **2.7**.
 
+**Vì sao vẫn phải enable riêng từng peripheral?**
+
+Việc `PCLK1`, `PCLK2` hoặc HCLK tồn tại không có nghĩa mọi peripheral trên bus đó đều đang được cấp clock.
+
+Ví dụ:
+
+```text
+PCLK2
+  ↓
+clock gate
+  ↓
+GPIOA
+```
+
+Nếu:
+
+```text
+IOPAEN = 0
+```
+
+thì:
+
+```text
+PCLK2 vẫn tồn tại
+nhưng
+GPIOA chưa được cấp clock
+```
+
+Do đó phải phân biệt:
+
+```text
+bus clock tồn tại
+≠
+peripheral clock đã được enable
+```
+
+Clock gating giúp giảm tiêu thụ điện bằng cách chỉ cấp clock cho các peripheral cần sử dụng.
+
+---
+
 ### Bước 9 — Kiểm tra các clock thực tế
 
 Sau cấu hình, xác nhận:
@@ -3633,20 +3974,71 @@ USBCLK nếu dùng USB
 
 Không chỉ kiểm tra `SYSCLK`.
 
+**Vì sao cần bước này?**
+
+Một peripheral có thể không dùng trực tiếp `SYSCLK`.
+
+Ví dụ với cấu hình chuẩn:
+
+```text
+SYSCLK = 72 MHz
+HCLK   = 72 MHz
+PCLK1  = 36 MHz
+PCLK2  = 72 MHz
+```
+
+Timer trên APB1 lại có:
+
+```text
+PPRE1 = /2
+→ TIMxCLK = 2 × PCLK1
+→ TIMxCLK = 72 MHz
+```
+
+ADC:
+
+```text
+PCLK2   = 72 MHz
+ADCPRE  = /6
+
+→ ADCCLK = 12 MHz
+```
+
+Vì vậy:
+
+```text
+SYSCLK đúng
+```
+
+chưa đủ để kết luận:
+
+```text
+UART baud đúng
+Timer period đúng
+PWM frequency đúng
+ADC timing đúng
+SPI clock đúng
+I2C timing đúng
+```
+
+Trước khi cấu hình một peripheral, luôn phải xác định **clock thực tế đi vào peripheral đó**.
+
+---
+
 ### Luồng tổng quát
 
 ```text
-reset
+Reset
   ↓
 HSI làm SYSCLK ban đầu
   ↓
-Flash latency
+chuẩn bị Flash latency cho tần số mới
   ↓
 enable HSE → chờ HSERDY
   ↓
-cấu hình bus/ADC prescaler
+chuẩn bị AHB/APB/ADC prescaler
   ↓
-cấu hình PLL khi OFF
+cấu hình PLL khi PLL OFF
   ↓
 enable PLL → chờ PLLRDY
   ↓
@@ -3657,15 +4049,40 @@ enable peripheral clock
 xác nhận clock cuối cùng của từng domain/peripheral
 ```
 
+Có thể nhớ toàn bộ quy trình bằng tư duy:
+
+```text
+clock hiện tại đủ để CPU chạy
+        ↓
+chuẩn bị phần cứng chịu được clock mới
+        ↓
+chuẩn bị các bộ chia
+        ↓
+tạo clock mới
+        ↓
+chờ clock mới ổn định
+        ↓
+chuyển sang clock mới
+        ↓
+xác nhận switch
+        ↓
+phân phối clock tới peripheral
+        ↓
+kiểm tra tần số cuối cùng
+```
+
+---
+
 ### Các lỗi cấu hình thường gặp
 
 - dùng HSE trước khi `HSERDY = 1`;
 - dùng PLL trước khi `PLLRDY = 1`;
 - thay đổi PLL source/multiplier khi PLL vẫn đang ON;
+- chuyển sang clock nhanh trước khi Flash latency phù hợp;
 - để `PCLK1` vượt giới hạn;
 - lấy `PCLKx` làm `TIMxCLK` mà không kiểm tra APB prescaler;
 - quên enable peripheral clock;
-- tăng system frequency nhưng chưa cấu hình Flash latency phù hợp.
+- chỉ kiểm tra `SYSCLK` mà không kiểm tra clock thực tế của peripheral.
 
 Các lỗi trên đều suy ra trực tiếp từ **2.2, 2.4, 2.6, 2.7 và 2.8**, nên không lặp lại từng phép tính ở đây.
 
