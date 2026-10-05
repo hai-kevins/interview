@@ -3586,26 +3586,29 @@ Tclock = 1 / 72 MHz
        ≈ 13.9 ns
 ```
 
-Tức là một chu kỳ SYSCLK chỉ kéo dài khoảng `13.9 ns`.
+Một chu kỳ SYSCLK chỉ dài khoảng `13.9 ns`, trong khi Flash nội bộ có **access time** riêng. Nếu Flash chưa kịp trả instruction/data trong khoảng thời gian processor mong đợi, Flash interface phải kéo dài access bằng **wait state**.
 
-Flash nội bộ có **access time** riêng và không phải lúc nào cũng trả instruction/data kịp trong một chu kỳ ngắn như vậy. Vì thế Flash interface phải chèn thêm wait state để processor chỉ tiếp tục khi dữ liệu đã sẵn sàng.
-
-Có thể hình dung:
+Có thể hình dung ở mức khái niệm:
 
 ```text
-CPU yêu cầu instruction
-        ↓
-Flash bắt đầu đọc
-        ↓
-dữ liệu chưa sẵn sàng
-        ↓
-wait state
-        ↓
-wait state
-        ↓
-dữ liệu sẵn sàng
-        ↓
-CPU tiếp tục
+Không có wait state
+
+SYSCLK:   |---- cycle n ----|---- cycle n+1 ----|---- cycle n+2 ----|
+CPU:      request --------->| cần data
+Flash:    [------ đang đọc ------]----> data ready
+                            ^
+                            └─ nếu data chưa ready tại đây
+                               → timing không đáp ứng
+```
+
+Khi cấu hình `2 wait states`:
+
+```text
+2 wait states
+
+SYSCLK:   |--- access ---|--- wait 1 ---|--- wait 2 ---|--- next ---|
+CPU:      request ------------------------------------->| dùng data
+Flash:    [-------------- đang hoàn tất read ---------->| data ready
 ```
 
 Ý nghĩa:
@@ -3621,21 +3624,17 @@ CPU tiếp tục
 → chèn thêm 2 chu kỳ chờ
 ```
 
-Vì vậy phải chuẩn bị Flash cho tần số mới **trước khi thực sự chuyển SYSCLK lên 72 MHz**.
+> **Sơ đồ trên chỉ minh họa quan hệ thời gian giữa processor và Flash, không phải waveform bus chính xác theo từng tín hiệu phần cứng.**
+
+Vì vậy, nguyên tắc cần nhớ là:
 
 ```text
-đúng:
-Flash latency phù hợp
+cấu hình Flash latency phù hợp với tần số mục tiêu
         ↓
-sau đó tăng SYSCLK
-
-không nên:
-tăng SYSCLK
-        ↓
-sau đó mới tăng Flash latency
+sau đó mới chuyển SYSCLK lên tần số cao hơn
 ```
 
-> Việc enable HSE tự nó chưa làm SYSCLK tăng. Điểm quan trọng là Flash latency phải đúng trước thời điểm system clock thực sự được chuyển sang tần số cao hơn.
+Việc enable HSE tự nó chưa làm SYSCLK tăng; điều quan trọng là Flash latency phải đúng **trước thời điểm system clock thực sự chuyển sang clock nhanh hơn**.
 
 ---
 
