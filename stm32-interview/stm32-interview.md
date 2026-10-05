@@ -5191,44 +5191,53 @@ AFIO chịu trách nhiệm cho **remapping, EXTI source selection và SWJ config
 <a id="chuong-04"></a>
 # 4. Interrupt + NVIC + EXTI
 
-Interrupt cho phép CPU phản ứng với một sự kiện mà không phải liên tục kiểm tra trạng thái bằng polling.
-
-Luồng tổng quát:
+Chương này tách rõ ba lớp:
 
 ```text
-Sự kiện
-  ↓
-Peripheral / EXTI tạo interrupt request
-  ↓
+Cortex-M3 exception model
+→ exception entry/return, priority, Handler mode
+
 NVIC
-  ↓
-Enable + Priority + Pending
-  ↓
-CPU chuyển sang Handler mode
-  ↓
-ISR / Handler
-  ↓
-xử lý nguyên nhân interrupt
-  ↓
-clear flag cần thiết
-  ↓
-Exception Return
-  ↓
-CPU tiếp tục code trước đó
+→ quản lý external IRQ ở cấp processor
+
+EXTI
+→ phát hiện trigger trên EXTI line và tạo interrupt/event request
 ```
 
-Trên STM32F10xxx, NVIC hỗ trợ nhiều nguồn interrupt từ peripheral và sử dụng 4 bit priority, tương ứng 16 mức priority lập trình được.
+Mỗi khái niệm được giải thích đầy đủ tại một mục chính; các mục quy trình và ví dụ chỉ dẫn chiếu lại để tránh lặp logic.
 
-EXTI chịu trách nhiệm phát hiện các cạnh tín hiệu trên external interrupt/event line và có thể tạo interrupt request hoặc event request.
+## Quy ước thuật ngữ
+
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **exception** | Khái niệm chung của Cortex-M cho sự kiện làm chuyển luồng thực thi sang một exception handler. |
+| **system exception** | Exception thuộc processor/system, ví dụ NMI, HardFault, SVCall, PendSV, SysTick. |
+| **external interrupt / IRQ** | Exception do nguồn bên ngoài processor tạo ra, ví dụ EXTI, Timer, USART, DMA. |
+| **exception handler** | Hàm xử lý một exception bất kỳ. |
+| **ISR** | Interrupt Service Routine; dùng cho handler của external interrupt/IRQ, không dùng làm tên chung cho mọi exception handler. |
+| **interrupt request** | Yêu cầu interrupt do peripheral/EXTI tạo ra và đưa tới NVIC. |
+| **IRQn** | Tên/giá trị định danh interrupt trong CMSIS, ví dụ `EXTI15_10_IRQn`. |
+| **pending flag** | Cờ chờ xử lý ở nguồn interrupt, ví dụ `EXTI_PR.PR13`. |
+| **Pending state** | Trạng thái một IRQ đang chờ được processor phục vụ tại NVIC. |
+| **Active state** | Trạng thái handler của IRQ đang được processor thực thi. |
+| **priority number** | Giá trị priority lập trình; trên STM32F1 số nhỏ hơn biểu thị độ ưu tiên cao hơn. |
+| **preemption priority** | Phần priority quyết định một exception có thể preempt exception khác hay không. |
+| **subpriority** | Phần priority dùng phân thứ tự khi các IRQ có cùng preemption priority và cùng chờ phục vụ. |
+| **EXTI line** | Đường trigger của EXTI; GPIO pin number `n` ánh xạ tới `EXTIn`. |
+| **Interrupt path** | Đường EXTI tạo interrupt request tới NVIC, được mask/unmask bởi `IMR`. |
+| **Event path** | Đường EXTI tạo event, được mask/unmask bởi `EMR`; không đồng nghĩa với chạy ISR. |
+| **W1C** | Write 1 to Clear; ghi `1` vào bit để clear cờ, ví dụ `EXTI_PR`. |
+
+Trong chương này, **interrupt** được dùng cho external interrupt/IRQ khi ngữ cảnh nói về peripheral/EXTI; **exception** được dùng khi nói về cơ chế tổng quát của Cortex-M3.
+
+---
 
 <a id="muc-04-01"></a>
 ## 4.1. Interrupt là gì? Polling và Interrupt
 
 ### Polling
 
-Polling là cách CPU chủ động kiểm tra trạng thái liên tục.
-
-Ví dụ:
+Polling nghĩa là processor chủ động kiểm tra trạng thái nguồn sự kiện:
 
 ```c
 while (1)
@@ -5240,98 +5249,65 @@ while (1)
 }
 ```
 
-Luồng:
+Mô hình:
 
 ```text
-CPU
- ↓
-kiểm tra trạng thái
- ↓
-chưa có sự kiện?
- ↓
-kiểm tra lại
- ↓
-kiểm tra lại
- ↓
-...
+processor
+   ↓
+đọc trạng thái
+   ↓
+có sự kiện?
+   ├── không → kiểm tra lại
+   └── có    → xử lý
 ```
 
 Ưu điểm:
 
-- Luồng chương trình đơn giản.
-- Dễ theo dõi khi hệ thống nhỏ.
+- luồng điều khiển đơn giản;
+- phù hợp với hệ thống nhỏ hoặc trạng thái cần kiểm tra định kỳ.
 
 Hạn chế:
 
-- CPU phải liên tục kiểm tra.
-- Có thể lãng phí thời gian xử lý.
-- Nếu vòng polling quá chậm, một số sự kiện ngắn có thể bị bỏ lỡ.
+- processor phải dành thời gian kiểm tra;
+- latency phụ thuộc chu kỳ polling;
+- sự kiện ngắn có thể bị bỏ lỡ nếu polling không đủ nhanh.
 
 ### Interrupt
 
-Với interrupt:
+Với interrupt, nguồn phần cứng tạo interrupt request khi sự kiện xảy ra:
 
 ```text
-CPU chạy công việc chính
+processor đang chạy Thread mode
         ↓
-sự kiện xảy ra
+interrupt request xuất hiện
         ↓
-hardware tạo interrupt request
+exception được chấp nhận
         ↓
-CPU tạm chuyển sang ISR
+processor chạy ISR
         ↓
-ISR xử lý
+exception return
         ↓
-CPU quay lại công việc trước đó
+tiếp tục context trước đó
 ```
 
-Ví dụ:
+Điểm cốt lõi:
 
-```c
-volatile uint8_t button_event = 0;
+```text
+Polling
+→ processor đi tìm sự kiện
 
-void EXTI15_10_IRQHandler(void)
-{
-    if (EXTI->PR & (1U << 13))
-    {
-        EXTI->PR = (1U << 13);
-        button_event = 1;
-    }
-}
+Interrupt
+→ phần cứng báo cho processor khi sự kiện xảy ra
 ```
 
-Main loop không cần liên tục đọc chân PC13 để phát hiện cạnh:
-
-```c
-while (1)
-{
-    if (button_event)
-    {
-        button_event = 0;
-
-        /* xử lý sự kiện */
-    }
-}
-```
-
-### So sánh
-
-| Đặc điểm | Polling | Interrupt |
-|---|---|---|
-| Ai chủ động kiểm tra? | CPU | Hardware báo CPU |
-| CPU phải kiểm tra liên tục | Có | Không |
-| Phản ứng với sự kiện | Phụ thuộc chu kỳ polling | Theo cơ chế interrupt |
-| Độ phức tạp | Thấp | Cao hơn |
-| Phù hợp | Hệ thống đơn giản | Nhiều sự kiện bất đồng bộ |
+Chi tiết exception entry/return nằm tại **4.4**; cách thiết kế ISR nằm tại **4.19**.
 
 ---
 
 <a id="muc-04-02"></a>
 ## 4.2. Exception và Interrupt
 
-Trong Cortex-M, **exception** là khái niệm tổng quát cho các sự kiện làm thay đổi luồng điều khiển sang một handler.
-
-Có thể chia ở mức khái niệm:
+Trên Cortex-M3:
 
 ```text
 Exception
@@ -5350,53 +5326,35 @@ Exception
     ├── EXTI
     ├── Timer
     ├── USART
-    ├── SPI
-    ├── I2C
+    ├── SPI / I2C
     ├── ADC
     ├── DMA
     └── ...
 ```
 
-Điểm cần phân biệt:
+Quan hệ cần nhớ:
 
 ```text
-External Interrupt
-→ một loại Exception
-
-Exception
-→ không chỉ có External Interrupt
+external interrupt
+⊂
+exception
 ```
 
-Một số exception có priority cố định hoặc đặc biệt:
+Vì vậy:
 
-```text
-Reset
-NMI
-HardFault
-```
+- mọi external interrupt đều là exception;
+- không phải mọi exception đều là external interrupt.
 
-Các IRQ từ peripheral được quản lý thông qua NVIC và có priority lập trình được.
+`Reset`, `NMI`, `HardFault` có cơ chế priority đặc biệt; các external IRQ của STM32F1 dùng priority lập trình được thông qua cơ chế NVIC.
+
+Processor mode và privilege khi chạy handler đã được trình bày tại **1.2–1.3**, nên chương này không lặp lại định nghĩa đó.
 
 ---
 
 <a id="muc-04-03"></a>
 ## 4.3. Vector Table và ISR / Handler
 
-Vector Table đã xuất hiện ở phần Reset Sequence và Startup Code.
-
-Các entry đầu tiên có dạng:
-
-```text
-Vector Table
-
-0x00000000 → Initial Stack Pointer
-0x00000004 → Reset_Handler
-0x00000008 → NMI_Handler
-0x0000000C → HardFault_Handler
-...
-```
-
-Các entry phía sau chứa địa chỉ handler của từng exception và IRQ.
+Vector table đã được trình bày tại **1.5. Reset Sequence** và **1.10. Startup Code**. Trong chương này chỉ cần tập trung vào quan hệ giữa exception number/IRQ và handler.
 
 Ví dụ:
 
@@ -5411,160 +5369,128 @@ USART1_IRQn
 → USART1_IRQHandler
 ```
 
-### ISR là gì?
-
-`ISR`:
+Luồng khái niệm:
 
 ```text
-Interrupt Service Routine
-```
-
-ISR là hàm được thực thi để xử lý một interrupt.
-
-Trong hệ sinh thái STM32/CMSIS, các ISR thường có tên handler tương ứng với vector:
-
-```c
-void EXTI0_IRQHandler(void)
-{
-    /* xử lý EXTI0 */
-}
-```
-
-### Từ IRQ tới Handler
-
-```text
-Peripheral / EXTI
+interrupt source
       ↓
-IRQ request
+interrupt request
       ↓
-NVIC
+NVIC xác định IRQ
       ↓
-Vector Table
+processor tra vector tương ứng
       ↓
-Handler address
+handler address
       ↓
 ISR
 ```
 
-Do đó, Vector Table là cầu nối giữa số exception/IRQ và địa chỉ hàm xử lý.
+### ISR và exception handler
+
+Dùng thuật ngữ:
+
+```text
+ISR
+→ handler của external interrupt
+
+exception handler
+→ tên chung cho handler của mọi exception
+```
+
+Ví dụ:
+
+```c
+void EXTI0_IRQHandler(void)
+{
+    /* ISR của EXTI0 */
+}
+```
+
+Không cần lặp lại cấu trúc vector table hoặc reset vector ở đây.
 
 ---
 
 <a id="muc-04-04"></a>
 ## 4.4. Luồng xử lý Interrupt trên Cortex-M3
 
-Khi một interrupt hợp lệ được CPU chấp nhận:
+Khi một external interrupt đủ điều kiện được processor chấp nhận:
 
 ```text
-Thread mode
-    ↓
-Interrupt accepted
-    ↓
-Hardware stacking
-    ↓
-Handler mode
-    ↓
-ISR
-    ↓
-Exception Return
-    ↓
-Hardware un-stacking
-    ↓
-Thread mode tiếp tục
+Thread mode hoặc handler hiện tại
+        ↓
+exception entry
+        ↓
+handler của IRQ bắt đầu chạy
+        ↓
+exception return
+        ↓
+khôi phục context trước đó
 ```
 
-Phần Stack đã mô tả exception stack frame cơ bản:
+Hardware exception entry/return bao gồm việc lưu và khôi phục context tối thiểu. Basic exception stack frame đã được trình bày tại **1.9. Exception stacking**, nên không lặp lại danh sách register ở đây.
+
+Các điểm cần nhớ:
 
 ```text
-R0
-R1
-R2
-R3
-R12
-LR
-PC
-xPSR
+exception entry
+→ processor tự thực hiện context transition phần cứng
+
+handler
+→ chạy ở Handler mode
+
+exception return
+→ processor khôi phục context phù hợp
 ```
 
-Ý nghĩa:
-
-```text
-CPU tự lưu context tối thiểu
-→ handler có thể bắt đầu chạy
-
-khi handler kết thúc
-→ CPU khôi phục context
-→ tiếp tục chương trình trước interrupt
-```
-
-Không cần tự viết code push/pop cho exception frame cơ bản.
-
-Handler chạy ở:
-
-```text
-Handler mode
-→ Privileged
-→ dùng MSP
-```
+Nếu một exception có priority đủ cao xuất hiện khi handler khác đang chạy, nó có thể preempt handler hiện tại; cơ chế này được trình bày tại **4.8**.
 
 ---
 
 <a id="muc-04-05"></a>
 ## 4.5. NVIC là gì?
 
-`NVIC` là:
+`NVIC`:
 
 ```text
 Nested Vectored Interrupt Controller
 ```
 
-NVIC được tích hợp chặt với Cortex-M3 để quản lý exception và external interrupt.
+NVIC là khối của Cortex-M3 dùng để quản lý external IRQ và phối hợp cơ chế exception priority với processor.
 
-Các chức năng quan trọng:
+Các chức năng cần nhận diện:
 
 ```text
 NVIC
-├── Enable IRQ
-├── Disable IRQ
-├── Set / Clear Pending
-├── theo dõi Active
-├── quản lý Priority
-├── chọn IRQ được phục vụ tiếp theo
-└── hỗ trợ Nested Interrupt
+├── enable / disable external IRQ
+├── set / clear Pending state
+├── theo dõi Active state
+├── lưu priority của external IRQ
+└── chọn IRQ nào được phục vụ theo priority
 ```
 
-STM32F10xxx sử dụng:
-
-```text
-4 priority bits
-→ 16 mức priority lập trình được
-```
-
-### Các nhóm thanh ghi NVIC thường gặp
-
-Ở mức kiến trúc Cortex-M:
+Các nhóm register kiến trúc thường gặp:
 
 ```text
 ISER
-→ Interrupt Set-Enable Register
+→ Set-Enable
 
 ICER
-→ Interrupt Clear-Enable Register
+→ Clear-Enable
 
 ISPR
-→ Interrupt Set-Pending Register
+→ Set-Pending
 
 ICPR
-→ Interrupt Clear-Pending Register
+→ Clear-Pending
 
 IABR
-→ Interrupt Active Bit Register
+→ Active Bit
 
 IPR
-→ Interrupt Priority Register
+→ Interrupt Priority
 ```
 
-Trong CMSIS thường thao tác thông qua các hàm:
+CMSIS cung cấp API tương ứng:
 
 ```c
 NVIC_EnableIRQ(IRQn);
@@ -5574,108 +5500,83 @@ NVIC_SetPendingIRQ(IRQn);
 NVIC_ClearPendingIRQ(IRQn);
 ```
 
-Khi lập trình STM32, nên hiểu ý nghĩa phần cứng phía dưới thay vì chỉ thuộc tên API.
+> Các API `NVIC_*IRQ()` ở trên áp dụng cho external IRQ. Một số system exception được cấu hình qua các system control register khác, không phải bằng `NVIC_EnableIRQ()`.
+
+STM32F1 triển khai 4 priority bits cho các interrupt có programmable priority; chi tiết nằm tại **4.7**.
 
 ---
 
 <a id="muc-04-06"></a>
 ## 4.6. Enable / Disable / Pending / Active
 
-Bốn khái niệm cần phân biệt:
+Bốn trạng thái/thuộc tính này trả lời các câu hỏi khác nhau.
 
-### Enable
-
-```text
-IRQ Enabled
-→ NVIC cho phép IRQ được đưa tới CPU
-```
-
-Ví dụ:
-
-```c
-NVIC_EnableIRQ(EXTI0_IRQn);
-```
-
-### Disable
+### Enabled
 
 ```text
-IRQ Disabled
-→ NVIC không cho IRQ đó được CPU phục vụ
+Enabled
+→ IRQ được phép tham gia cơ chế phục vụ của NVIC
 ```
 
-Peripheral vẫn có thể tạo request hoặc giữ flag của nó tùy peripheral.
+### Disabled
+
+```text
+Disabled
+→ NVIC không cho IRQ đó được processor phục vụ
+```
+
+Disable IRQ ở NVIC không nhất thiết xóa flag tại peripheral.
 
 ### Pending
 
 ```text
 Pending
-→ interrupt request đã xuất hiện
-→ đang chờ được xử lý
+→ IRQ đã có yêu cầu chờ xử lý tại NVIC
 ```
 
-Một IRQ có thể Pending vì:
-
-- IRQ vừa xuất hiện;
-- CPU đang xử lý exception priority cao hơn;
-- interrupt tạm thời chưa được phục vụ.
+IRQ có thể Pending vì processor đang phục vụ exception khác hoặc vì nó chưa đủ điều kiện được chọn ngay.
 
 ### Active
 
 ```text
 Active
-→ CPU đang thực thi handler của IRQ đó
+→ processor đang thực thi handler của IRQ đó
 ```
 
-### Quan hệ
-
-Một IRQ có thể:
+Quan hệ điển hình:
 
 ```text
-Enabled nhưng chưa Pending
-Pending nhưng chưa Active
+interrupt request
+      ↓
+Pending
+      ↓
+được processor chấp nhận
+      ↓
 Active
+      ↓
+exception return
+      ↓
+không còn Active
 ```
 
-Ví dụ:
-
-```text
-IRQ B đang Active
-       ↓
-IRQ A xảy ra
-       ↓
-IRQ A trở thành Pending
-       ↓
-nếu A đủ priority để preempt B
-→ A trở thành Active
-
-nếu không
-→ A chờ B kết thúc
-```
+`Pending` ở NVIC phải phân biệt với pending/status flag của peripheral; quan hệ giữa hai tầng này được trình bày tại **4.17**.
 
 ---
 
 <a id="muc-04-07"></a>
 ## 4.7. Interrupt Priority
 
-STM32F10xxx triển khai 4 bit priority:
+STM32F1 dùng 4 priority bits được triển khai:
 
 ```text
-2^4 = 16 mức
+2^4
+= 16 mức priority lập trình được
 ```
 
-Có thể biểu diễn:
+Quy tắc:
 
 ```text
-Priority 0
-Priority 1
-...
-Priority 15
-```
-
-Quy tắc quan trọng:
-
-```text
-Số priority nhỏ hơn
+priority number nhỏ hơn
 → độ ưu tiên cao hơn
 ```
 
@@ -5685,262 +5586,229 @@ Ví dụ:
 IRQ A: priority = 2
 IRQ B: priority = 5
 
-A có priority cao hơn B
+→ A có priority cao hơn B
 ```
 
-Không được hiểu theo giá trị số thông thường:
+Priority quyết định:
 
 ```text
-15 không cao hơn 2 về độ ưu tiên
+nhiều IRQ cùng Pending
+→ IRQ nào được chọn trước
+
+IRQ mới xuất hiện khi handler khác đang chạy
+→ có đủ điều kiện preempt hay không
 ```
 
-### Priority dùng để quyết định gì?
-
-Khi nhiều IRQ cùng yêu cầu xử lý:
+Cần phân biệt:
 
 ```text
-NVIC
- ↓
-so sánh priority
- ↓
-chọn IRQ có priority phù hợp
- ↓
-CPU chạy handler
+priority number
+≠
+thời gian thực thi ISR
 ```
 
-Priority còn quyết định interrupt mới có thể preempt handler hiện tại hay phải chờ.
+Một ISR có priority cao vẫn nên được thiết kế ngắn gọn; nguyên tắc ISR nằm tại **4.19**.
+
+Priority grouping làm thay đổi cách các priority bits được chia thành preemption priority và subpriority; xem **4.9**.
 
 ---
 
 <a id="muc-04-08"></a>
 ## 4.8. Preemption và Nested Interrupt
 
-`Nested Interrupt` nghĩa là một interrupt có thể xảy ra khi CPU đang xử lý interrupt khác.
+`Nested interrupt` xảy ra khi một exception được chấp nhận trong lúc processor đang chạy handler của exception khác.
 
 Ví dụ:
 
 ```text
-Main
- ↓
-IRQ B priority 5
- ↓
+Thread mode
+   ↓
+IRQ B, priority 5
+   ↓
 ISR_B
    │
-   └── IRQ A priority 2 xảy ra
-           ↓
-        ISR_A
-           ↓
-        ISR_A kết thúc
-           ↓
-        quay lại ISR_B
-           ↓
-        ISR_B kết thúc
-           ↓
-        quay lại Main
+   └── IRQ A, priority 2 xuất hiện
+            ↓
+          ISR_A
+            ↓
+      exception return
+            ↓
+          ISR_B
+            ↓
+      exception return
+            ↓
+       Thread mode
 ```
 
-Đây là **preemption**:
+Trong ví dụ:
 
 ```text
-IRQ priority cao hơn
-→ có thể ngắt handler priority thấp hơn
+A có priority cao hơn B
+→ A có thể preempt B
 ```
 
-Nếu IRQ mới không có đủ priority để preempt:
+Nếu IRQ mới không có preemption priority đủ cao:
 
 ```text
 IRQ mới
-→ Pending
-→ chờ handler hiện tại kết thúc
+→ giữ Pending
+→ chờ handler hiện tại hoàn tất
 ```
 
-Nested interrupt giúp hệ thống phản ứng nhanh với sự kiện quan trọng hơn, nhưng làm tăng độ phức tạp của:
+Nested interrupt ảnh hưởng trực tiếp tới:
 
-- chia sẻ dữ liệu;
-- thời gian thực thi ISR;
-- Stack usage;
-- phân tích timing.
+- interrupt latency;
+- stack usage;
+- dữ liệu dùng chung;
+- khả năng phân tích worst-case execution time.
+
+Cách chia priority thành preemption/subpriority nằm tại **4.9**.
 
 ---
 
 <a id="muc-04-09"></a>
 ## 4.9. Priority Grouping
 
-Priority field của Cortex-M có thể được chia thành hai phần khái niệm:
+Priority grouping quyết định cách các implemented priority bits được chia thành:
 
 ```text
-Priority
-├── Preemption Priority
-└── Subpriority
+Preemption Priority
+Subpriority
 ```
 
 ### Preemption Priority
 
-Quyết định khả năng:
-
-```text
-IRQ A
-→ có thể preempt IRQ B hay không
-```
+Quyết định một exception có thể preempt exception khác hay không.
 
 ### Subpriority
 
-Dùng để quyết định thứ tự phục vụ khi các interrupt có cùng mức preemption và cùng ở trạng thái chờ.
+Dùng để phân thứ tự phục vụ giữa các interrupt có cùng preemption priority khi chúng cùng chờ xử lý.
 
 Có thể hình dung:
 
 ```text
-Priority bits
-+-------------------+----------------+
-| Preemption part   | Subpriority    |
-+-------------------+----------------+
+implemented priority bits
++----------------------+----------------+
+| preemption priority  | subpriority    |
++----------------------+----------------+
 ```
 
-Cách chia cụ thể được điều khiển bởi `PRIGROUP` của Cortex-M và không nên học cứng một cách chia duy nhất nếu chưa xác định cấu hình hệ thống.
+Cách chia được điều khiển bởi:
+
+```text
+SCB->AIRCR.PRIGROUP
+```
+
+Do đó `PRIGROUP` thuộc System Control Block, nhưng nó ảnh hưởng cách priority của interrupt được diễn giải.
 
 Điểm cần nhớ:
 
 ```text
-Priority number
-≠ chỉ có một ý nghĩa duy nhất
+priority grouping
+→ không tạo thêm priority bits
+→ chỉ chia các bit đang có thành hai phần
 ```
 
-khi priority grouping được sử dụng.
-
-Trong hệ thống đơn giản, có thể chọn cấu hình priority sao cho phần preemption là yếu tố chính để dễ phân tích.
+Khi so sánh hai IRQ để xét preemption, phải xét phần preemption priority theo cấu hình grouping hiện tại, không chỉ nhìn một con số priority đã được mã hóa mà bỏ qua `PRIGROUP`.
 
 ---
 
 <a id="muc-04-10"></a>
 ## 4.10. EXTI là gì?
 
-`EXTI` là:
+`EXTI`:
 
 ```text
 External Interrupt/Event Controller
 ```
 
-EXTI nhận các tín hiệu đầu vào từ GPIO hoặc một số nguồn nội bộ và phát hiện cạnh.
-
-Mỗi line có thể cấu hình độc lập:
+EXTI nhận tín hiệu từ GPIO hoặc một số nguồn nội bộ, phát hiện trigger và tạo:
 
 ```text
-EXTI Line
-├── Interrupt hoặc Event
-├── Mask / Unmask
-├── Rising Edge
-├── Falling Edge
-└── Rising + Falling
+Interrupt request
+hoặc
+Event request
 ```
 
-Đối với STM32F10xxx:
+Mỗi EXTI line có thể cấu hình:
 
 ```text
-Low/Medium/High/XL-density
-→ 19 EXTI lines
-
-Connectivity line
-→ tối đa 20 EXTI lines
+interrupt mask
+event mask
+rising-edge trigger
+falling-edge trigger
 ```
 
-EXTI có thể tạo:
+Hai đường cần phân biệt:
 
 ```text
-Interrupt Request
-→ đi tới NVIC
-→ chạy ISR
+Interrupt path
+→ qua IMR
+→ tạo interrupt request tới NVIC
+→ có thể chạy ISR
 
-Event Request
+Event path
+→ qua EMR
 → tạo event
-→ không bắt buộc chạy ISR
+→ không đồng nghĩa với chạy ISR
 ```
+
+Các line GPIO `EXTI0...EXTI15` được ánh xạ theo pin number; cơ chế mapping nằm tại **4.11**.
 
 ---
 
 <a id="muc-04-11"></a>
 ## 4.11. EXTI Line và GPIO Mapping
 
-GPIO pin number quyết định EXTI line number.
+Với GPIO, pin number quyết định EXTI line number:
+
+```text
+PA0 / PB0 / PC0 / ...
+→ EXTI0
+
+PA1 / PB1 / PC1 / ...
+→ EXTI1
+
+...
+
+PA15 / PB15 / PC15 / ...
+→ EXTI15
+```
+
+Một EXTI line chỉ chọn **một GPIO port source tại một thời điểm**.
 
 Ví dụ:
 
 ```text
-PA0 ─┐
-PB0 ─┤
-PC0 ─┤
-PD0 ─┤
-...  ┘
-      ↓
-    EXTI0
-```
-
-Tương tự:
-
-```text
-PA1 / PB1 / PC1 / ...
-→ EXTI1
-
-PA13 / PB13 / PC13 / ...
-→ EXTI13
-```
-
-Do đó:
-
-```text
-Pin number
-→ chọn EXTI line
-
-Port
-→ được chọn bằng AFIO_EXTICR
-```
-
-### GPIO EXTI lines
-
-```text
-EXTI0  → pin 0
-EXTI1  → pin 1
-...
-EXTI15 → pin 15
-```
-
-### Internal EXTI lines
-
-Ngoài GPIO:
-
-```text
-EXTI16 → PVD output
-EXTI17 → RTC Alarm
-EXTI18 → USB Wakeup
-EXTI19 → Ethernet Wakeup
-          (connectivity line)
-```
-
-### Một EXTI line chỉ chọn một GPIO port source
-
-Ví dụ EXTI0:
-
-```text
-PA0
-PB0
-PC0
+EXTI13
+← PA13
+hoặc PB13
+hoặc PC13
 ...
 ```
 
-đều có khả năng nối vào EXTI0, nhưng mapping được AFIO chọn theo một port source cụ thể.
+không phải nhiều line `EXTI13` độc lập.
 
-Không nên hiểu:
+Quan hệ:
 
 ```text
-PA0 và PB0
-→ hai EXTI0 độc lập
+pin number
+→ EXTI line
+
+port
+→ chọn bằng AFIO_EXTICR
 ```
+
+Ngoài GPIO, EXTI còn có một số internal line; số lượng/nguồn cụ thể phụ thuộc dòng STM32F1. Chương này tập trung vào GPIO EXTI `0...15`.
+
+Cách chọn port bằng `AFIO_EXTICR` được trình bày tại **4.14**.
 
 ---
 
 <a id="muc-04-12"></a>
 ## 4.12. Rising Edge / Falling Edge
 
-EXTI phát hiện sự thay đổi mức logic theo cạnh.
+EXTI có thể phát hiện hai loại cạnh.
 
 ### Rising Edge
 
@@ -5948,19 +5816,13 @@ EXTI phát hiện sự thay đổi mức logic theo cạnh.
 0 → 1
 ```
 
-Sơ đồ:
-
 ```text
 ____|‾‾‾‾
     ↑
  Rising
 ```
 
-Thanh ghi:
-
-```text
-EXTI_RTSR
-```
+Được chọn bằng `EXTI_RTSR`.
 
 ### Falling Edge
 
@@ -5968,173 +5830,105 @@ EXTI_RTSR
 1 → 0
 ```
 
-Sơ đồ:
-
 ```text
 ‾‾‾‾|____
     ↓
  Falling
 ```
 
-Thanh ghi:
+Được chọn bằng `EXTI_FTSR`.
 
-```text
-EXTI_FTSR
-```
-
-### Cả hai cạnh
-
-Có thể bật đồng thời:
+Có thể enable cả hai nếu cần:
 
 ```text
 RTSR bit = 1
 FTSR bit = 1
 ```
 
-Khi đó:
+Ví dụ button active-low với pull-up:
 
 ```text
-0 → 1
-hoặc
-1 → 0
-→ đều tạo trigger
-```
+không nhấn → 1
+nhấn       → 0
 
-### Ví dụ Button Active-Low
-
-Giả sử:
-
-```text
-Pull-Up
-→ không nhấn = 1
-
-nhấn button
-→ chân bị kéo xuống 0
-```
-
-Sự kiện nhấn:
-
-```text
 1 → 0
 → Falling Edge
 ```
 
-Vì vậy thường chọn:
-
-```text
-FTSR = 1
-RTSR = 0
-```
-
-nếu chỉ muốn phát hiện lúc nhấn.
+Do đó nếu chỉ cần phát hiện thời điểm nhấn, thường chọn Falling Edge.
 
 ---
 
 <a id="muc-04-13"></a>
 ## 4.13. IMR / EMR / RTSR / FTSR / SWIER / PR
 
-Các thanh ghi EXTI chính:
+Các register EXTI chính:
 
-| Thanh ghi | Chức năng |
+| Register | Vai trò |
 |---|---|
-| `EXTI_IMR` | Interrupt Mask Register |
-| `EXTI_EMR` | Event Mask Register |
-| `EXTI_RTSR` | Rising Trigger Selection Register |
-| `EXTI_FTSR` | Falling Trigger Selection Register |
-| `EXTI_SWIER` | Software Interrupt/Event Register |
-| `EXTI_PR` | Pending Register |
+| `EXTI_IMR` | Mask/unmask Interrupt path |
+| `EXTI_EMR` | Mask/unmask Event path |
+| `EXTI_RTSR` | Chọn Rising Edge trigger |
+| `EXTI_FTSR` | Chọn Falling Edge trigger |
+| `EXTI_SWIER` | Tạo software interrupt/event request |
+| `EXTI_PR` | Pending flag của EXTI line |
 
-### EXTI_IMR
+### `EXTI_IMR`
 
 ```text
 IMR bit = 0
-→ interrupt line bị mask
+→ interrupt path bị mask
 
 IMR bit = 1
-→ interrupt line được unmask
+→ interrupt path được unmask
 ```
 
-Ví dụ:
-
-```c
-EXTI->IMR |= (1U << 13);
-```
-
-cho phép EXTI13 tạo interrupt request.
-
-### EXTI_EMR
+### `EXTI_EMR`
 
 ```text
-EMR
-→ điều khiển đường Event
+EMR bit = 0
+→ event path bị mask
+
+EMR bit = 1
+→ event path được unmask
 ```
 
-Interrupt và Event là hai đường riêng:
-
-```text
-IMR
-→ Interrupt
-
-EMR
-→ Event
-```
-
-### EXTI_RTSR
+### `EXTI_RTSR` / `EXTI_FTSR`
 
 ```text
 RTSR bit = 1
-→ enable Rising Edge
-```
+→ Rising Edge trigger enabled
 
-Ví dụ:
-
-```c
-EXTI->RTSR |= (1U << 0);
-```
-
-### EXTI_FTSR
-
-```text
 FTSR bit = 1
-→ enable Falling Edge
+→ Falling Edge trigger enabled
 ```
+
+### `EXTI_SWIER`
+
+Cho phép software tạo request trên EXTI line.
 
 Ví dụ:
-
-```c
-EXTI->FTSR |= (1U << 13);
-```
-
-### EXTI_SWIER
-
-`SWIER` cho phép tạo interrupt/event request bằng software.
-
-Ví dụ khái niệm:
 
 ```c
 EXTI->SWIER |= (1U << 0);
 ```
 
-Nếu line được enable qua `IMR`, thao tác này có thể làm `PR` tương ứng được set và tạo interrupt request.
+### `EXTI_PR`
 
-### EXTI_PR
-
-`PR` cho biết line nào đã nhận trigger:
+`PR` giữ pending flag của EXTI line:
 
 ```text
-PR bit = 0
-→ không có pending trigger
-
 PR bit = 1
-→ trigger đã xảy ra
+→ line đã có pending trigger
 ```
 
-Điểm đặc biệt:
+`EXTI_PR` dùng semantics:
 
 ```text
-EXTI_PR
-→ Write 1 to Clear
+Write 1 to Clear
 ```
+
+Cách clear đúng được trình bày tại **4.17**.
 
 ---
 
@@ -6150,166 +5944,115 @@ AFIO_EXTICR3
 AFIO_EXTICR4
 ```
 
-để chọn port cho EXTI0–EXTI15.
+để chọn GPIO port source cho `EXTI0...EXTI15`.
 
-Trước khi cấu hình các thanh ghi này:
-
-```text
-RCC_APB2ENR.AFIOEN = 1
-```
-
-### Phân chia EXTICR
+Phân nhóm:
 
 ```text
-EXTICR1
-→ EXTI0  → EXTI3
-
-EXTICR2
-→ EXTI4  → EXTI7
-
-EXTICR3
-→ EXTI8  → EXTI11
-
-EXTICR4
-→ EXTI12 → EXTI15
+EXTICR1 → EXTI0 ... EXTI3
+EXTICR2 → EXTI4 ... EXTI7
+EXTICR3 → EXTI8 ... EXTI11
+EXTICR4 → EXTI12 ... EXTI15
 ```
 
-Mỗi EXTI line dùng 4 bit chọn port.
+Mỗi EXTI line dùng 4 bit để mã hóa port.
 
-Mã port:
+Ví dụ mã port:
 
 ```text
 0000 → PA
 0001 → PB
 0010 → PC
 0011 → PD
-0100 → PE
-0101 → PF
-0110 → PG
+...
 ```
 
 ### Ví dụ PC13 → EXTI13
 
-Pin number:
-
 ```text
-13
+pin number = 13
 → EXTI13
-```
 
-Port:
-
-```text
-C
+port = C
 → code 0010
+
+EXTI13
+→ field tương ứng trong AFIO_EXTICR4
 ```
 
-EXTI13 nằm trong:
-
-```text
-AFIO_EXTICR4
-```
-
-Nếu dùng CMSIS struct:
+CMSIS struct:
 
 ```c
-/* EXTICR[3] tương ứng EXTICR4.
-   EXTI13 nằm ở field [7:4].
-   Port C = 0x2. */
 AFIO->EXTICR[3] &= ~(0xFU << 4);
 AFIO->EXTICR[3] |=  (0x2U << 4);
 ```
 
-Sau bước này:
+Sau đó:
 
 ```text
 PC13
- ↓
-EXTI13
+→ EXTI13
 ```
+
+AFIO clock requirement đã được trình bày tại **3.2** và **3.13**, nên không lặp lại cơ chế RCC ở đây.
 
 ---
 
 <a id="muc-04-15"></a>
 ## 4.15. GPIO → AFIO → EXTI → NVIC
 
-Đây là luồng quan trọng nhất khi dùng GPIO external interrupt:
+Đây là luồng tổng hợp cần nhớ khi dùng GPIO external interrupt:
 
 ```text
-Tín hiệu bên ngoài
+external signal
       ↓
-GPIO Pin
-      ↓
-GPIO Input
+GPIO pin / input path
       ↓
 AFIO_EXTICR
-chọn Port cho EXTI Line
+chọn port source
       ↓
-EXTI
-├── IMR
-├── RTSR
-├── FTSR
-└── PR
+EXTI line
+phát hiện trigger
       ↓
-IRQ request
+Interrupt path được unmask
+      ↓
+interrupt request
       ↓
 NVIC
-├── Enable
-└── Priority
       ↓
-CPU
+processor
       ↓
-IRQHandler
-```
-
-Phân biệt nhiệm vụ:
-
-```text
-GPIO
-→ nhận tín hiệu điện tại chân
-
-AFIO
-→ chọn GPIO port nào nối vào EXTI line
-
-EXTI
-→ phát hiện cạnh
-→ tạo interrupt/event request
-→ giữ pending flag
-
-NVIC
-→ enable/disable IRQ
-→ quản lý priority
-→ đưa IRQ tới CPU
-
 ISR
-→ xử lý nguyên nhân interrupt
 ```
 
-### Ví dụ PC13
+Mỗi khối có một trách nhiệm riêng:
+
+| Khối | Vai trò |
+|---|---|
+| GPIO | Nhận mức logic tại pin |
+| AFIO | Chọn port source cho EXTI line |
+| EXTI | Phát hiện cạnh, giữ pending flag, tạo interrupt/event request |
+| NVIC | Quản lý external IRQ ở cấp processor: enable, Pending, Active, priority |
+| ISR | Xác định nguồn và service/clear flag theo semantics của peripheral |
+
+Ví dụ:
 
 ```text
-Button
- ↓
 PC13
- ↓
-AFIO_EXTICR4
-Port C → EXTI13
- ↓
-EXTI13 Falling Edge
- ↓
-EXTI15_10_IRQn
- ↓
-NVIC
- ↓
-EXTI15_10_IRQHandler()
+→ AFIO chọn Port C cho EXTI13
+→ EXTI13 phát hiện Falling Edge
+→ EXTI15_10_IRQn
+→ EXTI15_10_IRQHandler()
 ```
+
+Các register cụ thể đã được tách ở **4.13–4.14**.
 
 ---
 
 <a id="muc-04-16"></a>
 ## 4.16. Shared IRQ: EXTI5_9 và EXTI10_15
 
-EXTI0–EXTI4 có IRQ riêng:
+Các line `EXTI0...EXTI4` có IRQ riêng:
 
 ```text
 EXTI0  → EXTI0_IRQn
@@ -6319,19 +6062,19 @@ EXTI3  → EXTI3_IRQn
 EXTI4  → EXTI4_IRQn
 ```
 
-Các line phía trên được nhóm:
+Các line còn lại của GPIO được nhóm:
 
 ```text
-EXTI5 → EXTI9
+EXTI5 ... EXTI9
 → EXTI9_5_IRQn
 → EXTI9_5_IRQHandler()
 
-EXTI10 → EXTI15
+EXTI10 ... EXTI15
 → EXTI15_10_IRQn
 → EXTI15_10_IRQHandler()
 ```
 
-Vì nhiều line dùng chung một handler, ISR phải kiểm tra `EXTI_PR`.
+Vì một IRQ dùng chung cho nhiều EXTI line, ISR phải kiểm tra pending flag của các line mà application sử dụng.
 
 Ví dụ:
 
@@ -6341,394 +6084,281 @@ void EXTI15_10_IRQHandler(void)
     if (EXTI->PR & (1U << 13))
     {
         EXTI->PR = (1U << 13);
-
-        /* xử lý EXTI13 */
+        /* service EXTI13 */
     }
 
     if (EXTI->PR & (1U << 14))
     {
         EXTI->PR = (1U << 14);
-
-        /* xử lý EXTI14 */
+        /* service EXTI14 */
     }
 }
 ```
 
-Không nên giả định:
+Không được suy ra:
 
 ```text
-Handler chạy
-→ chắc chắn chỉ một line cụ thể gây ra
+handler đã chạy
+→ chỉ có một EXTI line cố định là nguyên nhân
 ```
+
+Cách clear `PR` dùng W1C được trình bày tại **4.17**.
 
 ---
 
 <a id="muc-04-17"></a>
 ## 4.17. Clear Pending Flag
 
-`EXTI_PR` không phải thanh ghi read/write thông thường.
-
-Cơ chế:
+`EXTI_PR` là pending register của EXTI và dùng cơ chế:
 
 ```text
-PR bit = 1
-→ line đang pending
-
-ghi 1 vào bit đó
-→ clear pending bit
+Write 1 to Clear
 ```
 
-Ví dụ clear EXTI13:
+Ví dụ clear `PR13`:
 
 ```c
 EXTI->PR = (1U << 13);
 ```
 
-Không nên viết:
+Không dùng kiểu read-modify-write như:
 
 ```c
-EXTI->PR &= ~(1U << 13);
+EXTI->PR &= ~(1U << 13);   /* không đúng semantics W1C */
 ```
 
-vì đây là tư duy read-modify-write của thanh ghi thông thường, không phù hợp với semantics **write 1 to clear**.
-
-### Vì sao phải Clear Flag?
-
-Luồng:
+### Hai tầng pending cần phân biệt
 
 ```text
-Edge xảy ra
- ↓
-EXTI_PR bit được set
- ↓
-IRQ request
- ↓
-ISR chạy
- ↓
-phải acknowledge / clear nguồn interrupt
-```
+EXTI / peripheral
+→ pending/status flag tại nguồn
 
-Nếu flag của nguồn interrupt không được xử lý đúng, interrupt có thể tiếp tục giữ trạng thái request hoặc lại làm handler được kích hoạt.
-
-### Peripheral Pending và NVIC Pending khác nhau
-
-Hai tầng:
-
-```text
-EXTI / Peripheral
-      ↓
-interrupt request
-      ↓
 NVIC
+→ Pending state của IRQ
 ```
 
-Do đó:
+Ví dụ:
 
 ```text
-EXTI_PR
-→ pending flag ở EXTI
+EXTI_PR.PR13
+→ pending flag của EXTI13
 
 NVIC Pending
-→ pending state ở NVIC
+→ trạng thái EXTI15_10_IRQn đang chờ processor phục vụ
 ```
 
-Không nên coi hai khái niệm là cùng một thanh ghi hay cùng một trạng thái.
+Clear NVIC Pending không thay thế việc service/clear flag tại nguồn. Nếu peripheral/EXTI vẫn giữ nguyên điều kiện request, IRQ có thể lại trở thành Pending.
 
-Khi ISR xử lý EXTI, thao tác bắt buộc thường là xử lý `EXTI_PR`, không phải chỉ clear NVIC pending.
+Vì vậy ISR thường phải:
+
+```text
+1. xác định source flag
+2. service source
+3. clear/acknowledge flag theo đúng semantics của peripheral
+```
+
+Cơ chế của mỗi peripheral có thể khác nhau; riêng `EXTI_PR` là W1C.
 
 ---
 
 <a id="muc-04-18"></a>
 ## 4.18. Quy trình cấu hình EXTI Interrupt
 
-Ví dụ mục tiêu:
+Quy trình tổng quát cho một GPIO EXTI interrupt:
 
 ```text
-PC13
-→ Input Pull-Up
-→ Falling Edge
-→ EXTI13
-→ EXTI15_10_IRQn
+1. Xác định GPIO Port / Pin
+        ↓
+2. Cấu hình pin ở Input mode phù hợp
+        ↓
+3. Enable GPIO và AFIO clock
+        ↓
+4. AFIO_EXTICR
+   chọn port source cho EXTI line
+        ↓
+5. RTSR / FTSR
+   chọn trigger edge
+        ↓
+6. IMR
+   unmask Interrupt path
+        ↓
+7. Clear pending flag cũ nếu cần
+        ↓
+8. Cấu hình NVIC priority
+        ↓
+9. Enable IRQ tại NVIC
+        ↓
+10. Viết ISR
+    kiểm tra source flag
+    service/clear flag
 ```
 
-Quy trình:
+Các bước trên dẫn chiếu tới:
 
 ```text
-1. Bật GPIOC clock
-        ↓
-2. Bật AFIO clock
-        ↓
-3. Cấu hình PC13 Input Pull-Up
-        ↓
-4. AFIO_EXTICR4
-   chọn Port C cho EXTI13
-        ↓
-5. EXTI_IMR
-   unmask Line 13
-        ↓
-6. EXTI_FTSR
-   enable Falling Edge
-        ↓
-7. EXTI_RTSR
-   disable Rising Edge nếu không dùng
-        ↓
-8. Clear PR13 cũ
-        ↓
-9. Đặt NVIC priority
-        ↓
-10. NVIC Enable EXTI15_10_IRQn
-        ↓
-11. Viết EXTI15_10_IRQHandler()
-        ↓
-12. Trong ISR:
-    kiểm tra PR13
-        ↓
-13. Clear PR13 bằng cách ghi 1
-        ↓
-14. Xử lý sự kiện
+GPIO Input
+→ Chương 3
+
+EXTI line / mapping
+→ 4.11 và 4.14
+
+Trigger edge
+→ 4.12
+
+EXTI registers
+→ 4.13
+
+NVIC
+→ 4.5–4.9
+
+Shared IRQ
+→ 4.16
+
+Clear pending
+→ 4.17
+
+ISR design
+→ 4.19
 ```
 
-### Bước 1 — Bật Clock
-
-```c
-RCC->APB2ENR |= RCC_APB2ENR_IOPCEN
-               | RCC_APB2ENR_AFIOEN;
-```
-
-### Bước 2 — PC13 Input Pull-Up
-
-PC13 nằm trong `GPIOC_CRH`.
-
-Shift:
-
-```text
-(13 - 8) × 4
-= 20
-```
-
-Cấu hình:
-
-```text
-MODE = 00
-CNF  = 10
-→ Input Pull-Up / Pull-Down
-```
-
-Code:
-
-```c
-GPIOC->CRH &= ~(0xFU << 20);
-GPIOC->CRH |=  (0x8U << 20);
-
-/* Chọn Pull-Up */
-GPIOC->ODR |= (1U << 13);
-```
-
-### Bước 3 — Mapping PC13 vào EXTI13
-
-```c
-AFIO->EXTICR[3] &= ~(0xFU << 4);
-AFIO->EXTICR[3] |=  (0x2U << 4);
-```
-
-### Bước 4 — Cấu hình EXTI13
-
-Unmask interrupt:
-
-```c
-EXTI->IMR |= (1U << 13);
-```
-
-Falling Edge:
-
-```c
-EXTI->FTSR |= (1U << 13);
-```
-
-Không dùng Rising Edge:
-
-```c
-EXTI->RTSR &= ~(1U << 13);
-```
-
-Clear pending cũ:
-
-```c
-EXTI->PR = (1U << 13);
-```
-
-### Bước 5 — NVIC
-
-Ví dụ:
-
-```c
-NVIC_SetPriority(EXTI15_10_IRQn, 5);
-NVIC_EnableIRQ(EXTI15_10_IRQn);
-```
-
-Giá trị priority cụ thể phải được chọn theo thiết kế priority của toàn hệ thống.
-
-### Bước 6 — ISR
-
-```c
-void EXTI15_10_IRQHandler(void)
-{
-    if (EXTI->PR & (1U << 13))
-    {
-        EXTI->PR = (1U << 13);
-
-        /* xử lý sự kiện */
-    }
-}
-```
+Mục này chỉ mô tả **thứ tự cấu hình**; ví dụ hoàn chỉnh PC13 nằm tại **4.20**.
 
 ---
 
 <a id="muc-04-19"></a>
 ## 4.19. Quy ước thiết kế ISR
 
-Các nguyên tắc sau là quy ước thiết kế phổ biến để giảm latency và làm hệ thống dễ phân tích hơn.
+ISR nên tập trung vào công việc cần thiết để service interrupt source và thoát sớm.
 
-ISR nên:
+Mẫu chung:
 
 ```text
 ISR
-├── xác định đúng nguồn interrupt
-├── clear/acknowledge flag đúng cách
-├── lấy dữ liệu cần thiết
-├── cập nhật trạng thái ngắn gọn
-└── thoát sớm
+├── xác định đúng source flag
+├── service dữ liệu/trạng thái cần thiết
+├── clear/acknowledge flag đúng semantics
+├── cập nhật trạng thái ngắn gọn cho main/task
+└── return
 ```
 
 Ví dụ:
 
 ```c
-volatile uint8_t button_pressed = 0;
+volatile uint8_t button_pressed = 0U;
 
 void EXTI15_10_IRQHandler(void)
 {
     if (EXTI->PR & (1U << 13))
     {
         EXTI->PR = (1U << 13);
-        button_pressed = 1;
+        button_pressed = 1U;
     }
 }
 ```
 
-Main loop xử lý công việc dài:
-
-```c
-while (1)
-{
-    if (button_pressed)
-    {
-        button_pressed = 0;
-
-        /* xử lý dài hơn */
-    }
-}
-```
-
-Nên tránh trong ISR:
+Các công việc dài nên được chuyển ra khỏi ISR khi có thể:
 
 ```text
 delay dài
 busy-wait lâu
-vòng lặp không có giới hạn
-xử lý thuật toán nặng
-I/O blocking kéo dài
+I/O blocking
+thuật toán nặng
+vòng lặp không có giới hạn rõ ràng
 ```
 
 Lý do:
 
 ```text
-ISR chạy lâu
-→ tăng interrupt latency
-→ IRQ priority thấp hơn phải chờ lâu hơn
-→ tăng Stack usage khi có nested interrupt
+ISR kéo dài
+→ tăng interrupt latency cho nguồn khác
+→ tăng thời gian giữ context ở Handler mode
+→ làm nested interrupt và timing khó phân tích hơn
 ```
 
-### Dữ liệu chia sẻ giữa ISR và Main
+### Dữ liệu dùng chung giữa ISR và Thread mode
 
-Nếu một biến được thay đổi trong ISR và đọc ở main:
+Ví dụ:
 
 ```c
 volatile uint8_t event_flag;
 ```
 
-`volatile` giúp compiler thực hiện các truy cập bộ nhớ như đã viết, nhưng không tự biến mọi thao tác nhiều bước thành atomic và không thay thế cơ chế đồng bộ khi dữ liệu phức tạp.
+`volatile` buộc compiler duy trì các memory access cần thiết đối với object đó, nhưng:
+
+```text
+volatile
+≠ atomic
+≠ synchronization
+```
+
+Nếu dữ liệu chia sẻ có thao tác nhiều bước hoặc cần tính nhất quán giữa các context, phải dùng cơ chế đồng bộ phù hợp với thiết kế hệ thống.
 
 ---
 
 <a id="muc-04-20"></a>
 ## 4.20. Ví dụ Button → EXTI → ISR
 
-Giả sử:
+Mục tiêu:
 
 ```text
 Button
 → PC13
-
-PC13
-→ Input Pull-Up
-
-Button nhấn
-→ kéo pin xuống GND
-
-Trigger
+→ Input with Pull-Up
 → Falling Edge
+→ EXTI13
+→ EXTI15_10_IRQn
 ```
+
+Các nguyên lý GPIO, EXTI mapping, shared IRQ và W1C đã được trình bày tại **Chương 3** và **4.11–4.17**; ví dụ này chỉ ghép chúng thành một cấu hình hoàn chỉnh.
 
 ### Cấu hình
 
 ```c
 static void Button_EXTI_Init(void)
 {
-    /* 1. Clock cho GPIOC và AFIO */
+    /* GPIOC + AFIO clock */
     RCC->APB2ENR |= RCC_APB2ENR_IOPCEN
                    | RCC_APB2ENR_AFIOEN;
 
-    /* 2. PC13 Input Pull-Up
-       MODE=00, CNF=10 */
+    /* PC13: Input with Pull-Up/Pull-Down, chọn Pull-Up bằng ODR */
     GPIOC->CRH &= ~(0xFU << 20);
     GPIOC->CRH |=  (0x8U << 20);
     GPIOC->ODR |=  (1U << 13);
 
-    /* 3. PC13 → EXTI13
-       EXTICR4, Port C = 0010 */
+    /* PC13 → EXTI13 */
     AFIO->EXTICR[3] &= ~(0xFU << 4);
     AFIO->EXTICR[3] |=  (0x2U << 4);
 
-    /* 4. EXTI13 */
-    EXTI->IMR  |=  (1U << 13);
+    /* Falling Edge, không dùng Rising Edge */
     EXTI->RTSR &= ~(1U << 13);
     EXTI->FTSR |=  (1U << 13);
 
-    /* Clear pending cũ */
-    EXTI->PR = (1U << 13);
+    /* Clear pending cũ rồi unmask Interrupt path */
+    EXTI->PR  =  (1U << 13);
+    EXTI->IMR |= (1U << 13);
 
-    /* 5. NVIC */
+    /* NVIC */
     NVIC_SetPriority(EXTI15_10_IRQn, 5);
     NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 ```
 
-### Handler
+### ISR
 
 ```c
-volatile uint8_t button_pressed = 0;
+volatile uint8_t button_pressed = 0U;
 
 void EXTI15_10_IRQHandler(void)
 {
     if (EXTI->PR & (1U << 13))
     {
         EXTI->PR = (1U << 13);
-        button_pressed = 1;
+        button_pressed = 1U;
     }
 }
 ```
 
-### Main
+### Thread mode
 
 ```c
 int main(void)
@@ -6739,7 +6369,7 @@ int main(void)
     {
         if (button_pressed)
         {
-            button_pressed = 0;
+            button_pressed = 0U;
 
             /* xử lý sự kiện button */
         }
@@ -6747,44 +6377,29 @@ int main(void)
 }
 ```
 
-### Luồng hoàn chỉnh
+Luồng:
 
 ```text
-Button chưa nhấn
-→ PC13 = 1
-
-nhấn Button
-→ PC13: 1 → 0
-→ Falling Edge
-
-AFIO
-→ PC13 được nối vào EXTI13
-
-EXTI13
-→ FTSR phát hiện cạnh
-→ PR13 = 1
-→ IMR13 cho phép interrupt request
-
-NVIC
-→ EXTI15_10_IRQn Pending
-→ CPU nhận IRQ
-
-CPU
-→ Handler mode
-→ EXTI15_10_IRQHandler()
-
+PC13: 1 → 0
+      ↓
+EXTI13 Falling Edge
+      ↓
+PR13 = 1
+      ↓
+Interrupt path được unmask
+      ↓
+EXTI15_10_IRQn
+      ↓
 ISR
-→ kiểm tra PR13
-→ ghi 1 để clear PR13
-→ set button_pressed
-
-Exception Return
-→ quay lại main
+      ↓
+clear PR13 + set event flag
+      ↓
+Thread mode xử lý công việc dài hơn
 ```
 
-### Button Bounce
+### Button bounce
 
-Button cơ khí có thể tạo nhiều chuyển mức trong một lần nhấn:
+Button cơ khí có thể tạo nhiều cạnh trong một lần nhấn:
 
 ```text
 1 ─────┐
@@ -6792,186 +6407,72 @@ Button cơ khí có thể tạo nhiều chuyển mức trong một lần nhấn:
          └─┘ └──── 0
 ```
 
-Do đó một lần nhấn có thể tạo nhiều EXTI trigger.
-
-Có thể xử lý bằng:
-
-```text
-software debounce
-Timer debounce
-lọc phần cứng
-```
-
-Không nên giải quyết debounce bằng một delay dài ngay trong ISR nếu có thể tránh.
-
----
-
-### Interrupt từ Peripheral khác
-
-EXTI chỉ là một loại interrupt source.
-
-Mẫu tổng quát cho peripheral interrupt:
-
-```text
-Peripheral
-   ↓
-enable interrupt source trong peripheral
-   ↓
-event xảy ra
-   ↓
-status flag được set
-   ↓
-IRQ request
-   ↓
-NVIC
-   ↓
-ISR
-   ↓
-kiểm tra flag
-   ↓
-clear / service flag đúng cơ chế
-```
-
-Ví dụ:
-
-```text
-Timer Update Event
-→ TIM status flag
-→ TIMx_IRQn
-→ TIMx_IRQHandler()
-
-USART RX event
-→ USART status
-→ USARTx_IRQn
-→ USARTx_IRQHandler()
-
-DMA Transfer Complete
-→ DMA flag
-→ DMAx_Channely_IRQn
-→ handler tương ứng
-```
-
-Điểm chung:
-
-```text
-Peripheral flag
-và
-NVIC state
-là hai tầng khác nhau
-```
-
----
-
-### Interrupt và Event trong Low-Power
-
-EXTI có thể tạo:
-
-```text
-Interrupt
-→ đi qua NVIC
-→ handler
-
-Event
-→ event path
-→ không nhất thiết chạy handler
-```
-
-Khi dùng low-power:
-
-```text
-WFI
-→ thường thức dậy bởi interrupt
-
-WFE
-→ thức dậy bởi event
-```
-
-Chi tiết low-power không cần để cấu hình EXTI cơ bản, nhưng cần phân biệt:
-
-```text
-IMR
-→ Interrupt path
-
-EMR
-→ Event path
-```
+Do đó debounce nên được xử lý bằng thiết kế phù hợp như timer/software state machine hoặc phần cứng lọc; tránh giữ ISR bằng delay dài.
 
 ---
 
 <a id="muc-04-21"></a>
 ## 4.21. Câu hỏi tự kiểm tra
 
-1. Interrupt khác Polling như thế nào?
-2. Exception là gì trên Cortex-M?
-3. Vector Table dùng để làm gì?
-4. Khi interrupt được chấp nhận, CPU chuyển sang mode nào?
-5. Hardware stacking lưu những register cơ bản nào?
-6. NVIC có những chức năng chính nào?
-7. `Enabled` khác `Pending` như thế nào?
-8. Priority số `2` và `5`, mức nào cao hơn?
-9. Preemption Priority khác Subpriority ở điểm nào?
-10. Priority Grouping dùng để làm gì?
-11. EXTI viết tắt của gì?
-12. EXTI tạo ra hai loại request nào?
-13. Port cho EXTI line được chọn bằng thanh ghi nào?
-14. Button Active-Low với Pull-Up thường dùng cạnh nào để phát hiện nhấn?
-15. EXTI5–EXTI9 dùng chung IRQ nào?
-16. EXTI10–EXTI15 dùng chung IRQ nào?
-17. Clear pending bit của `EXTI_PR` bằng cách nào?
-18. EXTI pending flag và NVIC pending state khác nhau thế nào?
-19. Hãy mô tả luồng `GPIO → AFIO → EXTI → NVIC → ISR`.
-20. ISR nên thực hiện những công việc nào?
+1. `exception` và `external interrupt/IRQ` khác nhau như thế nào?
+2. Khi nào nên dùng thuật ngữ `ISR`, khi nào dùng `exception handler`?
+3. Polling và interrupt khác nhau ở bên nào chủ động phát hiện sự kiện?
+4. Vector table liên hệ IRQ với handler như thế nào?
+5. `Enabled`, `Pending` và `Active` khác nhau ở ý nghĩa gì?
+6. Trên STM32F1, priority number nhỏ hơn hay lớn hơn biểu thị priority cao hơn?
+7. Preemption priority và subpriority có vai trò gì?
+8. `PRIGROUP` thuộc register nào và dùng để làm gì?
+9. EXTI tạo hai đường request nào?
+10. GPIO pin number liên hệ với EXTI line number như thế nào?
+11. `AFIO_EXTICR` chọn thông tin gì?
+12. `RTSR` và `FTSR` khác nhau như thế nào?
+13. `IMR` và `EMR` điều khiển hai path nào?
+14. `EXTI_PR` được clear theo semantics nào?
+15. Pending flag của EXTI khác NVIC Pending state như thế nào?
+16. Vì sao ISR của `EXTI15_10_IRQn` phải kiểm tra `EXTI_PR`?
+17. Hãy mô tả luồng `GPIO → AFIO → EXTI → NVIC → ISR`.
+18. Vì sao `volatile` không đồng nghĩa với atomic hoặc synchronization?
+19. Một ISR nên tránh những loại công việc nào?
+20. Hãy mô tả thứ tự cấu hình một GPIO EXTI interrupt.
 
 ---
 
 ## 4.22. Tóm tắt
 
-Luồng interrupt tổng quát:
+Quan hệ khái niệm:
 
 ```text
-Event
- ↓
-Peripheral / EXTI
- ↓
-Interrupt Request
- ↓
+Exception
+├── System Exception
+└── External Interrupt / IRQ
+```
+
+GPIO external interrupt:
+
+```text
+GPIO pin
+   ↓
+AFIO_EXTICR
+   ↓
+EXTI line
+   ↓
+edge trigger
+   ↓
+Interrupt path
+   ↓
 NVIC
- ↓
-Vector Table
- ↓
+   ↓
 ISR
- ↓
-clear / service source flag
- ↓
-Exception Return
 ```
 
-NVIC:
-
-```text
-NVIC
-├── Enable / Disable
-├── Pending
-├── Active
-├── Priority
-└── Nested / Preemption
-```
-
-Priority:
-
-```text
-Số nhỏ hơn
-→ Priority cao hơn
-```
-
-EXTI:
+Các register EXTI cần nhớ:
 
 ```text
 IMR
-→ Interrupt Mask
+→ Interrupt path mask
 
 EMR
-→ Event Mask
+→ Event path mask
 
 RTSR
 → Rising Edge
@@ -6980,50 +6481,24 @@ FTSR
 → Falling Edge
 
 SWIER
-→ Software trigger
+→ software request
 
 PR
-→ Pending
+→ pending flag
 → Write 1 to Clear
 ```
 
-GPIO external interrupt:
+NVIC:
 
 ```text
-GPIO Pin
-   ↓
-AFIO_EXTICR
-   ↓
-EXTI Line
-   ↓
-Trigger
-   ↓
-IMR
-   ↓
-NVIC
-   ↓
-IRQHandler
+Enable / Disable
+Pending
+Active
+Priority
+Preemption
 ```
 
-Shared IRQ:
-
-```text
-EXTI0 → EXTI0_IRQn
-EXTI1 → EXTI1_IRQn
-EXTI2 → EXTI2_IRQn
-EXTI3 → EXTI3_IRQn
-EXTI4 → EXTI4_IRQn
-
-EXTI5–9
-→ EXTI9_5_IRQn
-
-EXTI10–15
-→ EXTI15_10_IRQn
-```
-
-**Điểm cần nhớ:**
-
-> **EXTI phát hiện cạnh và tạo interrupt request; AFIO chọn GPIO port được nối vào từng EXTI line; NVIC quản lý enable, pending và priority; ISR phải xác định đúng nguồn interrupt và clear flag theo cơ chế của peripheral. Với `EXTI_PR`, pending bit được clear bằng cách ghi `1` vào chính bit đó.**
+> **EXTI chịu trách nhiệm phát hiện trigger và tạo interrupt/event request; AFIO chọn GPIO port source cho EXTI line; NVIC quản lý external IRQ ở cấp processor. Pending flag tại nguồn và Pending state trong NVIC là hai tầng khác nhau, vì vậy ISR phải service/clear đúng nguồn interrupt thay vì chỉ thao tác trạng thái NVIC.**
 
 [↑ Về mục lục](#muc-luc)
 
