@@ -975,7 +975,7 @@ Trên Cortex-M3:
 
 ```text
 bit 0 = 0
-→ invalid execution state
+→ trạng thái thực thi không hợp lệ
 ```
 
 Điều này có thể dẫn tới:
@@ -984,7 +984,7 @@ bit 0 = 0
 UsageFault với INVSTATE
 ```
 
-và nếu fault không được xử lý ở cấp đó thì có thể bị escalate thành:
+và nếu fault không được xử lý ở cấp đó thì có thể lên thành:
 
 ```text
 HardFault
@@ -992,7 +992,7 @@ HardFault
 
 Trong trường hợp xảy ra ngay từ quá trình khởi động, hệ thống có thể không boot bình thường.
 
-Không nên mô tả Cortex-M3 là “chuyển sang ARM state”, vì Cortex-M3 không hỗ trợ ARM instruction state; `bit 0 = 0` đơn giản là một trạng thái không hợp lệ đối với target address của Cortex-M.
+Cortex-M3 không hỗ trợ ARM instruction state; `bit 0 = 0` đơn giản là một trạng thái không hợp lệ đối với target address của Cortex-M.
 
 ### Quy tắc này áp dụng cho các exception vector khác
 
