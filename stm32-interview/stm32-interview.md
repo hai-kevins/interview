@@ -2561,66 +2561,89 @@ Không cần lặp lại toàn bộ startup sequence.
 
 > Phạm vi của chương này tập trung vào STM32F101xx, STM32F102xx và STM32F103xx thuộc các nhóm low-, medium-, high- và XL-density. STM32F105xx/STM32F107xx connectivity line có clock tree riêng với nhiều PLL hơn, vì vậy không áp dụng trực tiếp toàn bộ công thức cấu hình của phần này.
 
+## Quy ước thuật ngữ
+
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **clock source** | Nguồn tạo/cung cấp clock, ví dụ HSI, HSE, LSI, LSE. |
+| **oscillator** | Khối dao động tạo clock. Với HSE/LSE có thể dùng crystal/resonator hoặc external clock theo cấu hình tương ứng. |
+| **SYSCLK** | System clock được chọn từ HSI, HSE hoặc PLLCLK. |
+| **HCLK** | AHB clock sau AHB prescaler; cấp cho AHB domain và Cortex-M3 processor. |
+| **PCLK1 / PCLK2** | APB1/APB2 peripheral clock sau APB prescaler tương ứng. |
+| **PLLCLK** | Clock đầu ra của PLL. |
+| **prescaler** | Bộ chia tần số. Tên bit/field cụ thể gồm `HPRE`, `PPRE1`, `PPRE2`, `ADCPRE`... |
+| **peripheral clock** | Clock thực tế cấp cho một peripheral hoặc một clock domain của peripheral. |
+| **TIMxCLK** | Timer input clock trước `TIMx_PSC`; không được mặc định luôn bằng `PCLKx`. |
+| **ADCCLK** | Clock cấp cho ADC sau ADC prescaler. |
+| **USBCLK** | Clock 48 MHz dùng cho USB trên các dòng thuộc phạm vi chương này. |
+| **enable bit / ready flag** | Bit bật một clock source và cờ xác nhận clock source đã ổn định, ví dụ `HSEON` / `HSERDY`. |
+
+Trong chương này, **clock** dùng để chỉ tín hiệu clock hoặc clock domain; **tần số** dùng khi nói về giá trị như `72 MHz`, `36 MHz`.
+
+---
+
 <a id="muc-02-01"></a>
 ## 2.1. RCC là gì?
 
-`RCC` là viết tắt của:
+`RCC` là:
 
 ```text
 Reset and Clock Control
 ```
 
-RCC chịu trách nhiệm chính cho hai nhóm chức năng:
+RCC quản lý hai nhóm chức năng chính:
 
 ```text
 RCC
-├── Clock Control
-│   ├── bật/tắt các nguồn clock
+├── Clock control
+│   ├── bật/tắt clock source
 │   ├── chọn SYSCLK
 │   ├── cấu hình PLL
 │   ├── cấu hình AHB/APB prescaler
 │   ├── cấp clock cho peripheral
 │   └── theo dõi trạng thái clock
 │
-└── Reset Control
+└── Reset control
     ├── reset peripheral trên APB1
     ├── reset peripheral trên APB2
-    └── reset Backup domain
+    └── reset backup domain
 ```
 
-Các thanh ghi quan trọng:
+Các thanh ghi cần nhận diện:
 
 | Thanh ghi | Vai trò chính |
 |---|---|
-| `RCC_CR` | Bật/tắt HSI, HSE, PLL; đọc các cờ `RDY`; bật CSS |
-| `RCC_CFGR` | Chọn SYSCLK, cấu hình PLL, AHB/APB/ADC prescaler, MCO |
-| `RCC_CIR` | Cờ/ngắt liên quan tới trạng thái nguồn clock và CSS |
-| `RCC_AHBENR` | Bật clock các peripheral trên AHB |
-| `RCC_APB2ENR` | Bật clock các peripheral trên APB2 |
-| `RCC_APB1ENR` | Bật clock các peripheral trên APB1 |
-| `RCC_APB2RSTR` | Reset các peripheral trên APB2 |
-| `RCC_APB1RSTR` | Reset các peripheral trên APB1 |
-| `RCC_BDCR` | Clock/Reset của Backup domain và RTC |
-| `RCC_CSR` | Điều khiển LSI và các cờ reset |
+| `RCC_CR` | Bật/tắt HSI, HSE, PLL; đọc ready flag; bật CSS |
+| `RCC_CFGR` | Chọn SYSCLK; cấu hình PLL, AHB/APB/ADC prescaler và MCO |
+| `RCC_CIR` | Cờ/ngắt liên quan tới clock source và CSS |
+| `RCC_AHBENR` | Bật clock cho peripheral trên AHB |
+| `RCC_APB2ENR` | Bật clock cho peripheral trên APB2 |
+| `RCC_APB1ENR` | Bật clock cho peripheral trên APB1 |
+| `RCC_APB2RSTR` | Reset peripheral trên APB2 |
+| `RCC_APB1RSTR` | Reset peripheral trên APB1 |
+| `RCC_BDCR` | Điều khiển backup domain, LSE và RTC clock |
+| `RCC_CSR` | Điều khiển LSI và chứa các reset flag |
 
-Có thể hình dung:
+Luồng khái niệm:
 
 ```text
-Clock source
+clock source
     ↓
    RCC
     ↓
-Clock Tree
+clock tree
     ↓
-CPU / Bus / Peripheral
+processor / bus / peripheral
 ```
+
+Chi tiết từng clock source nằm ở **2.2**; đường phân phối clock nằm ở **2.3**.
 
 ---
 
 <a id="muc-02-02"></a>
 ## 2.2. Các nguồn Clock: HSI / HSE / LSI / LSE
 
-STM32F10xxx có bốn nguồn clock thường gặp:
+Bốn clock source chính:
 
 ```text
 High-speed
@@ -2634,110 +2657,97 @@ Low-speed
 
 ### HSI — High-Speed Internal
 
-HSI là bộ dao động RC tốc độ cao nằm bên trong MCU.
+HSI là internal RC oscillator tốc độ cao.
 
-Đối với STM32F10xxx trong phạm vi chương này:
+Trong phạm vi chương này:
 
 ```text
 HSI = 8 MHz
 ```
 
-HSI có thể được dùng:
+HSI có thể:
 
 ```text
 HSI
-├── trực tiếp làm SYSCLK
-└── chia 2 làm đầu vào PLL
+├── được chọn trực tiếp làm SYSCLK
+└── chia 2 làm PLL input
 ```
 
-Ưu điểm:
+Đặc điểm:
 
-- Không cần linh kiện dao động ngoài.
-- Khởi động nhanh.
-- Chi phí phần cứng thấp.
+- không cần phần tử dao động ngoài;
+- khởi động nhanh;
+- độ chính xác thấp hơn clock source dùng crystal/resonator ngoài;
+- có thể tinh chỉnh bằng `HSITRIM`.
 
-Hạn chế:
-
-- Độ chính xác thấp hơn crystal/resonator ngoài.
-- Tần số chịu ảnh hưởng bởi nhiệt độ và điện áp.
-- Có thể tinh chỉnh bằng `HSITRIM`.
-
-Các bit quan trọng trong `RCC_CR`:
+Các field/bit quan trọng trong `RCC_CR`:
 
 ```text
 HSION
-→ bật HSI
+→ enable HSI
 
 HSIRDY
-→ HSI đã ổn định
+→ HSI ready flag
 
 HSICAL
-→ giá trị hiệu chuẩn
+→ giá trị calibration
 
 HSITRIM
-→ tinh chỉnh HSI
+→ giá trị trim
 ```
 
-Sau system reset:
-
-```text
-SYSCLK = HSI
-```
-
-Do đó MCU luôn có một nguồn clock nội bộ để bắt đầu chạy trước khi phần mềm cấu hình clock khác.
+Sau system reset, HSI được dùng làm SYSCLK ban đầu. Quan hệ với `SYSCLK` được trình bày tại **2.5**.
 
 ### HSE — High-Speed External
 
-HSE là nguồn clock tốc độ cao từ bên ngoài.
+HSE là high-speed external clock source.
 
 Có hai cách sử dụng:
 
 ```text
 HSE
-├── Crystal / ceramic resonator
-└── External clock bypass
+├── crystal / ceramic resonator
+└── external clock bypass
 ```
 
-Với crystal/resonator:
+Với crystal/resonator trong phạm vi chương này:
 
 ```text
 4 MHz → 16 MHz
 ```
 
-Với HSE bypass, một tín hiệu clock bên ngoài được đưa trực tiếp vào `OSC_IN`.
+Với bypass mode, external clock được đưa vào `OSC_IN`.
 
-Các bit quan trọng trong `RCC_CR`:
+Các bit trong `RCC_CR`:
 
 ```text
 HSEON
-→ bật HSE
+→ enable HSE
 
 HSERDY
-→ HSE đã ổn định
+→ HSE ready flag
 
 HSEBYP
-→ chọn chế độ external clock bypass
+→ chọn bypass mode
 ```
 
-HSE thường được dùng khi cần clock chính xác hơn HSI.
+HSE thường được chọn khi hệ thống cần clock source ngoài có độ chính xác phù hợp hơn HSI.
 
 ### LSI — Low-Speed Internal
 
-LSI là bộ dao động RC tốc độ thấp bên trong MCU.
+LSI là low-speed internal RC oscillator.
 
 Tần số danh định:
 
 ```text
-xấp xỉ 40 kHz
+≈ 40 kHz
 ```
-
-Khoảng tần số thực tế có thể rộng hơn do đặc tính RC.
 
 Ứng dụng chính:
 
 ```text
 LSI
-├── Independent Watchdog — IWDG
+├── IWDG
 └── có thể cấp RTC / Auto-Wakeup
 ```
 
@@ -2750,25 +2760,18 @@ LSIRDY
 
 ### LSE — Low-Speed External
 
-LSE là nguồn dao động ngoài tốc độ thấp:
+LSE là low-speed external oscillator, thường dùng crystal:
 
 ```text
 32.768 kHz
 ```
 
-Ứng dụng chính:
+Ứng dụng điển hình:
 
 ```text
 LSE
 → RTC
 ```
-
-LSE phù hợp cho RTC vì:
-
-- tần số thấp;
-- tiêu thụ năng lượng thấp;
-- độ chính xác tốt;
-- có thể tiếp tục hoạt động trong Backup domain khi nguồn chính bị tắt nếu `VBAT` vẫn còn.
 
 Các bit liên quan nằm trong `RCC_BDCR`:
 
@@ -2778,21 +2781,23 @@ LSERDY
 LSEBYP
 ```
 
+LSE thuộc backup domain và có thể tiếp tục phục vụ RTC khi nguồn chính bị mất nếu backup domain vẫn được cấp nguồn phù hợp.
+
 ### So sánh nhanh
 
-| Nguồn | Loại | Tần số điển hình | Mục đích chính |
+| Clock source | Loại | Tần số điển hình | Vai trò thường gặp |
 |---|---|---:|---|
-| HSI | Internal RC | 8 MHz | SYSCLK, đầu vào PLL |
-| HSE | External | 4–16 MHz với crystal | SYSCLK, đầu vào PLL |
-| LSI | Internal RC | ~40 kHz | IWDG, RTC/AWU |
-| LSE | External crystal | 32.768 kHz | RTC |
+| HSI | Internal RC | 8 MHz | SYSCLK, PLL input qua `/2` |
+| HSE | External | 4–16 MHz với crystal/resonator | SYSCLK, PLL input |
+| LSI | Internal RC | ≈ 40 kHz | IWDG, RTC/AWU |
+| LSE | External | 32.768 kHz | RTC |
 
 ---
 
 <a id="muc-02-03"></a>
 ## 2.3. Clock Tree
 
-Clock Tree mô tả đường đi của clock từ nguồn dao động tới CPU, bus và peripheral.
+Clock tree mô tả **đường phân phối clock** từ clock source tới các clock domain và peripheral.
 
 Sơ đồ rút gọn:
 
@@ -2812,87 +2817,94 @@ HSE ─────────────┼───────────�
                         ↓
                       SYSCLK
                         │
-                  AHB Prescaler
+                  AHB prescaler
                         │
                         ↓
                        HCLK
                         │
            ┌────────────┴────────────┐
            ↓                         ↓
-    APB1 Prescaler             APB2 Prescaler
+    APB1 prescaler             APB2 prescaler
            ↓                         ↓
          PCLK1                     PCLK2
            │                         │
            ↓                         ↓
-    APB1 Peripheral            APB2 Peripheral
+    APB1 peripheral            APB2 peripheral
 ```
 
-Đường clock chính:
+Đường chính:
 
 ```text
-Clock source
+clock source
     ↓
 SYSCLK
     ↓
-AHB Prescaler
+AHB prescaler
     ↓
 HCLK
     ↓
-APB1 / APB2 Prescaler
+APB1 / APB2 prescaler
     ↓
 PCLK1 / PCLK2
     ↓
-Peripheral
+peripheral
 ```
 
-Ngoài ra còn có các nhánh riêng:
+Một số nhánh riêng:
 
 ```text
 PCLK2
   ↓
-ADC Prescaler
+ADC prescaler
   ↓
 ADCCLK
+```
 
+```text
 PCLK1 / PCLK2
   ↓
-Timer clock logic
+timer clock logic
   ↓
 TIMxCLK
+```
 
+```text
 PLLCLK
   ↓
-USB Prescaler
+USB prescaler
   ↓
 USBCLK
+```
 
+```text
 HCLK
-  ├── Core / AHB / Memory / DMA
+  ├── AHB domain / processor
   └── HCLK / 8 → một lựa chọn clock cho SysTick
 ```
 
-Clock Tree cần được đọc theo ba câu hỏi:
+Khi đọc clock tree, luôn trả lời theo thứ tự:
 
 ```text
-1. Nguồn clock ban đầu là gì?
-2. Clock đã đi qua bộ nhân/chia nào?
-3. Peripheral cuối cùng nhận tần số bao nhiêu?
+1. Clock source là gì?
+2. Clock đi qua PLL/prescaler nào?
+3. Clock domain hoặc peripheral cuối cùng nhận clock nào?
+4. Tần số cuối cùng bằng bao nhiêu?
 ```
+
+Tên và vai trò của `SYSCLK/HCLK/PCLK1/PCLK2` được trình bày tại **2.5**; công thức prescaler nằm ở **2.6**; nhánh timer và các peripheral đặc biệt nằm ở **2.8–2.9**.
 
 ---
 
 <a id="muc-02-04"></a>
 ## 2.4. PLL
 
-`PLL` là viết tắt của:
+`PLL` là:
 
 ```text
 Phase-Locked Loop
 ```
 
-PLL được dùng để nhân tần số clock đầu vào.
-
-Đối với STM32F10xxx trong phạm vi chương này, đầu vào PLL có thể là:
+Trong phạm vi chương này, PLL input có thể là:
 
 ```text
 HSI / 2
@@ -2911,13 +2923,13 @@ HSE ───────┤
 HSE / 2 ───┘
 ```
 
-Tần số đầu ra có dạng:
+Công thức:
 
 ```text
 PLLCLK = PLL input × PLLMUL
 ```
 
-`PLLMUL` cho phép hệ số:
+`PLLMUL` hỗ trợ hệ số:
 
 ```text
 ×2 → ×16
@@ -2929,89 +2941,91 @@ Ví dụ:
 HSE = 8 MHz
 PLLMUL = ×9
 
-PLLCLK = 8 MHz × 9
-       = 72 MHz
+PLLCLK = 72 MHz
 ```
 
-Các bit cấu hình chính trong `RCC_CFGR`:
+Các field chính trong `RCC_CFGR`:
 
 ```text
 PLLSRC
-→ chọn HSI/2 hoặc HSE
+→ chọn HSI/2 hoặc HSE làm nguồn PLL
 
 PLLXTPRE
-→ HSE hoặc HSE/2 trước PLL
+→ chọn HSE hoặc HSE/2 trước PLL
 
 PLLMUL
-→ hệ số nhân PLL
+→ chọn hệ số nhân
 ```
 
-Các bit trạng thái/điều khiển trong `RCC_CR`:
+Các bit điều khiển/trạng thái trong `RCC_CR`:
 
 ```text
 PLLON
-→ bật PLL
+→ enable PLL
 
 PLLRDY
-→ PLL đã khóa và ổn định
+→ PLL ready flag
 ```
 
-Điểm quan trọng:
+Quy tắc cấu hình:
 
 ```text
-Cấu hình PLL
-→ phải thực hiện khi PLL đang tắt
+PLL phải đang OFF
+→ mới thay đổi PLL source / prescaler / multiplier
 ```
 
-Sau khi PLL được bật:
+Sau khi enable:
 
 ```text
 PLLON = 1
     ↓
 chờ PLLRDY = 1
     ↓
-PLL mới sẵn sàng để chọn làm SYSCLK
+PLLCLK sẵn sàng để được chọn làm SYSCLK
 ```
 
-Giới hạn cần nhớ:
+Giới hạn trong phạm vi chương:
 
 ```text
 PLLCLK ≤ 72 MHz
 ```
 
-Khi HSI/2 được dùng làm đầu vào PLL, tần số hệ thống tối đa đạt được thấp hơn trường hợp HSE phù hợp.
+Việc chọn `PLLCLK` làm `SYSCLK` được xử lý tại **2.5** và trình tự cấu hình hoàn chỉnh nằm ở **2.10**.
 
 ---
 
 <a id="muc-02-05"></a>
 ## 2.5. SYSCLK / HCLK / PCLK1 / PCLK2
 
-### SYSCLK
-
-`SYSCLK` là system clock.
-
-Nguồn có thể là:
+Bốn clock cần phân biệt:
 
 ```text
 SYSCLK
-├── HSI
-├── HSE
-└── PLLCLK
+→ system clock được RCC chọn
+
+HCLK
+→ AHB clock sau AHB prescaler
+
+PCLK1
+→ APB1 clock sau APB1 prescaler
+
+PCLK2
+→ APB2 clock sau APB2 prescaler
 ```
 
-Chọn nguồn bằng:
+### SYSCLK
+
+Nguồn của `SYSCLK`:
 
 ```text
-RCC_CFGR.SW
+HSI
+HSE
+PLLCLK
 ```
 
-Kiểm tra nguồn thực sự đang được dùng bằng:
+`RCC_CFGR.SW` chọn nguồn mong muốn; `RCC_CFGR.SWS` cho biết nguồn đang thực sự được dùng.
 
-```text
-RCC_CFGR.SWS
-```
-
-Sau reset:
+Sau system reset:
 
 ```text
 SYSCLK = HSI = 8 MHz
@@ -3019,20 +3033,11 @@ SYSCLK = HSI = 8 MHz
 
 ### HCLK
 
-`HCLK` là clock của AHB domain:
-
 ```text
-HCLK = SYSCLK / AHB Prescaler
+HCLK = SYSCLK / AHB prescaler
 ```
 
-HCLK cấp clock cho:
-
-```text
-Cortex-M3 core
-AHB bus
-Memory
-DMA
-```
+HCLK phục vụ AHB domain và Cortex-M3 processor.
 
 Giới hạn:
 
@@ -3042,10 +3047,8 @@ HCLK ≤ 72 MHz
 
 ### PCLK1
 
-`PCLK1` là clock của APB1:
-
 ```text
-PCLK1 = HCLK / APB1 Prescaler
+PCLK1 = HCLK / APB1 prescaler
 ```
 
 Giới hạn:
@@ -3054,7 +3057,7 @@ Giới hạn:
 PCLK1 ≤ 36 MHz
 ```
 
-APB1 thường chứa các peripheral như:
+Các peripheral thường nằm trên APB1 gồm:
 
 ```text
 TIM2-TIM7
@@ -3064,14 +3067,12 @@ USART2/USART3
 ...
 ```
 
-Khả năng có mặt của từng peripheral phụ thuộc từng mã MCU.
+Peripheral thực tế phụ thuộc part number.
 
 ### PCLK2
 
-`PCLK2` là clock của APB2:
-
 ```text
-PCLK2 = HCLK / APB2 Prescaler
+PCLK2 = HCLK / APB2 prescaler
 ```
 
 Giới hạn:
@@ -3080,11 +3081,11 @@ Giới hạn:
 PCLK2 ≤ 72 MHz
 ```
 
-APB2 thường chứa:
+Các peripheral thường nằm trên APB2 gồm:
 
 ```text
 AFIO
-GPIOA-G
+GPIO
 ADC
 SPI1
 USART1
@@ -3096,52 +3097,30 @@ TIM1 / TIM8
 
 ```text
 SYSCLK
-   │
-   ↓ AHB Prescaler
+   ↓ HPRE
  HCLK
-   │
-   ├───────↓ APB1 Prescaler
-   │      PCLK1
-   │
-   └───────↓ APB2 Prescaler
-          PCLK2
+   ├──↓ PPRE1 → PCLK1
+   └──↓ PPRE2 → PCLK2
 ```
 
-### Clock khác cần nhận diện
-
-```text
-FCLK
-→ Cortex-M3 free-running clock
-
-SysTick
-→ có thể dùng HCLK
-  hoặc HCLK / 8
-
-ADCCLK
-→ PCLK2 / 2
-  PCLK2 / 4
-  PCLK2 / 6
-  PCLK2 / 8
-
-ADCCLK ≤ 14 MHz
-```
+Các nhánh `TIMxCLK`, `ADCCLK`, `USBCLK`, RTC và IWDG không nên gộp vào bốn clock trên; chúng được trình bày tại **2.8–2.9**.
 
 ---
 
 <a id="muc-02-06"></a>
 ## 2.6. Prescaler và cách tính tần số
 
-Prescaler là bộ chia tần số.
-
-### AHB Prescaler
-
-`HPRE` trong `RCC_CFGR`:
+Prescaler là bộ chia tần số. Với clock tree chính:
 
 ```text
 SYSCLK
   ↓ HPRE
 HCLK
+  ├──↓ PPRE1 → PCLK1
+  └──↓ PPRE2 → PCLK2
 ```
+
+### AHB prescaler — `HPRE`
 
 Các hệ số chia:
 
@@ -3163,15 +3142,7 @@ Công thức:
 HCLK = SYSCLK / HPRE
 ```
 
-### APB1 Prescaler
-
-`PPRE1`:
-
-```text
-HCLK
-  ↓ PPRE1
-PCLK1
-```
+### APB1 prescaler — `PPRE1`
 
 Các hệ số:
 
@@ -3189,21 +3160,13 @@ Công thức:
 PCLK1 = HCLK / PPRE1
 ```
 
-Điều kiện:
+và phải thỏa:
 
 ```text
 PCLK1 ≤ 36 MHz
 ```
 
-### APB2 Prescaler
-
-`PPRE2`:
-
-```text
-HCLK
-  ↓ PPRE2
-PCLK2
-```
+### APB2 prescaler — `PPRE2`
 
 Các hệ số:
 
@@ -3221,234 +3184,161 @@ Công thức:
 PCLK2 = HCLK / PPRE2
 ```
 
-Điều kiện:
+và phải thỏa:
 
 ```text
 PCLK2 ≤ 72 MHz
 ```
 
-### ADC Prescaler
-
-`ADCPRE`:
+### ADC prescaler — `ADCPRE`
 
 ```text
-PCLK2
-  ↓
-/2, /4, /6 hoặc /8
-  ↓
-ADCCLK
+ADCCLK = PCLK2 / ADCPRE
 ```
 
-Điều kiện:
+với:
+
+```text
+ADCPRE ∈ {/2, /4, /6, /8}
+```
+
+và:
 
 ```text
 ADCCLK ≤ 14 MHz
 ```
 
-### Ví dụ: hệ thống 72 MHz từ HSE 8 MHz
+### Ví dụ chuẩn dùng xuyên suốt chương
 
 Giả sử:
 
 ```text
 HSE = 8 MHz
-
 PLL input = HSE
 PLLMUL = ×9
-```
 
-Ta có:
+SYSCLK = PLLCLK = 72 MHz
 
-```text
-PLLCLK = 8 × 9
-       = 72 MHz
-```
-
-Chọn:
-
-```text
-SYSCLK = PLLCLK
-HPRE   = /1
-PPRE1  = /2
-PPRE2  = /1
+HPRE  = /1
+PPRE1 = /2
+PPRE2 = /1
 ADCPRE = /6
 ```
 
 Kết quả:
 
 ```text
-SYSCLK = 72 MHz
-
-HCLK
-= 72 / 1
-= 72 MHz
-
-PCLK1
-= 72 / 2
-= 36 MHz
-
-PCLK2
-= 72 / 1
-= 72 MHz
-
-ADCCLK
-= 72 / 6
-= 12 MHz
+HCLK   = 72 MHz
+PCLK1  = 36 MHz
+PCLK2  = 72 MHz
+ADCCLK = 12 MHz
 ```
 
 Sơ đồ:
 
 ```text
 HSE 8 MHz
-    ↓
-PLL ×9
-    ↓
-72 MHz SYSCLK
-    ↓ HPRE /1
-72 MHz HCLK
-   ┌───────────────┐
-   ↓               ↓
-PPRE1 /2        PPRE2 /1
-   ↓               ↓
-36 MHz           72 MHz
-PCLK1            PCLK2
-                    ↓ ADCPRE /6
-                  12 MHz
-                  ADCCLK
+   ↓ PLL ×9
+SYSCLK 72 MHz
+   ↓ HPRE /1
+HCLK 72 MHz
+   ├── PPRE1 /2 → PCLK1 36 MHz
+   └── PPRE2 /1 → PCLK2 72 MHz
+                       ↓ ADCPRE /6
+                     ADCCLK 12 MHz
 ```
+
+Ví dụ này là mốc tính toán chung cho các mục sau; **2.8–2.10 chỉ dẫn chiếu lại khi cần, không tính lại toàn bộ clock tree**.
 
 ---
 
 <a id="muc-02-07"></a>
 ## 2.7. Peripheral Clock Enable và Peripheral Reset
 
-Peripheral không tự động nhận clock chỉ vì CPU đang chạy.
+Việc một bus đã có clock không có nghĩa mọi peripheral trên bus đó đều đang được cấp clock.
 
-RCC có các thanh ghi để bật clock riêng cho từng peripheral.
-
-### AHB
+RCC có các clock-enable register:
 
 ```text
 RCC_AHBENR
+RCC_APB2ENR
+RCC_APB1ENR
 ```
 
-Ví dụ các khối:
+### AHB
+
+`RCC_AHBENR` điều khiển clock của các khối AHB tương ứng, ví dụ:
 
 ```text
-DMA1
-DMA2
+DMA
 SRAM interface
 CRC
 FSMC
 SDIO
+...
 ```
 
 ### APB2
 
-```text
-RCC_APB2ENR
-```
-
-Ví dụ:
+`RCC_APB2ENR` điều khiển clock cho các peripheral APB2, ví dụ:
 
 ```text
 AFIO
-GPIOA
-GPIOB
-GPIOC
-...
-ADC1
-ADC2
+GPIO
+ADC
 SPI1
 USART1
 TIM1
 ...
 ```
 
-Ví dụ bật GPIOA:
+Ví dụ:
 
 ```c
 RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
 ```
 
-Ý nghĩa:
-
-```text
-IOPAEN = 0
-→ clock GPIOA bị tắt
-
-IOPAEN = 1
-→ clock GPIOA được bật
-```
-
-Đối với STM32F1, GPIO nằm trên APB2.
-
 ### APB1
 
-```text
-RCC_APB1ENR
-```
-
-Ví dụ:
+`RCC_APB1ENR` điều khiển clock cho các peripheral APB1, ví dụ:
 
 ```text
-TIM2
-TIM3
-TIM4
-TIM5
-I2C1
-I2C2
-SPI2
-SPI3
-USART2
-USART3
+TIM2-TIM7
+I2C
+SPI2/SPI3
+USART2/USART3
 ...
 ```
 
-### Vì sao phải bật Clock trước?
-
-Khi peripheral clock không hoạt động, các thanh ghi của peripheral có thể không đọc được như bình thường; một số trường hợp giá trị đọc về có thể là `0`.
-
-Quy trình:
+### Quy tắc cấu hình
 
 ```text
-1. Bật peripheral clock
+1. Enable peripheral clock
 2. Cấu hình peripheral register
-3. Cho peripheral hoạt động
+3. Enable peripheral nếu peripheral có cơ chế enable riêng
 ```
 
-Không nên đảo thành:
+Nếu peripheral clock bị gate, peripheral register hoặc logic bên trong peripheral có thể không hoạt động như mong đợi.
 
-```text
-cấu hình peripheral
-→ rồi mới bật clock
-```
+### Peripheral reset
 
-### Peripheral Reset
-
-RCC còn có thể reset riêng từng peripheral.
-
-APB2:
+RCC còn cho phép reset riêng peripheral thông qua:
 
 ```text
 RCC_APB2RSTR
-```
-
-APB1:
-
-```text
 RCC_APB1RSTR
 ```
 
-Ví dụ khái niệm:
+Mẫu thao tác:
 
 ```text
-set RESET bit
+set reset bit
     ↓
-peripheral được reset
+peripheral trở về reset state
     ↓
-clear RESET bit
+clear reset bit
     ↓
-peripheral trở lại trạng thái hoạt động
+peripheral rời reset state
 ```
 
 Ví dụ:
@@ -3458,77 +3348,34 @@ RCC->APB2RSTR |= RCC_APB2RSTR_IOPARST;
 RCC->APB2RSTR &= ~RCC_APB2RSTR_IOPARST;
 ```
 
-Reset peripheral hữu ích khi cần đưa một khối phần cứng về trạng thái reset mà không reset toàn MCU.
+Clock enable và peripheral reset là hai chức năng khác nhau:
+
+```text
+ENR
+→ cấp/ngắt clock
+
+RSTR
+→ đưa peripheral vào/ra reset
+```
 
 ---
 
 <a id="muc-02-08"></a>
 ## 2.8. Clock của Timer
 
-Timer trên STM32F1 có một quy tắc đặc biệt.
-
-### Trường hợp APB Prescaler = 1
-
-Nếu:
+Timer trên APB có quy tắc clock riêng.
 
 ```text
-APB Prescaler = /1
-```
+APB prescaler = /1
+→ TIMxCLK = PCLKx
 
-thì:
-
-```text
-TIMxCLK = PCLKx
-```
-
-Ví dụ:
-
-```text
-PCLK2 = 72 MHz
-PPRE2 = /1
-
-TIM1CLK = 72 MHz
-```
-
-### Trường hợp APB Prescaler khác 1
-
-Nếu:
-
-```text
-APB Prescaler = /2, /4, /8 hoặc /16
-```
-
-thì:
-
-```text
-TIMxCLK = 2 × PCLKx
-```
-
-Ví dụ:
-
-```text
-HCLK = 72 MHz
-PPRE1 = /2
-
-PCLK1 = 36 MHz
-
-TIM2CLK
-= 2 × PCLK1
-= 72 MHz
-```
-
-Quy tắc tổng quát:
-
-```text
-if APB prescaler == 1:
-    TIMxCLK = PCLKx
-else:
-    TIMxCLK = 2 × PCLKx
+APB prescaler ≠ /1
+→ TIMxCLK = 2 × PCLKx
 ```
 
 Bảng:
 
-| APB Prescaler | `PCLKx` | `TIMxCLK` |
+| APB prescaler | `PCLKx` | `TIMxCLK` |
 |---|---:|---:|
 | `/1` | `HCLK` | `PCLKx` |
 | `/2` | `HCLK/2` | `2 × PCLKx` |
@@ -3536,62 +3383,58 @@ Bảng:
 | `/8` | `HCLK/8` | `2 × PCLKx` |
 | `/16` | `HCLK/16` | `2 × PCLKx` |
 
-Đây là nguyên nhân rất phổ biến khiến phép tính Timer/PWM sai nếu chỉ lấy `PCLK1` hoặc `PCLK2` làm timer clock.
+Áp dụng ví dụ chuẩn tại **2.6**:
+
+```text
+PCLK1 = 36 MHz
+PPRE1 = /2
+
+→ TIMxCLK của timer trên APB1 = 72 MHz
+```
+
+Trong khi:
+
+```text
+PCLK2 = 72 MHz
+PPRE2 = /1
+
+→ TIMxCLK của timer trên APB2 = 72 MHz
+```
+
+Điểm cần nhớ:
+
+> **Không dùng `PCLKx` làm timer input clock theo thói quen; trước tiên phải kiểm tra APB prescaler rồi mới xác định `TIMxCLK`.**
+
+Phần timer prescaler `TIMx_PSC`, period và PWM được trình bày ở **Chương 5 – Timer + PWM**.
 
 ---
 
 <a id="muc-02-09"></a>
 ## 2.9. Clock của các Peripheral quan trọng
 
-Clock của peripheral quyết định trực tiếp các thông số thời gian.
+Mục này chỉ nêu **nguồn phụ thuộc clock** của từng peripheral; công thức đã được định nghĩa ở các mục trước sẽ không lặp lại.
 
 ### ADC
 
-ADC nhận clock từ:
-
 ```text
 PCLK2
-  ↓
-ADC Prescaler
-  ↓
+  ↓ ADCPRE
 ADCCLK
 ```
 
-Các lựa chọn:
-
-```text
-/2
-/4
-/6
-/8
-```
-
-Giới hạn:
-
-```text
-ADCCLK ≤ 14 MHz
-```
-
-Ví dụ:
-
-```text
-PCLK2 = 72 MHz
-ADCPRE = /6
-
-ADCCLK = 12 MHz
-```
+`ADCPRE` và giới hạn `ADCCLK` đã được nêu tại **2.6**.
 
 ### USB
 
-USB cần:
+Trong phạm vi chương này:
 
 ```text
+PLLCLK
+  ↓ USB prescaler
 USBCLK = 48 MHz
 ```
 
-Nguồn USB clock lấy từ PLL thông qua USB prescaler.
-
-Hai cách điển hình:
+Hai trường hợp điển hình:
 
 ```text
 PLLCLK = 72 MHz
@@ -3613,19 +3456,15 @@ SysTick có thể dùng:
 
 ```text
 HCLK
-```
-
-hoặc:
-
-```text
+hoặc
 HCLK / 8
 ```
 
-Sai cấu hình clock hệ thống có thể làm các hàm delay hoặc hệ thống thời gian dựa trên SysTick sai theo.
+Vì vậy cấu hình sai HCLK sẽ làm sai time base dựa trên SysTick.
 
 ### RTC
 
-Nguồn RTC có thể chọn:
+RTC có thể chọn clock từ:
 
 ```text
 LSE
@@ -3633,7 +3472,7 @@ LSI
 HSE / 128
 ```
 
-LSE thường phù hợp khi cần thời gian chính xác và duy trì bằng `VBAT`.
+Clock source LSE/LSI đã được trình bày tại **2.2**.
 
 ### IWDG
 
@@ -3643,40 +3482,32 @@ IWDG dùng:
 LSI
 ```
 
-Khi IWDG đã được khởi động, LSI được giữ hoạt động để cung cấp clock cho watchdog.
+### USART / SPI / I2C
 
-### UART / SPI / I2C / Timer
+Các peripheral này nhận clock từ APB domain tương ứng rồi dùng baud-rate generator/prescaler/timing logic bên trong peripheral.
 
-Các peripheral này phụ thuộc vào clock bus tương ứng và bộ chia nội bộ của chính peripheral.
-
-Có thể hình dung:
+Mô hình chung:
 
 ```text
-Bus Clock
-    ↓
-Peripheral divider / baud generator / prescaler
-    ↓
-Tốc độ hoạt động thực tế
+PCLK1 hoặc PCLK2
+        ↓
+peripheral divider / timing logic
+        ↓
+tốc độ giao tiếp thực tế
 ```
 
-Do đó nếu xác định sai `PCLK1`, `PCLK2` hoặc `TIMxCLK`, các thông số sau có thể sai:
+Do đó trước khi tính baud rate, SCK hoặc I2C timing phải xác định đúng `PCLK1/PCLK2` theo **2.5–2.6**.
 
-```text
-UART baud rate
-SPI SCK
-I2C timing
-Timer period
-PWM frequency
-delay
-ADC timing
-```
+### Timer
+
+Timer là ngoại lệ cần xử lý theo quy tắc `TIMxCLK` ở **2.8**, không áp dụng trực tiếp mô hình `peripheral clock = PCLKx`.
 
 ---
 
 <a id="muc-02-10"></a>
 ## 2.10. Quy trình cấu hình Clock
 
-Ví dụ mục tiêu:
+Mục tiêu ví dụ sử dụng lại cấu hình chuẩn tại **2.6**:
 
 ```text
 HSE = 8 MHz
@@ -3687,21 +3518,21 @@ PCLK2 = 72 MHz
 ADCCLK = 12 MHz
 ```
 
-### Bước 1 — MCU bắt đầu bằng HSI
+### Bước 1 — Bắt đầu từ trạng thái reset
 
-Sau reset:
+Sau system reset:
 
 ```text
-SYSCLK = HSI = 8 MHz
+SYSCLK = HSI
 ```
 
-Đây là trạng thái an toàn để bắt đầu cấu hình hệ thống clock.
+Đặc điểm của HSI đã được nêu tại **2.2**, vì vậy ở đây chỉ dùng nó làm clock ban đầu để cấu hình hệ thống.
 
 ### Bước 2 — Cấu hình Flash latency
 
-Khi tăng SYSCLK, Flash phải có số wait state phù hợp.
+Khi tăng system frequency, Flash phải dùng số wait state phù hợp.
 
-Đối với STM32F10xxx:
+Trong phạm vi chương:
 
 ```text
 0 < SYSCLK ≤ 24 MHz
@@ -3714,51 +3545,34 @@ Khi tăng SYSCLK, Flash phải có số wait state phù hợp.
 → 2 wait states
 ```
 
-Với 72 MHz:
+Với mục tiêu 72 MHz:
 
 ```text
 FLASH_ACR.LATENCY = 2 wait states
 ```
 
-Prefetch buffer nên được giữ bật khi chạy tần số cao và phải được giữ bật nếu dùng AHB prescaler khác `/1`.
-
-### Bước 3 — Bật HSE
+### Bước 3 — Enable HSE và chờ ready
 
 ```text
-RCC_CR.HSEON = 1
+HSEON = 1
+    ↓
+chờ HSERDY = 1
 ```
 
-Chờ:
+Ý nghĩa `HSEON/HSERDY` đã được định nghĩa tại **2.2**.
+
+### Bước 4 — Cấu hình prescaler
+
+Dùng các giá trị đã tính ở **2.6**:
 
 ```text
-RCC_CR.HSERDY = 1
-```
-
-Không nên sử dụng HSE làm nguồn hệ thống trước khi nó ổn định.
-
-### Bước 4 — Cấu hình Prescaler
-
-Với ví dụ 72 MHz:
-
-```text
-HPRE  = /1
-PPRE1 = /2
-PPRE2 = /1
+HPRE   = /1
+PPRE1  = /2
+PPRE2  = /1
 ADCPRE = /6
 ```
 
-Kết quả dự kiến:
-
-```text
-HCLK  = 72 MHz
-PCLK1 = 36 MHz
-PCLK2 = 72 MHz
-ADCCLK = 12 MHz
-```
-
-### Bước 5 — Cấu hình PLL
-
-Khi PLL đang tắt:
+### Bước 5 — Cấu hình PLL khi PLL đang OFF
 
 ```text
 PLLSRC   = HSE
@@ -3766,42 +3580,27 @@ PLLXTPRE = HSE không chia
 PLLMUL   = ×9
 ```
 
-Ta có:
+Chi tiết PLL nằm tại **2.4**.
+
+### Bước 6 — Enable PLL và chờ ready
 
 ```text
-PLLCLK = 8 × 9
-       = 72 MHz
+PLLON = 1
+    ↓
+chờ PLLRDY = 1
 ```
 
-### Bước 6 — Bật PLL
+### Bước 7 — Chuyển SYSCLK sang PLLCLK
 
 ```text
-RCC_CR.PLLON = 1
+SW = PLL
+    ↓
+chờ SWS = PLL
 ```
 
-Chờ:
+`SW` là lựa chọn phần mềm yêu cầu; `SWS` là trạng thái nguồn SYSCLK đang thực sự được dùng.
 
-```text
-RCC_CR.PLLRDY = 1
-```
-
-### Bước 7 — Chuyển SYSCLK sang PLL
-
-Thiết lập:
-
-```text
-RCC_CFGR.SW = PLL
-```
-
-Sau đó kiểm tra:
-
-```text
-RCC_CFGR.SWS = PLL
-```
-
-Chỉ khi `SWS` xác nhận PLL đang được dùng thì có thể coi quá trình chuyển SYSCLK hoàn tất.
-
-### Bước 8 — Bật clock cho peripheral cần dùng
+### Bước 8 — Enable clock cho peripheral cần sử dụng
 
 Ví dụ:
 
@@ -3816,188 +3615,87 @@ DMA1
 → RCC_AHBENR.DMA1EN
 ```
 
-### Bước 9 — Kiểm tra Clock Tree thực tế
+Cơ chế clock gating đã được trình bày tại **2.7**.
 
-Sau cấu hình, phải tự tính lại:
+### Bước 9 — Kiểm tra các clock thực tế
+
+Sau cấu hình, xác nhận:
 
 ```text
 SYSCLK
 HCLK
 PCLK1
 PCLK2
-TIMxCLK
-ADCCLK
-USBCLK nếu dùng
+TIMxCLK nếu dùng timer
+ADCCLK nếu dùng ADC
+USBCLK nếu dùng USB
 ```
 
-Không nên chỉ nhìn vào giá trị `SYSCLK`.
+Không chỉ kiểm tra `SYSCLK`.
 
-### Luồng hoàn chỉnh
+### Luồng tổng quát
 
 ```text
-Reset
+reset
   ↓
-HSI 8 MHz
+HSI làm SYSCLK ban đầu
   ↓
-cấu hình Flash latency
+Flash latency
   ↓
-bật HSE
+enable HSE → chờ HSERDY
   ↓
-chờ HSERDY
+cấu hình bus/ADC prescaler
   ↓
-cấu hình AHB/APB/ADC prescaler
+cấu hình PLL khi OFF
   ↓
-cấu hình PLL khi PLL đang OFF
+enable PLL → chờ PLLRDY
   ↓
-bật PLL
+SW = PLL → chờ SWS = PLL
   ↓
-chờ PLLRDY
+enable peripheral clock
   ↓
-SW = PLL
-  ↓
-chờ SWS = PLL
-  ↓
-bật clock cho peripheral
+xác nhận clock cuối cùng của từng domain/peripheral
 ```
 
-### Các lỗi thường gặp
+### Các lỗi cấu hình thường gặp
 
-#### Không chờ `HSERDY`
+- dùng HSE trước khi `HSERDY = 1`;
+- dùng PLL trước khi `PLLRDY = 1`;
+- thay đổi PLL source/multiplier khi PLL vẫn đang ON;
+- để `PCLK1` vượt giới hạn;
+- lấy `PCLKx` làm `TIMxCLK` mà không kiểm tra APB prescaler;
+- quên enable peripheral clock;
+- tăng system frequency nhưng chưa cấu hình Flash latency phù hợp.
 
-```text
-HSEON = 1
-→ chuyển nguồn ngay
-```
-
-Cách đúng:
-
-```text
-HSEON = 1
-→ chờ HSERDY
-→ mới sử dụng HSE
-```
-
-#### Không chờ `PLLRDY`
-
-```text
-PLLON = 1
-→ chọn PLL ngay
-```
-
-Cách đúng:
-
-```text
-PLLON = 1
-→ chờ PLLRDY
-→ mới chọn PLL
-```
-
-#### Cấu hình PLL khi PLL đang chạy
-
-Các tham số như:
-
-```text
-PLLSRC
-PLLXTPRE
-PLLMUL
-```
-
-phải được cấu hình khi PLL đang tắt.
-
-#### Vượt giới hạn APB1
-
-Sai:
-
-```text
-HCLK = 72 MHz
-PPRE1 = /1
-
-PCLK1 = 72 MHz
-```
-
-Vì:
-
-```text
-PCLK1 tối đa = 36 MHz
-```
-
-Cách phù hợp:
-
-```text
-PPRE1 = /2
-→ PCLK1 = 36 MHz
-```
-
-#### Tính sai Timer clock
-
-Sai:
-
-```text
-PCLK1 = 36 MHz
-→ TIM2CLK = 36 MHz
-```
-
-Nếu `PPRE1 != /1`:
-
-```text
-TIM2CLK = 2 × PCLK1
-        = 72 MHz
-```
-
-#### Quên bật Peripheral Clock
-
-Ví dụ:
-
-```text
-cấu hình GPIOA
-nhưng IOPAEN = 0
-```
-
-Peripheral có thể không hoạt động đúng vì clock của nó chưa được cấp.
-
-#### Tăng SYSCLK nhưng không cấu hình Flash latency phù hợp
-
-Khi SYSCLK tăng, Flash cần số wait state tương ứng.
-
-Với 72 MHz:
-
-```text
-2 wait states
-```
-
-phải được thiết lập trước khi chạy ở tần số đó.
-
----
+Các lỗi trên đều suy ra trực tiếp từ **2.2, 2.4, 2.6, 2.7 và 2.8**, nên không lặp lại từng phép tính ở đây.
 
 ### Clock Security System — CSS
 
-CSS dùng để phát hiện lỗi HSE.
+CSS giám sát HSE.
 
-Nếu HSE hỏng khi đang được dùng trực tiếp hoặc gián tiếp làm SYSCLK:
+Khi HSE bị lỗi trong trường hợp HSE đang tham gia tạo system clock:
 
 ```text
 HSE failure
     ↓
 CSS phát hiện lỗi
     ↓
-chuyển SYSCLK sang HSI
+SYSCLK chuyển sang HSI
     ↓
-HSE bị tắt
+HSE bị disable
     ↓
-PLL cũng bị tắt nếu đang dùng HSE làm đầu vào
+PLL bị disable nếu đang dùng HSE làm PLL input
     ↓
 NMI được tạo
 ```
 
-CSS phù hợp với hệ thống cần xử lý tình huống mất external clock.
-
----
+CSS là cơ chế dự phòng lỗi clock source, không phải một clock source mới.
 
 ### MCO — Microcontroller Clock Output
 
-MCO cho phép đưa một clock bên trong MCU ra chân ngoài để đo bằng oscilloscope hoặc logic analyzer.
+MCO cho phép đưa một clock nội bộ ra chân ngoài để quan sát.
 
-Có thể chọn:
+Các lựa chọn thường gặp:
 
 ```text
 SYSCLK
@@ -4006,12 +3704,12 @@ HSE
 PLLCLK / 2
 ```
 
-MCO hữu ích khi kiểm tra:
+MCO hữu ích khi cần kiểm tra bằng oscilloscope hoặc logic analyzer:
 
 ```text
-Clock source có hoạt động không?
-Tần số thực tế có đúng không?
-PLL có tạo đúng clock không?
+clock source có chạy không?
+tần số đo được có đúng không?
+PLLCLK/SYSCLK có đúng như cấu hình không?
 ```
 
 ---
@@ -4019,108 +3717,70 @@ PLL có tạo đúng clock không?
 <a id="muc-02-11"></a>
 ## 2.11. Câu hỏi tự kiểm tra
 
-1. HSE và HSI khác nhau về phần cứng và độ chính xác như thế nào?
-2. Ba nguồn nào có thể được chọn làm SYSCLK?
-3. Sau reset, nguồn nào được chọn làm SYSCLK?
-4. `SYSCLK`, `HCLK`, `PCLK1`, `PCLK2` khác nhau như thế nào?
-5. PLL của STM32F1 nhận những nguồn đầu vào nào?
-6. `SW` và `SWS` trong `RCC_CFGR` khác nhau như thế nào?
-7. Tại sao phải chờ `HSERDY` trước khi dùng HSE?
+1. HSI và HSE khác nhau về nguồn tạo clock như thế nào?
+2. Bốn clock source HSI/HSE/LSI/LSE thường phục vụ những mục đích nào?
+3. Ba nguồn nào có thể được chọn làm SYSCLK?
+4. `SYSCLK`, `HCLK`, `PCLK1` và `PCLK2` khác nhau như thế nào?
+5. `SW` và `SWS` trong `RCC_CFGR` khác nhau như thế nào?
+6. PLL trong phạm vi chương có thể nhận những PLL input nào?
+7. Vì sao phải chờ `HSERDY` hoặc `PLLRDY` trước khi sử dụng clock source tương ứng?
 8. Với HSE 8 MHz và PLL ×9, `PLLCLK` bằng bao nhiêu?
-9. Nếu `HCLK = 72 MHz` và `PPRE1 = /2`, `PCLK1` bằng bao nhiêu?
-10. Nếu `PCLK1 = 36 MHz` và APB1 prescaler khác `/1`, `TIM2CLK` bằng bao nhiêu?
-11. Nếu `PCLK2 = 72 MHz` và `ADCPRE = /6`, `ADCCLK` bằng bao nhiêu?
-12. `RCC_APB2ENR` và `RCC_APB2RSTR` khác nhau thế nào?
-13. CSS làm gì khi HSE bị lỗi?
-14. Hãy mô tả đầy đủ đường đi `HSE → PLL → SYSCLK → HCLK → PCLK1/PCLK2`.
-15. Hãy mô tả trình tự cấu hình hệ thống từ HSI sau reset sang PLL 72 MHz.
+9. Với `HCLK = 72 MHz`, `PPRE1 = /2`, `PCLK1` bằng bao nhiêu?
+10. Khi `PPRE1 = /2` và `PCLK1 = 36 MHz`, `TIMxCLK` của timer APB1 bằng bao nhiêu?
+11. Với `PCLK2 = 72 MHz`, `ADCPRE = /6`, `ADCCLK` bằng bao nhiêu?
+12. `RCC_APB2ENR` và `RCC_APB2RSTR` khác nhau ở chức năng nào?
+13. CSS xử lý lỗi HSE như thế nào?
+14. Hãy mô tả đường đi `HSE → PLL → SYSCLK → HCLK → PCLK1/PCLK2`.
+15. Hãy mô tả trình tự chuyển từ HSI sau reset sang PLLCLK làm SYSCLK.
 
 ---
 
 ## 2.12. Tóm tắt
 
+Mô hình cần nhớ:
+
 ```text
-Clock sources
-├── HSI = 8 MHz
-├── HSE = external high-speed
-├── LSI ≈ 40 kHz
-└── LSE = 32.768 kHz
+HSI / HSE
+   ↓
+  PLL ──→ PLLCLK
+   │
+   └──────────────┐
+                  ↓
+HSI / HSE / PLLCLK
+        ↓
+      SYSCLK
+        ↓ HPRE
+       HCLK
+      ┌─────┐
+      ↓     ↓
+   PPRE1   PPRE2
+      ↓     ↓
+    PCLK1  PCLK2
 ```
 
-Clock hệ thống:
+Từ `PCLK1/PCLK2`, các nhánh đặc biệt được xử lý riêng:
 
 ```text
-HSI / HSE / PLL
-       ↓
-     SYSCLK
-       ↓
-  AHB Prescaler
-       ↓
-      HCLK
-       ↓
- ┌─────┴─────┐
- ↓           ↓
-APB1        APB2
- ↓           ↓
-PCLK1       PCLK2
+timer
+→ xác định TIMxCLK theo APB prescaler
+
+ADC
+→ PCLK2 qua ADCPRE thành ADCCLK
+
+USART / SPI / I2C
+→ dùng PCLK của APB domain tương ứng rồi chia/tạo timing bên trong peripheral
 ```
 
-Giới hạn chính:
+Giới hạn chính trong phạm vi chương:
 
 ```text
-HCLK  ≤ 72 MHz
-PCLK2 ≤ 72 MHz
-PCLK1 ≤ 36 MHz
+HCLK   ≤ 72 MHz
+PCLK1  ≤ 36 MHz
+PCLK2  ≤ 72 MHz
 ADCCLK ≤ 14 MHz
 ```
 
-Timer:
-
-```text
-APB prescaler = /1
-→ TIMxCLK = PCLKx
-
-APB prescaler != /1
-→ TIMxCLK = 2 × PCLKx
-```
-
-Ví dụ 72 MHz:
-
-```text
-HSE 8 MHz
-  ↓ PLL ×9
-SYSCLK 72 MHz
-  ↓ HPRE /1
-HCLK 72 MHz
-  ├── PPRE1 /2 → PCLK1 36 MHz → TIMxCLK 72 MHz
-  └── PPRE2 /1 → PCLK2 72 MHz → TIMxCLK 72 MHz
-```
-
-Trình tự cấu hình:
-
-```text
-HSI sau reset
-  ↓
-Flash latency
-  ↓
-HSEON → HSERDY
-  ↓
-Prescaler
-  ↓
-PLL config
-  ↓
-PLLON → PLLRDY
-  ↓
-SW = PLL
-  ↓
-SWS = PLL
-  ↓
-Peripheral Clock Enable
-```
-
-**Điểm cần nhớ:**
-
-> **RCC không chỉ tạo clock cho CPU mà còn quyết định clock của toàn bộ bus và peripheral. Khi phân tích một peripheral, luôn xác định nguồn clock, prescaler của bus, clock thực tế của peripheral và bit Clock Enable tương ứng.**
+> **Khi phân tích clock của một peripheral, luôn đi theo một chuỗi duy nhất: xác định clock source → PLL nếu có → SYSCLK → HCLK → PCLK tương ứng → quy tắc clock riêng của peripheral.**
 
 [↑ Về mục lục](#muc-luc)
 
