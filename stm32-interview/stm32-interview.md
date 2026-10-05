@@ -836,28 +836,14 @@ Sau đó processor bắt đầu thực thi reset handler.
 
 ### 1.5.2. Boot alias của STM32F1
 
-Main Flash của STM32F1 có địa chỉ ánh xạ chính bắt đầu tại:
+Arm Cortex-M3 processor được Arm thiết kế độc lập với cách từng hãng vi điều khiển bố trí bộ nhớ vật lý. Theo kiến trúc Cortex-M3, khi reset, processor lấy Initial MSP từ `0x00000000` và Reset vector từ `0x00000004`. Arm không cần biết Main Flash của STM32F1 được STMicroelectronics đặt tại `0x08000000`.
+
+Vì vậy, STM32F1 phải cung cấp cơ chế **boot mapping / boot alias** để vùng bộ nhớ được chọn khi boot xuất hiện tại boot address `0x00000000`.
+
+Khi boot từ Main Flash:
 
 ```text
-0x08000000
-```
-
-Trong khi đó, khi reset, Cortex-M3 bắt đầu bằng việc đọc hai word đầu của vector table tại boot address:
-
-```text
-0x00000000
-→ Initial MSP
-
-0x00000004
-→ Reset vector
-```
-
-Arm Cortex-M3 processor được Arm thiết kế độc lập với cách từng hãng vi điều khiển bố trí bộ nhớ vật lý. Theo kiến trúc Cortex-M3, khi reset, processor lấy Initial MSP từ `0x00000000` và Reset vector từ `0x00000004`. Arm không cần biết Main Flash của STM32F1 được STMicroelectronics đặt tại `0x08000000`; vì vậy phía STM32F1 phải cung cấp cơ chế boot mapping để vùng bộ nhớ được chọn khi boot xuất hiện tại `0x00000000`.
-
-STM32F1 giải quyết sự khác biệt này bằng cơ chế **boot mapping / boot alias**. Khi boot từ Main Flash, vùng đầu Flash được ánh xạ thêm vào boot address `0x00000000`:
-
-```text
-Cortex-M3 đọc            STM32F1 address mapping
+Cortex-M3 đọc            STM32F1 ánh xạ tới
 
 0x00000000   ─────────→  0x08000000
 0x00000004   ─────────→  0x08000004
@@ -865,34 +851,19 @@ Cortex-M3 đọc            STM32F1 address mapping
      ...                       ...
 ```
 
-Có thể hình dung:
-
-```text
-Main Flash
-0x08000000
-      │
-      │ boot alias
-      ↓
-0x00000000
-```
-
-Điểm quan trọng là:
-
-```text
-không có hai bản vector table độc lập
-```
-
-Khi boot từ Main Flash, cùng nội dung ở đầu Flash có thể được truy cập qua hai địa chỉ trong memory map:
+Trong đó:
 
 ```text
 0x08000000
 → địa chỉ ánh xạ chính của Main Flash
 
 0x00000000
-→ boot alias trỏ tới vùng đầu Main Flash
+→ boot alias của vùng đầu Main Flash khi boot từ Main Flash
 ```
 
-Đây là **address remapping**, không phải phần cứng copy vector table từ `0x08000000` sang một vùng RAM/Flash khác.
+Điểm quan trọng:
+
+> **Không có hai vector table độc lập và cũng không có thao tác copy vector table từ `0x08000000` sang `0x00000000`. Hai địa chỉ này chỉ cùng truy cập tới nội dung ở đầu Main Flash nhờ cơ chế address mapping của STM32F1.**
 
 Ví dụ, giả sử hai word đầu của Main Flash chứa:
 
@@ -901,32 +872,14 @@ Ví dụ, giả sử hai word đầu của Main Flash chứa:
 0x08000004 : 0x08000101
 ```
 
-Khi boot từ Main Flash, Cortex-M3 đọc qua boot alias:
+thì khi boot từ Main Flash:
 
 | CPU đọc tại | STM32F1 ánh xạ tới | Giá trị đọc được | Ý nghĩa |
 |---|---|---|---|
 | `0x00000000` | `0x08000000` | `0x20005000` | Nạp Initial MSP |
 | `0x00000004` | `0x08000004` | `0x08000101` | Lấy Reset vector; bit 0 biểu thị Thumb state |
 
-Do đó luồng reset có thể nhìn như sau:
-
-```text
-Reset
-  ↓
-Cortex-M3 đọc 0x00000000
-  ↓ boot mapping
-STM32F1 trả dữ liệu tại đầu Main Flash
-  ↓
-MSP được khởi tạo
-  ↓
-Cortex-M3 đọc 0x00000004
-  ↓ boot mapping
-Reset vector được lấy từ Main Flash
-  ↓
-Reset_Handler
-```
-
-Tùy cấu hình boot của STM32F1, vùng boot tại `0x00000000` có thể được ánh xạ tới:
+Tùy cấu hình boot của STM32F1, vùng xuất hiện tại `0x00000000` có thể là:
 
 ```text
 Main Flash
@@ -934,9 +887,10 @@ System Memory
 SRAM
 ```
 
-vì vậy `0x00000000` nên được hiểu là **boot address / alias window**, không phải lúc nào cũng đồng nghĩa với Main Flash.
+Do đó `0x00000000` nên được hiểu là **boot address / alias window**, không phải địa chỉ cố định của Main Flash.
 
 > **Lưu ý về `VTOR`:** boot alias và `SCB->VTOR` là hai cơ chế khác nhau. Boot alias quyết định vùng nào xuất hiện tại `0x00000000` trong boot view. Sau khi chương trình đã chạy, firmware có thể đặt `VTOR` tới một vector table khác, ví dụ application tại `0x08004000`, để các lần tra vector exception sau đó dùng base address mới. Việc đổi `VTOR` **không xóa hoặc “ngắt” boot alias tại `0x00000000`**; nó chỉ thay đổi base address mà processor dùng cho vector table khi xử lý exception.
+
 
 ### 1.5.3. Reset vector và Thumb state
 
