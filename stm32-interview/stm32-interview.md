@@ -2290,17 +2290,10 @@ yêu cầu linker giữ section này.
 
 Đây là khái niệm trung tâm để hiểu `.data`.
 
-```text
-VMA
-→ Virtual Memory Address
-→ địa chỉ runtime của section
+- **LMA (Load Memory Address):** Chính là **địa chỉ gốc (vật lý)** nằm trong Flash dùng để lưu trữ dữ liệu cố định, giúp dữ liệu không bị mất đi khi bạn tắt nguồn vi điều khiển.
+- **VMA (Virtual/Virtual Runtime Memory Address):** Là **địa chỉ hoạt động** (trong ngữ cảnh này đóng vai trò như một địa chỉ logic/ảo) mà phân đoạn `.data` sử dụng khi chương trình đang chạy (**runtime**) trên SRAM.
 
-LMA
-→ Load Memory Address
-→ địa chỉ nơi initial image được lưu trong load image
-```
-
-Với `.data`:
+Với `.data`, có thể hình dung:
 
 ```text
 Flash                         SRAM
@@ -2315,7 +2308,17 @@ Cú pháp:
 .data : { ... } > RAM AT > FLASH
 ```
 
-nghĩa là `.data` chạy ở RAM nhưng initial image được đặt trong Flash.
+nghĩa là:
+
+```text
+VMA của .data
+→ RAM
+
+LMA của .data
+→ FLASH
+```
+
+Tức là initial image của `.data` được lưu trong Flash, còn khi chương trình chạy, `.data` được sử dụng tại địa chỉ runtime trong SRAM. Startup code chịu trách nhiệm copy dữ liệu từ LMA sang VMA trước khi application sử dụng `.data`.
 
 ### 1.11.8. Linker symbols
 
