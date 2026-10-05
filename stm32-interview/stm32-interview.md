@@ -852,6 +852,8 @@ Trong khi đó, khi reset, Cortex-M3 bắt đầu bằng việc đọc hai word 
 → Reset vector
 ```
 
+Arm Cortex-M3 processor được Arm thiết kế độc lập với cách từng hãng vi điều khiển bố trí bộ nhớ vật lý. Theo kiến trúc Cortex-M3, khi reset, processor lấy Initial MSP từ `0x00000000` và Reset vector từ `0x00000004`. Arm không cần biết Main Flash của STM32F1 được STMicroelectronics đặt tại `0x08000000`; vì vậy phía STM32F1 phải cung cấp cơ chế boot mapping để vùng bộ nhớ được chọn khi boot xuất hiện tại `0x00000000`.
+
 STM32F1 giải quyết sự khác biệt này bằng cơ chế **boot mapping / boot alias**. Khi boot từ Main Flash, vùng đầu Flash được ánh xạ thêm vào boot address `0x00000000`:
 
 ```text
