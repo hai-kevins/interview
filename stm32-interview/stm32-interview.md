@@ -894,18 +894,192 @@ Do đó `0x00000000` nên được hiểu là **boot address / alias window**, k
 
 ### 1.5.3. Reset vector và Thumb state
 
-Vector entry chứa địa chỉ handler với bit 0 dùng để biểu thị Thumb state.
-
-Ví dụ khái niệm:
+Cortex-M3 chỉ thực thi instruction ở **Thumb state**, vì vậy mỗi vector entry chứa địa chỉ exception handler phải có:
 
 ```text
-Reset_Handler code address ≈ 0x08000100
-vector entry               = 0x08000101
-                                      ↑
-                                  Thumb bit
+bit 0 = 1
 ```
 
-Không nên hiểu processor thực thi instruction tại địa chỉ byte lẻ `0x08000101`; bit thấp mang thông tin state.
+Ví dụ, giả sử instruction đầu tiên của `Reset_Handler` nằm tại địa chỉ căn chỉnh:
+
+```text
+0x08000100
+```
+
+thì giá trị được lưu trong Reset vector sẽ có dạng:
+
+```text
+Reset_Handler code address = 0x08000100
+Reset vector entry         = 0x08000101
+                                      ↑
+                                  bit 0 = 1
+```
+
+Điểm quan trọng là:
+
+```text
+0x08000101
+≠ địa chỉ byte lẻ mà processor fetch instruction trực tiếp
+```
+
+Bit 0 của vector entry mang thông tin về **Thumb state**. Khi exception vector được sử dụng, processor lấy địa chỉ handler từ các bit địa chỉ thích hợp và duy trì execution state hợp lệ của Cortex-M.
+
+Có thể hình dung:
+
+```text
+Vector entry
+0x08000101
+      │
+      ├── bit 0 = 1
+      │   → Thumb state hợp lệ
+      │
+      └── address part
+          → handler ở vùng 0x08000100
+```
+
+### Toolchain tạo giá trị vector như thế nào?
+
+Trong startup code, vector table thường tham chiếu trực tiếp tới symbol của handler:
+
+```asm
+.word Reset_Handler
+.word NMI_Handler
+.word HardFault_Handler
+```
+
+hoặc được khai báo bằng function pointer trong C.
+
+Toolchain biết các symbol này là entry point của Thumb code và tạo relocation/symbol value phù hợp, nên vector entry cuối cùng có bit 0 bằng `1`.
+
+Không nên hiểu quá đơn giản là:
+
+```text
+compiler luôn lấy địa chỉ rồi tự cộng số học +1
+```
+
+Cách chính xác hơn là:
+
+> **Toolchain biểu diễn địa chỉ entry của một Thumb function sao cho bit 0 của giá trị function address bằng `1`, trong khi instruction thực tế vẫn nằm tại địa chỉ căn chỉnh chẵn.**
+
+### Nếu bit 0 của vector entry bằng 0
+
+Ví dụ sai:
+
+```text
+Reset vector = 0x08000100
+```
+
+thì processor nhận một exception entry address không biểu thị Thumb state hợp lệ.
+
+Trên Cortex-M3:
+
+```text
+bit 0 = 0
+→ invalid execution state
+```
+
+Điều này có thể dẫn tới:
+
+```text
+UsageFault với INVSTATE
+```
+
+và nếu fault không được xử lý ở cấp đó thì có thể bị escalate thành:
+
+```text
+HardFault
+```
+
+Trong trường hợp xảy ra ngay từ quá trình khởi động, hệ thống có thể không boot bình thường.
+
+Không nên mô tả Cortex-M3 là “chuyển sang ARM state”, vì Cortex-M3 không hỗ trợ ARM instruction state; `bit 0 = 0` đơn giản là một trạng thái không hợp lệ đối với target address của Cortex-M.
+
+### Quy tắc này áp dụng cho các exception vector khác
+
+Không chỉ Reset vector:
+
+```text
+Reset
+NMI
+HardFault
+SysTick
+external IRQ
+...
+```
+
+các vector entry chứa địa chỉ handler đều phải biểu thị một Thumb entry hợp lệ.
+
+Ví dụ:
+
+```text
+USART1_IRQHandler code address
+→ 0x080012A0
+
+vector entry
+→ 0x080012A1
+```
+
+### Liên hệ với Bootloader
+
+Khi Bootloader nhảy sang Application, hai giá trị quan trọng thường được đọc từ vector table của App:
+
+```text
+App base + 0x00
+→ Initial MSP
+
+App base + 0x04
+→ Reset vector của App
+```
+
+Ví dụ App bắt đầu tại:
+
+```text
+0x08004000
+```
+
+thì:
+
+```text
+0x08004000
+→ Initial MSP
+
+0x08004004
+→ App Reset vector
+```
+
+Nếu Reset vector đọc từ App là:
+
+```text
+0x08004101
+```
+
+thì function pointer nên sử dụng chính giá trị vector hợp lệ đó:
+
+```c
+typedef void (*entry_fn_t)(void);
+
+uint32_t app_sp    = *(uint32_t *)0x08004000U;
+uint32_t app_reset = *(uint32_t *)0x08004004U;
+
+entry_fn_t app_entry = (entry_fn_t)app_reset;
+```
+
+Trước khi jump, Bootloader nên kiểm tra tối thiểu:
+
+```text
+Initial MSP
+→ nằm trong SRAM hợp lệ
+
+Reset vector
+→ nằm trong vùng executable hợp lệ
+
+Reset vector bit 0
+→ bằng 1
+```
+
+Sau đó mới thực hiện các bước chuyển context cần thiết như cập nhật MSP và, nếu Application dùng vector table riêng, cấu hình `SCB->VTOR` phù hợp.
+
+> **Không nên sửa một Reset vector sai bằng cách mù quáng `OR 1`.** Nếu bit 0 không đúng, đó có thể là dấu hiệu image hoặc địa chỉ Application không hợp lệ; Bootloader nên kiểm tra và từ chối jump thay vì che lỗi.
 
 ### 1.5.4. Hardware reset sequence và startup code
 
