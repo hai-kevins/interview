@@ -1622,7 +1622,7 @@ Chi tiết **ai copy, copy khi nào** thuộc **1.10. Startup Code**. Chi tiết
 
 ### 1.8.6. `.bss`
 
-`.bss` thường chứa các object có static storage duration cần zero-initialize, ví dụ:
+`.bss` thường chứa các object có thời gian tồn tại tĩnh (static storage duration) cần zero-initialize, ví dụ:
 
 ```c
 int counter;
