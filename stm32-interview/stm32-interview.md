@@ -3542,7 +3542,7 @@ software bắt đầu cấu hình clock tree mới
 
 **Vì sao cần hiểu bước này?**
 
-Ta không bắt đầu từ một hệ thống “không có clock”. Sau reset, HSI đã là system clock mặc định, nên phần mềm có một nguồn clock ổn định ban đầu để thực hiện các thao tác cấu hình RCC.
+Sau reset, HSI đã là system clock mặc định, nên phần mềm có một nguồn clock ổn định ban đầu để thực hiện các thao tác cấu hình RCC.
 
 Do đó trong trường hợp reset bình thường:
 
