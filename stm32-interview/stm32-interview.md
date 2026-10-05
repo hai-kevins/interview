@@ -2276,7 +2276,151 @@ SECTIONS
 }
 ```
 
-### 1.11.6. `KEEP`
+### 1.11.6. `.` — Location Counter
+
+Trong GNU linker script, dấu:
+
+```ld
+.
+```
+
+được gọi là **Location Counter**.
+
+Có thể hiểu ngắn gọn:
+
+```text
+.
+→ địa chỉ hiện tại mà linker đang đặt nội dung vào
+```
+
+Khi linker đưa dữ liệu hoặc instruction vào một output section, `.` tự động tăng theo số byte đã được đặt.
+
+Ví dụ:
+
+```ld
+.text :
+{
+    _stext = .;
+
+    *(.text*)
+
+    _etext = .;
+} > FLASH
+```
+
+Luồng khái niệm:
+
+```text
+. = địa chỉ bắt đầu .text
+        ↓
+_stext = .
+        ↓
+linker đặt các input section .text*
+        ↓
+. tăng dần theo kích thước nội dung
+        ↓
+_etext = .
+```
+
+Vì vậy:
+
+```text
+_stext
+→ địa chỉ bắt đầu output section .text
+
+_etext
+→ địa chỉ ngay sau byte cuối của .text
+```
+
+Điểm cần phân biệt:
+
+> **`.` không phải biến C, không phải con trỏ runtime và không chiếm một ô nhớ riêng. Nó là trạng thái địa chỉ mà linker dùng trong lúc bố trí các section.**
+
+### Gán symbol bằng Location Counter
+
+Các linker symbol thường được tạo bằng cách lấy giá trị hiện tại của `.`:
+
+```ld
+_sdata = .;
+*(.data*)
+_edata = .;
+```
+
+Ý nghĩa:
+
+```text
+_sdata
+→ lưu giá trị của . trước khi đặt .data
+
+_edata
+→ lưu giá trị của . sau khi đặt .data
+```
+
+Nhờ đó startup code có thể dùng `_sdata` và `_edata` làm boundary của vùng `.data`.
+
+Chi tiết về linker symbols được trình bày ở **1.11.9. Linker symbols**.
+
+### Thay đổi Location Counter
+
+Linker script cũng có thể chủ động thay đổi `.`.
+
+Ví dụ căn chỉnh địa chỉ:
+
+```ld
+. = ALIGN(4);
+```
+
+nghĩa là:
+
+```text
+đưa Location Counter
+→ tới địa chỉ kế tiếp chia hết cho 4
+```
+
+Ví dụ:
+
+```text
+. trước ALIGN = 0x08000103
+
+. = ALIGN(4)
+
+. sau ALIGN  = 0x08000104
+```
+
+Căn chỉnh giúp section hoặc object bắt đầu tại boundary phù hợp với yêu cầu alignment.
+
+### Location Counter trong output section
+
+Ví dụ:
+
+```ld
+.data :
+{
+    . = ALIGN(4);
+    _sdata = .;
+
+    *(.data*)
+
+    . = ALIGN(4);
+    _edata = .;
+} > RAM AT > FLASH
+```
+
+Trong output section `.data`, `.` theo dõi **địa chỉ runtime của section**, tức phía VMA của `.data` trong RAM.
+
+```text
+.data > RAM
+→ . chạy theo vùng RAM
+
+AT > FLASH
+→ initial image của .data có LMA trong Flash
+```
+
+Do đó không nên dùng `.` để đồng nhất trực tiếp với cả VMA lẫn LMA. Trong ví dụ trên, `.` biểu diễn vị trí hiện tại trong output section ở phía VMA; LMA được linker xác định riêng bởi phần load placement.
+
+Khái niệm VMA/LMA được trình bày ngay tại **1.11.8. VMA và LMA**.
+
+### 1.11.7. `KEEP`
 
 Vector table có thể không được tham chiếu như một function/data object thông thường. Khi linker garbage collection được bật:
 
@@ -2286,7 +2430,7 @@ KEEP(*(.isr_vector))
 
 yêu cầu linker giữ section này.
 
-### 1.11.7. VMA và LMA
+### 1.11.8. VMA và LMA
 
 Đây là khái niệm trung tâm để hiểu `.data`.
 
@@ -2320,7 +2464,7 @@ LMA của .data
 
 Tức là initial image của `.data` được lưu trong Flash, còn khi chương trình chạy, `.data` được sử dụng tại địa chỉ runtime trong SRAM. Startup code chịu trách nhiệm copy dữ liệu từ LMA sang VMA trước khi application sử dụng `.data`.
 
-### 1.11.8. Linker symbols
+### 1.11.9. Linker symbols
 
 Các dòng:
 
@@ -2341,7 +2485,7 @@ zero .bss từ đâu tới đâu
 initial stack boundary ở đâu
 ```
 
-### 1.11.9. `NOLOAD`
+### 1.11.10. `NOLOAD`
 
 Ví dụ:
 
@@ -2354,7 +2498,7 @@ Ví dụ:
 
 `NOLOAD` biểu thị output section không cần nội dung load image tương ứng. Điều này phù hợp với `.bss`, vì startup code chỉ cần zero-initialize vùng runtime.
 
-### 1.11.10. ELF, HEX và BIN
+### 1.11.11. ELF, HEX và BIN
 
 ```text
 ELF
@@ -2369,7 +2513,7 @@ BIN
 
 Khi debug bằng GDB/ST-Link, ELF đặc biệt hữu ích vì giữ symbol/debug information. Công cụ programming có thể nhận ELF/HEX/BIN tùy workflow.
 
-### 1.11.11. Quan hệ với Startup Code
+### 1.11.12. Quan hệ với Startup Code
 
 Mục **1.10** đã dùng:
 
@@ -2396,15 +2540,16 @@ Startup Code
 
 Không cần lặp lại toàn bộ startup sequence.
 
-### 1.11.12. Điểm cần nhớ
+### 1.11.13. Điểm cần nhớ
 
-> **Linker script nối object sections với memory map thật của MCU. Nó khai báo memory regions, tạo output sections, quyết định VMA/LMA, giữ các section quan trọng và tạo linker symbols để startup code sử dụng.**
+> **Linker script nối object sections với memory map thật của MCU. Nó khai báo memory regions, tạo output sections, dùng Location Counter `.` để theo dõi vị trí hiện tại, quyết định VMA/LMA, giữ các section quan trọng và tạo linker symbols để startup code sử dụng.**
 
-### 1.11.13. Câu hỏi tự kiểm tra
+### 1.11.14. Câu hỏi tự kiểm tra
 
 1. Input section và output section khác nhau như thế nào?
-2. VMA và LMA của `.data` khác nhau ở điểm nào?
-3. Vì sao startup code cần linker symbols?
+2. Dấu `.` (Location Counter) trong linker script biểu diễn điều gì?
+3. VMA và LMA của `.data` khác nhau ở điểm nào?
+4. Vì sao startup code cần linker symbols?
 
 [↑ Về mục lục](#muc-luc)
 
