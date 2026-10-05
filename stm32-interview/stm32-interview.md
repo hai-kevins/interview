@@ -2290,7 +2290,7 @@ yêu cầu linker giữ section này.
 
 Đây là khái niệm trung tâm để hiểu `.data`.
 
-- **LMA (Load Memory Address):** Chính là **địa chỉ gốc (vật lý)** nằm trong Flash dùng để lưu trữ dữ liệu cố định, giúp dữ liệu không bị mất đi khi bạn tắt nguồn vi điều khiển.
+- **LMA (Load Memory Address):** Là **địa chỉ gốc (vật lý)** nằm trong Flash dùng để lưu trữ dữ liệu cố định, giúp dữ liệu không bị mất đi khi bạn tắt nguồn vi điều khiển.
 - **VMA (Virtual/Virtual Runtime Memory Address):** Là **địa chỉ hoạt động** (trong ngữ cảnh này đóng vai trò như một địa chỉ logic/ảo) mà phân đoạn `.data` sử dụng khi chương trình đang chạy (**runtime**) trên SRAM.
 
 Với `.data`, có thể hình dung:
