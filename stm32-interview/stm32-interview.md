@@ -10495,44 +10495,163 @@ Frame format phải theo protocol của thiết bị ngoài; không mặc địn
 <a id="muc-07-08"></a>
 ## 7.8. NSS Hardware / Software
 
-`SPI_CR1.SSM` chọn cách quản lý NSS.
+`NSS` là tín hiệu **Slave Select** của peripheral SPI. Trên STM32F1, cách quản lý NSS được chọn bằng `SPI_CR1.SSM`.
 
-### Software NSS
+```text
+SSM = 1
+→ Software NSS management
+
+SSM = 0
+→ Hardware NSS management
+```
+
+### Software NSS management
 
 ```text
 SSM = 1
 ```
 
-NSS nội bộ được điều khiển bằng `SSI`. Trong Master mode thường dùng:
+Khi đó trạng thái NSS **bên trong peripheral** không lấy từ chân NSS vật lý mà lấy từ bit:
+
+```text
+SPI_CR1.SSI
+```
+
+Trong Master mode thường cấu hình:
 
 ```text
 SSM = 1
 SSI = 1
 ```
 
-và một GPIO riêng làm CS:
+Chân NSS vật lý không còn được peripheral dùng để quản lý Slave Select, nên có thể dùng cho mục đích khác.
+
+Trong thực tế, Master thường dùng một GPIO riêng làm `CS` cho từng Slave:
 
 ```text
-CS = 0
-→ bắt đầu transaction
+GPIO CS = 0
+→ chọn Slave
+→ thực hiện transaction
 
-CS = 1
-→ kết thúc transaction
+GPIO CS = 1
+→ bỏ chọn Slave
 ```
 
-Cách này cho software chủ động transaction boundary.
+Ví dụ nhiều Slave:
 
-### Hardware NSS
+```text
+Master
+├── GPIO_CS1 → Slave 1
+├── GPIO_CS2 → Slave 2
+└── GPIO_CS3 → Slave 3
+```
+
+Ưu điểm chính là software chủ động được **transaction boundary** và có thể điều khiển nhiều Slave bằng nhiều GPIO CS.
+
+> `SSI` chỉ điều khiển **NSS nội bộ của peripheral**. Nó không tự kéo một GPIO CS ngoài chip xuống Low hoặc lên High.
+
+### Hardware NSS management
 
 ```text
 SSM = 0
 ```
 
-Trong Master mode, `SPI_CR2.SSOE = 1` cho phép peripheral điều khiển NSS output. NSS có thể được giữ active trong thời gian SPI được enable, vì vậy không phải lúc nào cũng phù hợp với thiết bị yêu cầu CS đổi mức giữa từng transaction.
+Lúc này hành vi phụ thuộc `SPI_CR2.SSOE`.
 
-### Mode Fault
+#### Master — NSS output enabled
 
-Khi Master dùng Hardware NSS input và điều kiện xung đột Master xảy ra, `MODF` có thể được set. Cơ chế lỗi `MODF` được trình bày tại **7.11**.
+```text
+MSTR = 1
+SSM  = 0
+SSOE = 1
+```
+
+Peripheral điều khiển trực tiếp chân `SPIx_NSS`:
+
+```text
+SPI bắt đầu communication
+→ NSS được kéo Low
+
+SPI vẫn enable
+→ NSS tiếp tục giữ Low
+
+SPI bị disable
+→ NSS trở lại High
+```
+
+Điểm quan trọng trên STM32F1:
+
+```text
+Hardware NSS
+≠
+tự động Low cho từng byte/frame rồi High ngay sau byte/frame
+```
+
+NSS được **giữ Low cho tới khi SPI bị disable**, vì vậy Hardware NSS Master không linh hoạt bằng GPIO CS nếu thiết bị ngoài yêu cầu CS phải đổi mức sau từng transaction.
+
+#### Master — NSS output disabled
+
+```text
+MSTR = 1
+SSM  = 0
+SSOE = 0
+```
+
+NSS là input và có thể được dùng cho **multi-master / Mode Fault detection**.
+
+Nếu Master đang hoạt động mà NSS bị kéo Low:
+
+```text
+NSS = 0
+→ MODF có thể được set
+→ MSTR bị clear
+→ SPI rời Master mode
+```
+
+Cơ chế `MODF` được trình bày tại **7.11**.
+
+#### Slave — Hardware NSS input
+
+Khi STM32F1 làm Slave với:
+
+```text
+SSM  = 0
+SSOE = 0
+```
+
+chân `NSS` hoạt động như Slave Select input:
+
+```text
+NSS = 0
+→ Slave được chọn
+
+NSS = 1
+→ Slave không được chọn
+```
+
+Master bên ngoài là thiết bị điều khiển NSS trong cấu hình single-master thông thường.
+
+### So sánh nhanh
+
+| Cấu hình | NSS vật lý | Ai quyết định chọn Slave? | Điểm chính |
+|---|---|---|---|
+| `SSM=1` | Peripheral bỏ qua NSS vật lý | Software, thường qua GPIO CS | Linh hoạt, dễ điều khiển nhiều Slave |
+| `SSM=0, SSOE=1`, Master | NSS output | SPI hardware | NSS Low trong thời gian SPI communication và giữ Low tới khi disable SPI |
+| `SSM=0, SSOE=0`, Master | NSS input | Bus / Master khác | Hỗ trợ multi-master và Mode Fault detection |
+| `SSM=0, SSOE=0`, Slave | NSS input | Master bên ngoài | NSS Low chọn Slave |
+
+Có thể nhớ:
+
+```text
+Software NSS
+→ SSM = 1
+→ SSI quyết định NSS nội bộ
+→ GPIO riêng thường dùng làm CS thật
+
+Hardware NSS
+→ SSM = 0
+→ SSOE quyết định NSS là output hay input
+```
 
 ---
 
