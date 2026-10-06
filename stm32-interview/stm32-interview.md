@@ -6840,10 +6840,7 @@ CK_CNT
 Công thức chuẩn:
 
 ```text
-fCK_CNT =
-fTIMxCLK
-─────────
-PSC + 1
+fCK_CNT = fTIMxCLK / (PSC + 1)
 ```
 
 Do đó:
