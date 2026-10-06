@@ -8152,6 +8152,7 @@ Mỗi khái niệm được giải thích đầy đủ tại một mục chính.
 | **`RXNE`** | Read Data Register Not Empty; data nhận đã sẵn sàng trong `USART_DR`. |
 | **`IDLE`** | Idle Line detected; receiver phát hiện đường RX trở lại trạng thái idle theo cơ chế USART. |
 | **receive error flags** | `ORE`, `FE`, `NE`, `PE`: Overrun, Framing, Noise, Parity error. |
+| **oversampling 16x** | Cơ chế receiver trong asynchronous mode dùng 16 vị trí sample clock cho mỗi bit time để phục hồi dữ liệu và phân biệt tín hiệu hợp lệ với noise. Trong USART của STM32F1 theo RM0008 không có cấu hình `OVER8`; không dùng khái niệm oversampling 8x cho phạm vi chương này. |
 | **hardware flow control** | Cơ chế `CTS/RTS` điều phối việc truyền/nhận bằng tín hiệu phần cứng. |
 
 Trong chương này, **UART communication** dùng để chỉ giao tiếp bất đồng bộ nói chung; khi nói về register/peripheral cụ thể của STM32F1, dùng đúng tên instance như `USART1`, `USART2`, `UART4` và tên register `USARTx_*`.
@@ -8892,6 +8893,155 @@ uint8_t data = (uint8_t)USART1->DR;
 Nếu data cũ chưa được lấy khỏi receive data register mà frame mới cần chuyển vào, có thể xảy ra `ORE`. Cơ chế Overrun Error được trình bày tại **6.11**.
 
 ![RM0008 Figure 283 — Start bit detection](assets/chapter-6/figure-283.png)
+
+### Oversampling 16x và cách receiver lấy mẫu
+
+Trong **asynchronous mode**, USART của STM32F1 dùng **oversampling 16x** để phục hồi dữ liệu nhận và phân biệt tín hiệu hợp lệ với noise.
+
+Có thể hình dung:
+
+```text
+1 bit time
+→ 16 vị trí sample clock
+```
+
+Điều này **không có nghĩa cả 16 vị trí đều được dùng như 16 phiếu ngang nhau để quyết định giá trị bit**. Các vị trí này tạo lưới thời gian nội bộ; receiver dùng những sample được chọn quanh vùng giữa bit để xác nhận Start bit hoặc quyết định data bit.
+
+Trong phạm vi STM32F1 của RM0008:
+
+```text
+Asynchronous USART
+→ oversampling 16x
+
+không có OVER8
+→ không có lựa chọn oversampling 8x
+```
+
+Một số dòng STM32 khác có thể hỗ trợ oversampling 8x, nhưng không áp dụng kiến thức đó cho USART STM32F1 trong chương này.
+
+#### Đồng bộ từ Start bit
+
+Khi RX đang Idle:
+
+```text
+RX = 1
+```
+
+một cạnh xuống:
+
+```text
+1 → 0
+```
+
+khởi động quá trình **Start-bit detection**.
+
+```text
+RX đang Idle = 1
+      ↓
+phát hiện falling edge
+      ↓
+bắt đầu kiểm tra Start bit
+```
+
+Receiver không chỉ thấy một cạnh xuống rồi lập tức coi đó là Start bit hợp lệ. STM32F1 kiểm tra hai nhóm sample:
+
+```text
+nhóm 1
+→ sample 3, 5, 7
+
+nhóm 2
+→ sample 8, 9, 10
+```
+
+Điều kiện:
+
+```text
+cả 3 sample của mỗi nhóm đều = 0
+→ Start bit được xác nhận sạch
+
+mỗi nhóm có ít nhất 2/3 sample = 0
+nhưng có sample không khớp
+→ Start bit vẫn được chấp nhận
+→ NE = 1 báo Noise Error
+
+một nhóm có ít hơn 2/3 sample = 0
+→ hủy Start-bit detection
+→ receiver trở lại Idle
+→ chờ falling edge tiếp theo
+```
+
+Vì vậy, cạnh xuống của Start bit đóng vai trò **mốc bắt đầu đồng bộ một frame**, còn việc xác nhận Start bit được thực hiện bằng nhiều sample sau đó.
+
+#### Lấy mẫu data bit
+
+Đối với một data bit, STM32F1 dùng ba sample gần giữa bit:
+
+```text
+sample 8
+sample 9
+sample 10
+```
+
+Ba sample này được xử lý theo **quyết định theo đa số mẫu**:
+
+```text
+ít nhất 2/3 sample = 0
+→ nhận bit = 0
+
+ít nhất 2/3 sample = 1
+→ nhận bit = 1
+```
+
+Bảng quyết định:
+
+| Ba sample | Bit nhận | `NE` |
+|---|---:|---:|
+| `000` | `0` | `0` |
+| `001` | `0` | `1` |
+| `010` | `0` | `1` |
+| `011` | `1` | `1` |
+| `100` | `0` | `1` |
+| `101` | `1` | `1` |
+| `110` | `1` | `1` |
+| `111` | `1` | `0` |
+
+Có thể nhớ:
+
+```text
+000 hoặc 111
+→ ba sample đồng nhất
+→ data hợp lệ theo phép lấy mẫu
+→ NE = 0
+
+các tổ hợp còn lại
+→ vẫn quyết định bit theo đa số mẫu
+→ NE = 1
+```
+
+`NE` và Figure 284 được trình bày tại **6.11. Error Flags**.
+
+#### Quan hệ với baud rate
+
+Sau khi Start bit được xác nhận, receiver dùng baud-rate timing nội bộ để tiếp tục xác định các vị trí lấy mẫu của các bit còn lại trong frame.
+
+```text
+falling edge của Start bit
+        ↓
+xác nhận Start bit
+        ↓
+baud-rate timing nội bộ
+        ↓
+sample D0, D1, D2, ...
+        ↓
+Parity nếu có
+        ↓
+Stop bit
+```
+
+UART asynchronous không có đường clock chung giữa transmitter và receiver, nhưng baud rate hai phía vẫn phải đủ gần nhau. Nếu tổng sai lệch clock/baud vượt khả năng chịu sai lệch của receiver, các điểm lấy mẫu có thể trôi khỏi vùng ổn định của bit và dẫn tới nhận sai dữ liệu hoặc framing error.
+
+> **Điểm cần nhớ:** trên STM32F1, oversampling 16x tạo lưới timing cho receiver; Start bit được xác nhận bằng các nhóm sample `3,5,7` và `8,9,10`, còn data bit được quyết định từ các sample `8,9,10` theo **đa số mẫu**.
+
 
 ---
 
