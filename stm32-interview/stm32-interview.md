@@ -9999,7 +9999,7 @@ DMA
 <a id="chuong-07"></a>
 # 7. SPI + I2C
 
-SPI và I2C đều là giao tiếp nối tiếp đồng bộ nhưng tổ chức bus theo hai mô hình khác nhau.
+SPI và I2C đều là **giao tiếp nối tiếp đồng bộ**, nhưng tổ chức bus khác nhau:
 
 ```text
 SPI
@@ -10013,81 +10013,70 @@ I2C
 └── SDA
 ```
 
-Tư duy tổng quát:
+Chương này dùng một mục chính cho mỗi khái niệm. Các mục quy trình, ví dụ, Interrupt và DMA chỉ áp dụng lại cơ chế đã nêu và dẫn chiếu về mục chính để tránh lặp định nghĩa.
 
-```text
-SPI
-→ tốc độ cao
-→ giao thức đơn giản hơn
-→ chọn Slave bằng NSS/CS
-→ Full-Duplex tự nhiên
+## Quy ước thuật ngữ
 
-I2C
-→ 2 dây dùng chung
-→ chọn Slave bằng Address
-→ có ACK/NACK
-→ hỗ trợ Arbitration và Clock Stretching
-```
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **SPI** | Serial Peripheral Interface; giao tiếp nối tiếp đồng bộ dùng clock `SCK`. |
+| **SPI Master / SPI Slave** | Hai vai trò theo thuật ngữ của STM32F1/RM0008; Master tạo `SCK` và khởi tạo transfer. |
+| **SCK** | Serial Clock của SPI. |
+| **MOSI** | Master Out Slave In; đường dữ liệu từ Master tới Slave trong Full-Duplex. |
+| **MISO** | Master In Slave Out; đường dữ liệu từ Slave tới Master trong Full-Duplex. |
+| **NSS** | Slave Select signal của peripheral SPI STM32F1. |
+| **CS** | Chip Select của thiết bị ngoài; khi dùng Software NSS thường được điều khiển bằng một GPIO riêng. |
+| **SPI frame** | Đơn vị dữ liệu 8 bit hoặc 16 bit theo `DFF`. |
+| **Full-Duplex** | Mỗi clock đồng thời shift một bit TX và một bit RX. |
+| **baud-rate prescaler** | Bộ chia `PCLKx` để tạo `SCK` khi STM32F1 làm SPI Master; chọn bằng `BR[2:0]`. |
+| **CPOL / CPHA** | Clock Polarity / Clock Phase; xác định mức idle của `SCK` và cạnh lấy mẫu. |
+| **`SPI_DR`** | Data Register mà CPU/DMA dùng để ghi dữ liệu phát và đọc dữ liệu nhận. |
+| **`TXE` / `RXNE` / `BSY`** | Transmit Buffer Empty / Receive Buffer Not Empty / Busy. |
+| **SPI error flags** | `OVR`, `MODF`, `CRCERR`. |
+| **I2C** | Inter-Integrated Circuit; bus nối tiếp đồng bộ hai dây dùng `SCL` và `SDA`. |
+| **I2C Master / I2C Slave** | Hai vai trò theo thuật ngữ của STM32F1/RM0008; Master tạo START và điều khiển transaction. |
+| **Transmitter / Receiver** | Vai trò truyền/nhận dữ liệu, độc lập với vai trò Master/Slave. |
+| **SCL / SDA** | Serial Clock / Serial Data của I2C. |
+| **Open-Drain** | Thiết bị chỉ chủ động kéo line xuống Low; mức High được tạo bởi pull-up. |
+| **START / STOP condition** | Điều kiện bắt đầu/kết thúc transaction trên bus I2C. |
+| **Repeated START** | START mới được tạo khi Master vẫn đang giữ bus, không phát STOP trước đó. |
+| **ACK / NACK** | Acknowledge / Not Acknowledge ở xung clock thứ 9 sau mỗi byte. |
+| **7-bit address / 10-bit address** | Địa chỉ Slave trên bus; không đồng nhất 7-bit address với byte `Address + R/W`. |
+| **Standard-mode / Fast-mode** | I2C tới 100 kHz / 400 kHz trong phạm vi chương này. |
+| **clock stretching** | Slave giữ `SCL` ở Low để trì hoãn tiến trình bus. |
+| **arbitration** | Cơ chế nhiều Master cùng quan sát SDA để xác định Master nào tiếp tục giữ bus. |
+| **I2C event flags** | `SB`, `ADDR`, `ADD10`, `STOPF`, `BTF`, `RxNE`, `TxE`. |
+| **I2C error flags** | `BERR`, `ARLO`, `AF`, `OVR`, `PECERR`. |
+
+Trong chương này, tên bit/register giữ đúng ký hiệu STM32F1 như `SPI_CR1.CPOL`, `I2C_SR1.ADDR`, `TxE`, `RxNE`; không tự đổi kiểu chữ của tên bit.
+
+---
 
 <a id="muc-07-01"></a>
 ## 7.1. Tổng quan SPI và I2C
 
-### SPI
+Hai giao tiếp cùng dùng clock để đồng bộ nhưng chọn thiết bị theo hai cách khác nhau:
 
 ```text
-Synchronous
-Serial
-Master / Slave
+SPI
+→ Master chọn Slave bằng NSS/CS
+
+I2C
+→ Master chọn Slave bằng address truyền trên SDA
 ```
 
-Các đặc điểm chính trên STM32F1:
+Đặc điểm cần nhận diện:
 
-```text
-Full-Duplex
-Half-Duplex
-8-bit / 16-bit frame
-MSB First / LSB First
-CPOL / CPHA
-Hardware / Software NSS
-Interrupt
-DMA
-CRC
-```
+| SPI | I2C |
+|---|---|
+| Full-Duplex tự nhiên | Một đường data dùng chung |
+| SCK + MOSI + MISO + NSS/CS | SCL + SDA |
+| Không có addressing chung bắt buộc trong giao thức cơ bản | 7-bit / 10-bit addressing |
+| Không có ACK/NACK kiểu I2C | Có ACK/NACK |
+| Slave thường được chọn bằng CS riêng | Nhiều Slave dùng chung bus theo address |
+| Có CPOL/CPHA | Có START/STOP, arbitration, clock stretching |
 
-### I2C
-
-```text
-Synchronous
-Serial
-Address-based shared bus
-```
-
-Các đặc điểm chính:
-
-```text
-2-wire bus
-7-bit / 10-bit address
-Master / Slave
-Multi-Master
-ACK / NACK
-Repeated START
-Clock Stretching
-Arbitration
-Standard Mode
-Fast Mode
-Interrupt
-DMA
-```
-
-### So sánh tư duy
-
-```text
-SPI:
-Master chọn Slave bằng đường vật lý NSS/CS
-
-I2C:
-Master chọn Slave bằng địa chỉ được truyền trên SDA
-```
+Các cơ chế cụ thể được trình bày ở các mục SPI **7.2–7.15** và I2C **7.16–7.29**.
 
 ---
 
@@ -10096,47 +10085,22 @@ Master chọn Slave bằng địa chỉ được truyền trên SDA
 <a id="muc-07-02"></a>
 ## 7.2. SPI là gì?
 
-`SPI`:
+`SPI` là:
 
 ```text
 Serial Peripheral Interface
 ```
 
-SPI là giao tiếp nối tiếp đồng bộ.
+SPI là giao tiếp nối tiếp đồng bộ; trong Master mode, Master tạo `SCK` và dữ liệu được shift theo các cạnh clock.
 
-Master cung cấp clock:
-
-```text
-Master
-  ↓
- SCK
-  ↓
-Slave
-```
-
-Dữ liệu được shift theo từng cạnh clock.
-
-Ứng dụng:
-
-```text
-Sensor
-Display
-Flash memory
-ADC / DAC ngoài
-RF module
-Memory card
-Peripheral tốc độ cao
-```
-
-STM32F1 SPI có thể hoạt động:
+STM32F1 SPI có thể hoạt động ở:
 
 ```text
 Master
 Slave
-Multi-Master
 ```
 
-và hỗ trợ:
+và hỗ trợ các kiểu truyền như:
 
 ```text
 Full-Duplex
@@ -10144,58 +10108,33 @@ Simplex
 Bidirectional Half-Duplex
 ```
 
+Các đường tín hiệu được trình bày tại **7.3**; Full-Duplex được giải thích tại **7.4**.
+
 ---
 
 <a id="muc-07-03"></a>
 ## 7.3. SCK / MOSI / MISO / NSS
 
-Một SPI Full-Duplex thường có bốn tín hiệu.
-
-### SCK
+Một kết nối SPI Full-Duplex điển hình có bốn tín hiệu:
 
 ```text
-Serial Clock
+SCK
+→ Serial Clock
+→ Master tạo clock
+
+MOSI
+→ Master Out Slave In
+→ Master truyền, Slave nhận
+
+MISO
+→ Master In Slave Out
+→ Slave truyền, Master nhận
+
+NSS / CS
+→ chọn Slave
 ```
 
-Master tạo SCK.
-
-```text
-Master SCK ─────────→ Slave SCK
-```
-
-### MOSI
-
-```text
-Master Out
-Slave In
-```
-
-```text
-Master MOSI ────────→ Slave MOSI
-```
-
-### MISO
-
-```text
-Master In
-Slave Out
-```
-
-```text
-Master MISO ←──────── Slave MISO
-```
-
-### NSS / CS
-
-```text
-NSS
-→ Slave Select
-
-CS
-→ Chip Select
-```
-
-Dùng để chọn Slave cần giao tiếp.
+Ví dụ nhiều Slave:
 
 ```text
 Master
@@ -10217,85 +10156,69 @@ CS High
 → Slave không được chọn
 ```
 
-mức active thực tế phải kiểm tra theo thiết bị ngoài.
+nhưng mức active phải theo datasheet của thiết bị ngoài.
+
+Trong chương này:
+
+```text
+NSS
+→ tên signal của peripheral SPI STM32F1
+
+CS
+→ tên thường dùng ở phía thiết bị ngoài / GPIO chip-select
+```
 
 ---
 
 <a id="muc-07-04"></a>
 ## 7.4. Master / Slave và Full-Duplex
 
-### Master
-
-Master:
+Vai trò:
 
 ```text
-khởi tạo communication
-tạo SCK
-chọn Slave
+Master
+→ khởi tạo transfer
+→ tạo SCK
+→ chọn Slave
+
+Slave
+→ nhận SCK
+→ truyền/nhận theo clock của Master
 ```
 
-### Slave
-
-Slave:
-
-```text
-nhận SCK từ Master
-truyền / nhận theo clock đó
-```
-
-### Full-Duplex
-
-SPI sử dụng hai đường dữ liệu:
+Trong Full-Duplex:
 
 ```text
 MOSI
+→ một hướng
+
 MISO
+→ hướng còn lại
 ```
 
-nên có thể truyền và nhận đồng thời.
-
-Bên trong:
+Mỗi clock thực hiện đồng thời:
 
 ```text
-Master Shift Register
-       ↕
-    MOSI / MISO
-       ↕
-Slave Shift Register
-```
-
-Mỗi xung clock:
-
-```text
-1 bit được shift ra
+shift một bit ra
 +
-1 bit được shift vào
+shift một bit vào
 ```
 
-Do đó:
+Vì vậy:
 
 ```text
-Master gửi 1 byte
-→ đồng thời nhận 1 byte
+Master truyền 1 frame
+→ đồng thời nhận 1 frame
 ```
 
-Ngay cả khi application chỉ quan tâm TX, Receive path vẫn có thể nhận dữ liệu.
-
-Đây là lý do phải xử lý đúng:
-
-```text
-RXNE
-OVR
-```
-
-trong Full-Duplex.
+Ngay cả khi application chỉ quan tâm TX, receive path vẫn hoạt động; do đó phải xử lý `RXNE/OVR` đúng cách. Ý nghĩa flag nằm tại **7.10–7.11**.
 
 ---
 
 <a id="muc-07-05"></a>
 ## 7.5. SPI Clock và Baud Rate Prescaler
 
-Trong Master mode:
+Khi STM32F1 là SPI Master:
 
 ```text
 fSCK =
@@ -10317,55 +10240,35 @@ Prescaler
 /256
 ```
 
-Trên STM32F1:
+Clock bus:
 
 ```text
 SPI1
-→ APB2
 → PCLK2
 
-SPI2
-SPI3
-→ APB1
+SPI2 / SPI3
 → PCLK1
 ```
 
-SPI3 chỉ có trên các MCU hỗ trợ peripheral này.
+`SPI3` chỉ áp dụng cho part number có peripheral này. Cách xác định `PCLK1/PCLK2` đã được trình bày tại **Chương 2**.
 
-### Ví dụ
+Ví dụ:
 
 ```text
 PCLK2 = 72 MHz
-SPI1 Prescaler = /8
+SPI1 prescaler = /8
+
+→ SCK = 9 MHz
 ```
 
-Suy ra:
-
-```text
-SCK
-= 72 MHz / 8
-= 9 MHz
-```
-
-### Trong Slave mode
-
-SCK do Master bên ngoài cung cấp.
-
-Do đó:
-
-```text
-BR[2:0]
-→ không quyết định SCK khi STM32 là Slave
-```
-
-Master phải bảo đảm SCK nằm trong giới hạn của Slave và điều kiện điện/timing của hệ thống.
+Trong Slave mode, `SCK` do Master bên ngoài cấp nên `BR[2:0]` không quyết định tần số SCK.
 
 ---
 
 <a id="muc-07-06"></a>
 ## 7.6. CPOL / CPHA và 4 SPI Mode
 
-Hai bit:
+Hai bit timing:
 
 ```text
 CPOL
@@ -10375,9 +10278,7 @@ CPHA
 → Clock Phase
 ```
 
-quyết định timing của SCK và thời điểm lấy mẫu data.
-
-### CPOL
+`CPOL` chọn mức idle:
 
 ```text
 CPOL = 0
@@ -10387,7 +10288,7 @@ CPOL = 1
 → SCK idle High
 ```
 
-### CPHA
+`CPHA` chọn cạnh lấy mẫu:
 
 ```text
 CPHA = 0
@@ -10397,104 +10298,45 @@ CPHA = 1
 → lấy mẫu tại cạnh thứ hai
 ```
 
-### Leading / Trailing Edge
-
-Nếu:
+Quan hệ cạnh:
 
 ```text
 CPOL = 0
-```
+→ first edge  = Rising
+→ second edge = Falling
 
-thì:
-
-```text
-Leading Edge  = Rising
-Trailing Edge = Falling
-```
-
-Nếu:
-
-```text
 CPOL = 1
+→ first edge  = Falling
+→ second edge = Rising
 ```
 
-thì:
+Bốn mode:
 
-```text
-Leading Edge  = Falling
-Trailing Edge = Rising
-```
-
-### Bốn SPI Mode
-
-| SPI Mode | CPOL | CPHA | SCK Idle | Sampling |
+| SPI Mode | `CPOL` | `CPHA` | SCK idle | Cạnh lấy mẫu |
 |---|---:|---:|---|---|
-| Mode 0 | 0 | 0 | Low | Leading Edge |
-| Mode 1 | 0 | 1 | Low | Trailing Edge |
-| Mode 2 | 1 | 0 | High | Leading Edge |
-| Mode 3 | 1 | 1 | High | Trailing Edge |
+| Mode 0 | 0 | 0 | Low | First edge |
+| Mode 1 | 0 | 1 | Low | Second edge |
+| Mode 2 | 1 | 0 | High | First edge |
+| Mode 3 | 1 | 1 | High | Second edge |
 
-Nếu datasheet thiết bị ghi:
-
-```text
-SPI Mode 3
-```
-
-thì:
-
-```text
-CPOL = 1
-CPHA = 1
-```
-
-Master và Slave phải sử dụng timing tương thích.
-
-Trước khi thay đổi:
-
-```text
-CPOL
-CPHA
-```
-
-nên disable SPI:
-
-```text
-SPE = 0
-```
-
-rồi mới cấu hình lại.
+Master và Slave phải dùng timing tương thích. Khi thay đổi `CPOL/CPHA`, cấu hình khi `SPE = 0` như trong quy trình tại **7.14**.
 
 ---
 
 <a id="muc-07-07"></a>
 ## 7.7. Data Frame: 8/16-bit, MSB/LSB First
 
-STM32F1 hỗ trợ:
-
-```text
-8-bit frame
-16-bit frame
-```
-
-được chọn bởi:
-
-```text
-SPI_CR1.DFF
-```
+`SPI_CR1.DFF` chọn độ dài frame:
 
 ```text
 DFF = 0
-→ 8-bit
+→ 8-bit frame
 
 DFF = 1
-→ 16-bit
+→ 16-bit frame
 ```
 
-Thứ tự bit được chọn bởi:
-
-```text
-SPI_CR1.LSBFIRST
-```
+`SPI_CR1.LSBFIRST` chọn thứ tự bit:
 
 ```text
 LSBFIRST = 0
@@ -10504,42 +10346,22 @@ LSBFIRST = 1
 → LSB First
 ```
 
-Cấu hình phổ biến:
-
-```text
-8-bit
-MSB First
-```
-
-nhưng phải theo protocol của thiết bị ngoài.
-
-### Ví dụ 8-bit MSB First
+Ví dụ 8-bit MSB First:
 
 ```text
 Data = 0b10110010
 
-truyền:
-bit7
- ↓
-bit6
- ↓
-...
- ↓
-bit0
+bit7 → bit6 → ... → bit0
 ```
+
+Frame format phải theo protocol của thiết bị ngoài; không mặc định mọi thiết bị đều dùng 8-bit MSB First.
 
 ---
 
 <a id="muc-07-08"></a>
 ## 7.8. NSS Hardware / Software
 
-Bit:
-
-```text
-SPI_CR1.SSM
-```
-
-chọn cách quản lý Slave Select.
+`SPI_CR1.SSM` chọn cách quản lý NSS.
 
 ### Software NSS
 
@@ -10547,36 +10369,24 @@ chọn cách quản lý Slave Select.
 SSM = 1
 ```
 
-Trạng thái NSS nội bộ được điều khiển bởi:
-
-```text
-SSI
-```
-
-External NSS pin có thể được dùng cho mục đích khác.
-
-Trong Master mode, một cách phổ biến là:
+NSS nội bộ được điều khiển bằng `SSI`. Trong Master mode thường dùng:
 
 ```text
 SSM = 1
 SSI = 1
 ```
 
-và dùng một GPIO riêng để điều khiển Chip Select:
+và một GPIO riêng làm CS:
 
 ```text
-GPIO CS = 0
+CS = 0
 → bắt đầu transaction
 
-GPIO CS = 1
+CS = 1
 → kết thúc transaction
 ```
 
-Ưu điểm:
-
-```text
-software kiểm soát chính xác transaction boundary
-```
+Cách này cho software chủ động transaction boundary.
 
 ### Hardware NSS
 
@@ -10584,69 +10394,24 @@ software kiểm soát chính xác transaction boundary
 SSM = 0
 ```
 
-Trong Master mode:
+Trong Master mode, `SPI_CR2.SSOE = 1` cho phép peripheral điều khiển NSS output. NSS có thể được giữ active trong thời gian SPI được enable, vì vậy không phải lúc nào cũng phù hợp với thiết bị yêu cầu CS đổi mức giữa từng transaction.
 
-```text
-SPI_CR2.SSOE = 1
-```
+### Mode Fault
 
-cho phép peripheral điều khiển NSS output.
-
-Khi SPI được enable ở Master mode:
-
-```text
-NSS được kéo Low
-```
-
-và giữ Low tới khi SPI bị disable.
-
-Do đó Hardware NSS không phải lúc nào phù hợp với thiết bị yêu cầu:
-
-```text
-CS High
-```
-
-giữa từng command/transaction.
-
-### Master Mode Fault
-
-Nếu Master dùng Hardware NSS input:
-
-```text
-MSTR = 1
-SSM = 0
-SSOE = 0
-```
-
-và NSS bị kéo Low, SPI có thể phát hiện:
-
-```text
-MODF
-→ Mode Fault
-```
-
-vì phần cứng hiểu rằng có xung đột Master trên bus.
+Khi Master dùng Hardware NSS input và điều kiện xung đột Master xảy ra, `MODF` có thể được set. Cơ chế lỗi `MODF` được trình bày tại **7.11**.
 
 ---
 
 <a id="muc-07-09"></a>
 ## 7.9. SPI_DR và cơ chế Shift Register
 
-Thanh ghi:
+`SPI_DR` là Data Register mà CPU/DMA truy cập.
 
-```text
-SPI_DR
-```
-
-được dùng cho cả Transmit và Receive.
-
-### Transmit
+Transmit path:
 
 ```text
 CPU / DMA
-    ↓
-Write SPI_DR
-    ↓
+    ↓ write SPI_DR
 Tx Buffer
     ↓
 Shift Register
@@ -10654,7 +10419,7 @@ Shift Register
 MOSI
 ```
 
-### Receive
+Receive path:
 
 ```text
 MISO
@@ -10662,137 +10427,72 @@ MISO
 Shift Register
  ↓
 Rx Buffer
- ↓
-Read SPI_DR
- ↓
+ ↓ read SPI_DR
 CPU / DMA
 ```
 
 Trong Full-Duplex:
 
 ```text
-một frame được shift ra
-đồng thời
-một frame được shift vào
+shift TX
++
+shift RX
+→ xảy ra đồng thời theo SCK
 ```
 
-Do đó thao tác transfer thường là:
-
-```text
-Write DR
-→ tạo / tiếp tục clock
-→ chờ Receive
-→ Read DR
-```
-
-Master không thể nhận dữ liệu SPI từ Slave mà không tạo clock.
-
-Nếu muốn chỉ đọc:
-
-```text
-Master vẫn phải gửi dummy data
-```
-
-để tạo SCK.
-
-Ví dụ:
+Vì Master phải tạo `SCK` để nhận dữ liệu, một thao tác chỉ đọc vẫn cần truyền dummy data:
 
 ```text
 write 0xFF
-→ tạo 8 xung SCK
+→ tạo 8 xung SCK trong 8-bit mode
 → đồng thời nhận 8 bit từ Slave
 ```
+
+Ý nghĩa `TXE`, `RXNE`, `BSY` được tách tại **7.10**.
 
 ---
 
 <a id="muc-07-10"></a>
 ## 7.10. TXE / RXNE / BSY
 
-Ba flag quan trọng trong:
-
-```text
-SPI_SR
-```
-
-### TXE
+Ba flag chính trong `SPI_SR`:
 
 ```text
 TXE
 → Transmit Buffer Empty
-```
+→ TXE = 1: có thể ghi frame tiếp theo vào SPI_DR
 
-```text
-TXE = 1
-→ có thể ghi frame mới vào SPI_DR
-```
-
-### RXNE
-
-```text
 RXNE
 → Receive Buffer Not Empty
-```
+→ RXNE = 1: có frame nhận sẵn để đọc từ SPI_DR
 
-```text
-RXNE = 1
-→ có frame mới trong Rx Buffer
-→ có thể đọc SPI_DR
-```
-
-### BSY
-
-```text
 BSY
-→ Busy Flag
+→ Busy
+→ BSY = 1: SPI còn đang thực hiện communication
 ```
 
-```text
-BSY = 1
-→ SPI đang thực hiện communication
-
-BSY = 0
-→ SPI không còn bận shift frame
-```
-
-### Một frame transfer
+Một transfer bằng polling thường theo:
 
 ```text
 wait TXE
    ↓
 write SPI_DR
    ↓
-Shift Register hoạt động
+shift frame
    ↓
 wait RXNE
    ↓
 read SPI_DR
 ```
 
-Khi chuẩn bị:
-
-```text
-CS High
-hoặc
-disable SPI
-```
-
-phải bảo đảm frame cuối đã hoàn tất.
-
-Thực tế thường kiểm tra:
-
-```text
-TXE = 1
-BSY = 0
-```
-
-trước khi kết thúc transaction.
+Khi kết thúc transaction, cần bảo đảm frame cuối đã hoàn tất trước khi deassert CS hoặc disable SPI; quy trình sử dụng các flag này được áp dụng tại **7.15**.
 
 ---
 
 <a id="muc-07-11"></a>
 ## 7.11. OVR / MODF / CRCERR
 
-Các lỗi SPI quan trọng:
+Ba error flag cần nhận diện:
 
 ```text
 OVR
@@ -10807,56 +10507,29 @@ CRCERR
 
 ### OVR
 
-Trong Receive / Full-Duplex:
+Trong Receive/Full-Duplex:
 
 ```text
 Rx Buffer còn data chưa đọc
         ↓
 frame mới nhận xong
         ↓
-data mới không thể chuyển bình thường
-        ↓
 OVR = 1
 ```
 
-Nguyên nhân:
-
-```text
-software / DMA không đọc RX đủ nhanh
-```
-
-Clear OVR trên STM32F1:
+Clear sequence trên STM32F1:
 
 ```text
 read SPI_DR
-      ↓
+    ↓
 read SPI_SR
 ```
 
-Đây là thứ tự phải giữ đúng.
-
 ### MODF
 
-Mode Fault liên quan đến NSS và Master mode.
+`MODF` liên quan tới NSS và Master mode. Khi phần cứng phát hiện điều kiện Mode Fault, trạng thái Master/SPI có thể bị thay đổi; software phải xử lý theo sequence của peripheral trước khi tiếp tục.
 
-Ví dụ:
-
-```text
-STM32 đang Master
-      ↓
-Hardware NSS input bị kéo Low
-      ↓
-MODF
-```
-
-Khi MODF xảy ra:
-
-```text
-MSTR có thể bị clear
-SPE có thể bị clear
-```
-
-Trình tự xử lý có bước đọc `SPI_SR` rồi ghi lại `SPI_CR1` với cấu hình Master/SPI enable phù hợp.
+Chi tiết nguyên nhân NSS đã được nêu tại **7.8**, nên không lặp lại ở đây.
 
 ### CRCERR
 
@@ -10869,24 +10542,18 @@ CRC tính toán
 → CRCERR = 1
 ```
 
-CRC không bắt buộc cho mọi SPI protocol.
+CRC chỉ áp dụng khi protocol/application sử dụng cơ chế này.
 
 ---
 
 <a id="muc-07-12"></a>
 ## 7.12. SPI bằng Polling / Interrupt / DMA
 
+Ba cách phục vụ SPI khác nhau ở **ai di chuyển dữ liệu và ai chờ flag**; ý nghĩa các flag đã được nêu tại **7.10–7.11**.
+
 ### Polling
 
-CPU trực tiếp kiểm tra:
-
-```text
-TXE
-RXNE
-BSY
-```
-
-Ví dụ một frame:
+CPU chờ `TXE/RXNE` rồi truy cập `SPI_DR`:
 
 ```c
 static uint8_t SPI1_Transfer(uint8_t tx)
@@ -10905,36 +10572,29 @@ static uint8_t SPI1_Transfer(uint8_t tx)
 }
 ```
 
+Khái niệm Polling đã được trình bày tại **4.1**.
+
 ### Interrupt
 
-Các bit:
+Các enable bit chính:
 
 ```text
 TXEIE
-→ TX buffer empty interrupt
-
 RXNEIE
-→ RX buffer not empty interrupt
-
 ERRIE
-→ error interrupt
 ```
 
 Luồng:
 
 ```text
-SPI Event
- ↓
-Flag
- ↓
-Interrupt Enable
- ↓
-SPI IRQ
- ↓
-NVIC
- ↓
-SPIx_IRQHandler()
+SPI flag
+→ interrupt được enable
+→ SPI IRQ
+→ NVIC
+→ SPIx_IRQHandler()
 ```
+
+Cơ chế NVIC/ISR thuộc **Chương 4**.
 
 ### DMA
 
@@ -10945,56 +10605,41 @@ TXDMAEN
 RXDMAEN
 ```
 
-Luồng Full-Duplex:
+Full-Duplex DMA:
 
 ```text
-TX Buffer in SRAM
-      ↓ DMA
-    SPI_DR
-      ↓
-     MOSI
+SRAM TX buffer
+    ↓ DMA
+  SPI_DR
+    ↓
+   MOSI
 
-     MISO
-      ↓
-    SPI_DR
-      ↓ DMA
-RX Buffer in SRAM
+   MISO
+    ↓
+  SPI_DR
+    ↓ DMA
+SRAM RX buffer
 ```
 
-Với Full-Duplex DMA, thường cần cấu hình cả:
-
-```text
-TX DMA
-RX DMA
-```
-
-để hai hướng được phục vụ đồng thời.
+Chi tiết DMA controller, channel và transfer configuration thuộc **Chương 9**; mục này chỉ nêu liên kết SPI với DMA.
 
 ---
 
 <a id="muc-07-13"></a>
 ## 7.13. GPIO cho SPI
 
-### SPI Master
+Cơ chế GPIO mode, Alternate Function và remap đã được trình bày tại **Chương 3**. Trong Chương 7 chỉ cần ánh xạ hướng tín hiệu của SPI.
 
-Cấu hình phổ biến:
+SPI Master thường dùng:
 
-```text
-SCK
-→ Alternate Function Push-Pull
+| Signal | GPIO configuration |
+|---|---|
+| `SCK` | Alternate Function Output Push-Pull |
+| `MOSI` | Alternate Function Output Push-Pull |
+| `MISO` | Input mode phù hợp |
+| `NSS` | AF Output nếu Hardware NSS; GPIO Output nếu Software CS |
 
-MOSI
-→ Alternate Function Push-Pull
-
-MISO
-→ Input Floating / Pull-Up
-
-NSS
-→ AF Push-Pull nếu Hardware NSS
-  hoặc GPIO Output nếu Software Chip Select
-```
-
-### SPI1 mặc định
+SPI1 mặc định:
 
 ```text
 PA4 → NSS
@@ -11003,7 +10648,7 @@ PA6 → MISO
 PA7 → MOSI
 ```
 
-### SPI1 Remap
+SPI1 remap:
 
 ```text
 PA15 → NSS
@@ -11012,41 +10657,15 @@ PB4  → MISO
 PB5  → MOSI
 ```
 
-Các chân:
+Các pin `PA15/PB3/PB4` liên quan JTAG sau reset; nếu dùng remap phải xem cấu hình `SWJ_CFG` tại **3.13 / Chương 10**.
+
+Ở Slave mode, hướng tín hiệu đổi theo vai trò:
 
 ```text
-PA15
-PB3
-PB4
-```
-
-liên quan JTAG sau reset.
-
-Nếu dùng SPI1 remap, có thể cần:
-
-```text
-JTAG disabled
-SWD retained
-```
-
-qua `AFIO_MAPR.SWJ_CFG`.
-
-### SPI Slave
-
-Ở Slave mode, hướng GPIO phụ thuộc tín hiệu:
-
-```text
-SCK
-→ Input
-
-MOSI
-→ Input
-
-MISO
-→ Alternate Function Output
-
-NSS
-→ Input nếu Hardware NSS
+SCK  → Input
+MOSI → Input
+MISO → Alternate Function Output
+NSS  → Input nếu dùng Hardware NSS
 ```
 
 ---
@@ -11054,7 +10673,7 @@ NSS
 <a id="muc-07-14"></a>
 ## 7.14. Quy trình cấu hình SPI Master
 
-Ví dụ:
+Ví dụ mục tiêu:
 
 ```text
 SPI1
@@ -11067,109 +10686,44 @@ SCK = PCLK2 / 8
 Software NSS
 ```
 
-### Bước 1 — Bật Clock
-
-```c
-RCC->APB2ENR |= RCC_APB2ENR_IOPAEN
-               | RCC_APB2ENR_SPI1EN;
-```
-
-### Bước 2 — GPIO
+Trình tự:
 
 ```text
-PA5 → SCK  → AF Push-Pull
-PA6 → MISO → Input
-PA7 → MOSI → AF Push-Pull
-CS  → GPIO Output
+1. Enable GPIO + SPI clock
+2. Cấu hình GPIO theo 7.13
+3. SPE = 0 trong lúc cấu hình chính
+4. MSTR = 1
+5. Chọn BR theo 7.5
+6. Chọn CPOL/CPHA theo 7.6
+7. Chọn DFF/LSBFIRST theo 7.7
+8. Chọn SSM/SSI hoặc Hardware NSS theo 7.8
+9. Chọn Full-Duplex
+10. SPE = 1
 ```
 
-### Bước 3 — Disable SPI trước khi cấu hình
-
-```c
-SPI1->CR1 &= ~SPI_CR1_SPE;
-```
-
-### Bước 4 — Master
-
-```c
-SPI1->CR1 |= SPI_CR1_MSTR;
-```
-
-### Bước 5 — Clock Prescaler
-
-Ví dụ:
+Với ví dụ trên:
 
 ```text
-BR = /8
-```
-
-### Bước 6 — CPOL / CPHA
-
-Mode 0:
-
-```text
+MSTR = 1
+BR   = /8
 CPOL = 0
 CPHA = 0
-```
-
-### Bước 7 — Frame Format
-
-```text
-DFF = 0
-→ 8-bit
-
+DFF  = 0
 LSBFIRST = 0
-→ MSB First
-```
-
-### Bước 8 — Software NSS
-
-```text
-SSM = 1
-SSI = 1
-```
-
-### Bước 9 — Full-Duplex
-
-```text
+SSM  = 1
+SSI  = 1
 BIDIMODE = 0
 RXONLY   = 0
 ```
 
-### Bước 10 — Enable SPI
-
-```c
-SPI1->CR1 |= SPI_CR1_SPE;
-```
-
-### Luồng
-
-```text
-RCC
- ↓
-GPIO
- ↓
-SPE = 0
- ↓
-MSTR
- ↓
-BR
- ↓
-CPOL / CPHA
- ↓
-DFF / LSBFIRST
- ↓
-SSM / SSI
- ↓
-SPE = 1
-```
+Mục này chỉ tập trung vào **thứ tự cấu hình**; định nghĩa từng field đã nằm tại **7.5–7.8**.
 
 ---
 
 <a id="muc-07-15"></a>
 ## 7.15. Ví dụ một SPI Transaction
 
-Giả sử thiết bị cần:
+Giả sử thiết bị yêu cầu:
 
 ```text
 CS Low
@@ -11183,26 +10737,7 @@ Read Data
 CS High
 ```
 
-Ví dụ khái niệm:
-
-```c
-static uint8_t SPI1_Transfer(uint8_t tx)
-{
-    while (!(SPI1->SR & SPI_SR_TXE))
-    {
-    }
-
-    SPI1->DR = tx;
-
-    while (!(SPI1->SR & SPI_SR_RXNE))
-    {
-    }
-
-    return (uint8_t)SPI1->DR;
-}
-```
-
-Transaction:
+Dùng hàm transfer tại **7.12**:
 
 ```c
 CS_LOW();
@@ -11219,23 +10754,23 @@ while (SPI1->SR & SPI_SR_BSY)
 CS_HIGH();
 ```
 
-Điểm cần hiểu:
+Ý nghĩa của:
 
 ```text
 SPI1_Transfer(0xFF)
 ```
 
-không phải chỉ là gửi `0xFF`.
-
-Nó đồng thời:
+là:
 
 ```text
-gửi dummy byte
+gửi dummy frame
 +
 tạo SCK
 +
-nhận byte từ Slave
+nhận frame từ Slave
 ```
+
+Full-Duplex và data path đã được giải thích tại **7.4** và **7.9**, nên ví dụ không lặp lại cơ chế đó.
 
 ---
 
@@ -11244,13 +10779,13 @@ nhận byte từ Slave
 <a id="muc-07-16"></a>
 ## 7.16. I2C là gì?
 
-`I2C`:
+`I2C` là:
 
 ```text
 Inter-Integrated Circuit
 ```
 
-I2C là bus nối tiếp đồng bộ hai dây.
+I2C là bus nối tiếp đồng bộ hai dây:
 
 ```text
 SCL
@@ -11260,44 +10795,28 @@ SDA
 → Serial Data
 ```
 
-Một bus có thể có:
-
-```text
-Master
-Slave 1
-Slave 2
-Slave 3
-...
-```
-
-Các thiết bị dùng chung:
+Nhiều thiết bị có thể dùng chung:
 
 ```text
 SCL
 SDA
 ```
 
-và được phân biệt bằng:
+và Slave được phân biệt bằng address.
+
+STM32F1 I2C hỗ trợ các cơ chế như:
 
 ```text
-Address
-```
-
-STM32F1 I2C hỗ trợ:
-
-```text
-Master
-Slave
+Master / Slave
+7-bit / 10-bit address
 Multi-Master
-7-bit Address
-10-bit Address
-General Call
-Standard Mode
-Fast Mode
+Standard-mode / Fast-mode
 Clock Stretching
 Interrupt
 DMA
 ```
+
+Cấu trúc điện của `SCL/SDA` nằm tại **7.17**; transaction cơ bản nằm tại **7.18**.
 
 ---
 
@@ -11308,13 +10827,13 @@ Trên STM32F1:
 
 ```text
 I2C_SCL
-→ Alternate Function Open-Drain
+→ Alternate Function Output Open-Drain
 
 I2C_SDA
-→ Alternate Function Open-Drain
+→ Alternate Function Output Open-Drain
 ```
 
-Bus cần pull-up.
+Bus cần pull-up:
 
 ```text
  VDD                  VDD
@@ -11336,45 +10855,18 @@ hoặc
 nhả line về High-Z
 ```
 
-Mức High được tạo bởi:
+Mức High được tạo bởi pull-up.
 
-```text
-Pull-Up
-```
+Open-Drain cho phép nhiều thiết bị dùng chung line mà không có trường hợp một output chủ động kéo High trong khi output khác kéo Low. Đây là nền tảng cho ACK/NACK, clock stretching và arbitration; các cơ chế này được giải thích lần lượt tại **7.18, 7.24, 7.25**.
 
-### Vì sao Open-Drain?
-
-Open-Drain cho phép nhiều thiết bị dùng chung line mà không có tình huống một thiết bị chủ động kéo High trong khi thiết bị khác kéo Low.
-
-Nó là cơ sở cho:
-
-```text
-ACK / NACK
-Clock Stretching
-Arbitration
-Multi-Master
-```
-
-### Pull-Up thực tế
-
-Giá trị điện trở Pull-Up phụ thuộc:
-
-```text
-Bus capacitance
-SCL frequency
-Supply voltage
-Rise-time requirement
-Số thiết bị
-```
-
-Không nên mặc định một giá trị duy nhất cho mọi bus.
+Giá trị pull-up thực tế phụ thuộc điện dung bus, tần số SCL, điện áp và yêu cầu rise time; không dùng một giá trị cố định cho mọi bus.
 
 ---
 
 <a id="muc-07-18"></a>
 ## 7.18. START / STOP / Address / R/W / ACK / NACK
 
-Một I2C transaction thường có:
+Một transaction điển hình:
 
 ```text
 START
@@ -11385,263 +10877,171 @@ ACK
   ↓
 Data
   ↓
-ACK
-  ↓
-...
-  ↓
-NACK / ACK
+ACK / NACK
   ↓
 STOP
 ```
 
-### START
+### START condition
 
-Trong trạng thái bus rỗi:
-
-```text
-SCL = High
-SDA = High
-```
-
-START được tạo khi:
+Khi `SCL = High`:
 
 ```text
 SDA: High → Low
-trong lúc
-SCL = High
+→ START
 ```
 
-### STOP
+### STOP condition
 
-STOP được tạo khi:
+Khi `SCL = High`:
 
 ```text
 SDA: Low → High
-trong lúc
-SCL = High
+→ STOP
 ```
 
-### Byte
+### Byte và ACK/NACK
 
-Data và Address truyền:
+Data/address được truyền MSB First. Sau 8 bit có xung clock thứ 9 dành cho ACK/NACK:
 
 ```text
-MSB First
+Receiver kéo SDA Low
+→ ACK
+
+Receiver nhả SDA High
+→ NACK
 ```
 
-Mỗi byte gồm:
+Trong Master Receiver, NACK thường được dùng cho byte cuối để báo không nhận thêm data.
 
-```text
-8 data/address bits
-+
-1 ACK/NACK bit
-```
-
-Tổng:
-
-```text
-9 SCL pulses
-```
-
-### ACK
-
-Receiver kéo SDA Low ở xung thứ 9:
-
-```text
-ACK
-→ byte được nhận
-```
-
-### NACK
-
-Receiver không kéo SDA Low:
-
-```text
-NACK
-→ không acknowledge
-```
-
-Trong Master Receiver, NACK thường được dùng với byte cuối để báo:
-
-```text
-không nhận thêm data
-```
+Cách tạo address phase và phân biệt 7-bit address với address byte nằm tại **7.19**.
 
 ---
 
 <a id="muc-07-19"></a>
 ## 7.19. 7-bit / 10-bit Addressing
 
-### 7-bit Address
+### 7-bit address
 
-Address phase:
+Address phase có dạng:
 
 ```text
 [A6 A5 A4 A3 A2 A1 A0 R/W]
 ```
 
-Bit cuối:
-
 ```text
 R/W = 0
-→ Master Transmitter / Write
+→ Write
 
 R/W = 1
-→ Master Receiver / Read
+→ Read
 ```
 
-Ví dụ Slave có:
+Ví dụ:
 
 ```text
-7-bit address = 0x50
-```
+7-bit Slave address = 0x50
 
-Address byte trên bus:
-
-```text
-Write:
-(0x50 << 1) | 0
-= 0xA0
-
-Read:
-(0x50 << 1) | 1
-= 0xA1
+Write address byte = (0x50 << 1) | 0 = 0xA0
+Read  address byte = (0x50 << 1) | 1 = 0xA1
 ```
 
 Phải phân biệt:
 
 ```text
-7-bit Slave Address
+7-bit Slave address
 ≠
-8-bit Address Byte
+8-bit Address + R/W byte
 ```
 
-Đây là lỗi cấu hình phổ biến khi datasheet của thiết bị và API sử dụng cách biểu diễn address khác nhau.
+### 10-bit address
 
-### 10-bit Address
+STM32F1 cũng hỗ trợ 10-bit addressing; sequence có thêm 10-bit header và phần địa chỉ còn lại. Flag `ADD10` liên quan tới sequence này.
 
-STM32F1 cũng hỗ trợ 10-bit addressing.
-
-Luồng có thêm:
-
-```text
-10-bit Header
-+
-phần địa chỉ còn lại
-```
-
-10-bit mode cần các event như:
-
-```text
-ADD10
-```
-
-nhưng 7-bit addressing nên được nắm chắc trước.
+Chương này ưu tiên nắm chắc 7-bit addressing; các sequence I2C tiếp theo dùng cách biểu diễn 7-bit address.
 
 ---
 
 <a id="muc-07-20"></a>
 ## 7.20. Master / Slave / Transmitter / Receiver
 
-I2C STM32F1 có bốn trạng thái chính:
+I2C có hai cặp vai trò độc lập:
+
+```text
+Master / Slave
+→ ai điều khiển transaction
+
+Transmitter / Receiver
+→ ai đang gửi hoặc nhận data
+```
+
+Bốn tổ hợp:
 
 ```text
 Master Transmitter
+→ Master gửi data
+
 Master Receiver
+→ Master nhận data
+
 Slave Transmitter
+→ Slave gửi data
+
 Slave Receiver
+→ Slave nhận data
 ```
 
-### Master Transmitter
+Ví dụ:
 
 ```text
-STM32 tạo START
-→ gửi Address + Write
-→ gửi Data
-→ tạo STOP
+Master Transmitter
+→ START → Address + W → Data → STOP
+
+Master Receiver
+→ START → Address + R → nhận Data → NACK → STOP
 ```
 
-### Master Receiver
-
-```text
-STM32 tạo START
-→ gửi Address + Read
-→ nhận Data
-→ ACK / NACK
-→ tạo STOP
-```
-
-### Slave Transmitter
-
-```text
-Master Address + Read
-→ STM32 được chọn
-→ STM32 gửi Data
-```
-
-### Slave Receiver
-
-```text
-Master Address + Write
-→ STM32 được chọn
-→ STM32 nhận Data
-```
-
-Các bit trong `I2C_SR2` giúp nhận biết trạng thái:
+Các bit trạng thái trong `I2C_SR2`:
 
 ```text
 MSL
-→ Master / Slave
+→ Master/Slave state
 
 TRA
-→ Transmitter / Receiver
+→ Transmitter/Receiver state
 
 BUSY
-→ Bus đang bận
+→ bus đang bận
 ```
+
+Sequence register-level của Master Transmit/Receive nằm tại **7.27**.
 
 ---
 
 <a id="muc-07-21"></a>
 ## 7.21. Standard Mode / Fast Mode
 
-STM32F1 hỗ trợ:
+Trong phạm vi chương:
 
 ```text
-Standard Mode
-→ tối đa 100 kHz
+Standard-mode
+→ tới 100 kHz
 
-Fast Mode
-→ tối đa 400 kHz
-```
-
-### Standard Mode
-
-```text
-Sm
-≤ 100 kHz
+Fast-mode
+→ tới 400 kHz
 ```
 
 Peripheral input clock tối thiểu:
 
 ```text
-2 MHz
+Standard-mode
+→ 2 MHz
+
+Fast-mode
+→ 4 MHz
 ```
 
-### Fast Mode
-
-```text
-Fm
-≤ 400 kHz
-```
-
-Peripheral input clock tối thiểu:
-
-```text
-4 MHz
-```
-
-Fast Mode có hai tỷ lệ duty:
+Fast-mode hỗ trợ hai duty ratio:
 
 ```text
 DUTY = 0
@@ -11651,33 +11051,16 @@ DUTY = 1
 → tLOW / tHIGH = 16 / 9
 ```
 
-Tốc độ thực tế còn phụ thuộc:
-
-```text
-Pull-Up
-Bus capacitance
-Rise time
-Clock Stretching
-```
+Cách tính `CCR/TRISE` cho các mode được tập trung tại **7.22**. Tốc độ bus thực tế còn chịu ảnh hưởng của pull-up, bus capacitance, rise time và clock stretching.
 
 ---
 
 <a id="muc-07-22"></a>
 ## 7.22. I2C Clock: CR2.FREQ / CCR / TRISE
 
-I2C1/I2C2 nằm trên:
+I2C1/I2C2 nằm trên APB1, vì vậy timing dựa trên `PCLK1`. Cách xác định `PCLK1` đã được trình bày tại **Chương 2**.
 
-```text
-APB1
-```
-
-nên timing dựa trên:
-
-```text
-PCLK1
-```
-
-Ba cấu hình quan trọng:
+Ba cấu hình chính:
 
 ```text
 I2C_CR2.FREQ
@@ -11685,38 +11068,18 @@ I2C_CCR
 I2C_TRISE
 ```
 
-### CR2.FREQ
+### `CR2.FREQ`
 
-`FREQ` chứa tần số peripheral input clock theo MHz.
-
-Ví dụ:
+`FREQ` chứa giá trị peripheral input clock theo MHz:
 
 ```text
 PCLK1 = 36 MHz
+→ FREQ = 36
 ```
 
-thì:
+Không ghi tốc độ SCL mong muốn vào `FREQ`.
 
-```text
-FREQ = 36
-```
-
-Không phải:
-
-```text
-FREQ = 100 kHz
-```
-
-### CCR — Standard Mode
-
-Standard Mode có:
-
-```text
-tHIGH = CCR × TPCLK1
-tLOW  = CCR × TPCLK1
-```
-
-Suy ra:
+### `CCR` — Standard-mode
 
 ```text
 fSCL =
@@ -11730,25 +11093,13 @@ Ví dụ:
 ```text
 PCLK1 = 36 MHz
 fSCL  = 100 kHz
+
+→ CCR = 180
 ```
 
-Ta có:
+### `CCR` — Fast-mode
 
-```text
-CCR
-= 36 MHz / (2 × 100 kHz)
-= 180
-```
-
-### CCR — Fast Mode DUTY = 0
-
-Với:
-
-```text
-tLOW / tHIGH = 2
-```
-
-công thức:
+Với `DUTY = 0`:
 
 ```text
 fSCL =
@@ -11757,15 +11108,7 @@ PCLK1
 3 × CCR
 ```
 
-### CCR — Fast Mode DUTY = 1
-
-Với:
-
-```text
-tLOW / tHIGH = 16 / 9
-```
-
-công thức:
+Với `DUTY = 1`:
 
 ```text
 fSCL =
@@ -11774,11 +11117,9 @@ PCLK1
 25 × CCR
 ```
 
-### TRISE
+### `TRISE`
 
-`TRISE` cho phép I2C timing tính tới maximum rise time của SCL.
-
-Trong Standard Mode, với đơn vị MHz:
+Trong Standard-mode:
 
 ```text
 TRISE = FREQ + 1
@@ -11788,17 +11129,17 @@ Ví dụ:
 
 ```text
 PCLK1 = 36 MHz
-
-TRISE = 37
+→ FREQ  = 36
+→ TRISE = 37
 ```
 
-Trong Fast Mode, giá trị dựa trên maximum rise time 300 ns và chu kỳ PCLK1.
+Trong Fast-mode, `TRISE` được tính từ maximum rise time 300 ns và chu kỳ `PCLK1`.
 
-### Ví dụ 100 kHz với PCLK1 = 36 MHz
+Ví dụ Standard-mode 100 kHz với `PCLK1 = 36 MHz`:
 
 ```text
-FREQ = 36
-CCR  = 180
+FREQ  = 36
+CCR   = 180
 TRISE = 37
 ```
 
@@ -11807,155 +11148,97 @@ TRISE = 37
 <a id="muc-07-23"></a>
 ## 7.23. Các I2C Status Flag quan trọng
 
-I2C STM32F1 sử dụng hai Status Register:
+STM32F1 I2C dùng:
 
 ```text
 I2C_SR1
 I2C_SR2
 ```
 
-### I2C_SR1
+Các flag chính:
 
-Các event flag quan trọng:
+| Nhóm | Flag | Ý nghĩa |
+|---|---|---|
+| Event | `SB` | START generated |
+| Event | `ADDR` | Address sent/matched |
+| Event | `ADD10` | 10-bit header sent |
+| Event | `STOPF` | STOP detected ở Slave mode |
+| Event | `BTF` | Byte Transfer Finished |
+| Buffer | `RxNE` | Receive Data Register Not Empty |
+| Buffer | `TxE` | Transmit Data Register Empty |
+| Error | `BERR` | Bus Error |
+| Error | `ARLO` | Arbitration Lost |
+| Error | `AF` | Acknowledge Failure |
+| Error | `OVR` | Overrun/Underrun |
+| Error | `PECERR` | PEC Error |
 
-```text
-SB
-→ Start Bit generated
-
-ADDR
-→ Address sent / matched
-
-ADD10
-→ 10-bit header sent
-
-STOPF
-→ Stop detected trong Slave mode
-
-BTF
-→ Byte Transfer Finished
-
-RxNE
-→ Receive Data Register Not Empty
-
-TxE
-→ Transmit Data Register Empty
-```
-
-Error:
-
-```text
-BERR
-→ Bus Error
-
-ARLO
-→ Arbitration Lost
-
-AF
-→ Acknowledge Failure
-
-OVR
-→ Overrun / Underrun
-
-PECERR
-→ PEC Error
-```
-
-### I2C_SR2
-
-Các trạng thái quan trọng:
+`I2C_SR2` còn chứa state như:
 
 ```text
 MSL
-→ Master mode
-
 BUSY
-→ Bus đang bận
-
 TRA
-→ Transmitter mode
-
 GENCALL
-→ General Call Address nhận được
-
 DUALF
-→ xác định Own Address nào matched
 ```
 
-### Flag Clear Sequence
+### Flag clear sequence
 
-I2C STM32F1 có nhiều flag cần một **trình tự đọc/ghi cụ thể**.
+Một số flag không được clear bằng cách ghi `0/1` tùy ý mà yêu cầu sequence cụ thể.
 
-#### SB
-
-```text
-SB = 1
-```
-
-clear bằng:
+`SB`:
 
 ```text
 read SR1
-    ↓
+   ↓
 write DR với address
 ```
 
-#### ADDR
-
-```text
-ADDR = 1
-```
-
-clear bằng:
+`ADDR`:
 
 ```text
 read SR1
-    ↓
+   ↓
 read SR2
 ```
 
-#### STOPF
-
-Trong Slave mode:
+`STOPF` ở Slave mode:
 
 ```text
 read SR1
-    ↓
+   ↓
 write CR1
 ```
 
-#### RxNE
+`RxNE`:
 
 ```text
 read DR
 ```
 
-#### TxE
+`TxE`:
 
 ```text
 write DR
 ```
 
-Đây là lý do driver I2C bare-metal phải giữ đúng thứ tự thao tác register.
+Các sequence Master tại **7.27** áp dụng lại đúng các quy tắc này thay vì giải thích lại cách clear flag.
 
 ---
 
 <a id="muc-07-24"></a>
 ## 7.24. Clock Stretching
 
-Clock Stretching cho phép Slave kéo:
+Clock stretching là cơ chế Slave giữ:
 
 ```text
 SCL = Low
 ```
 
-để trì hoãn Master.
-
-Luồng:
+để trì hoãn Master khi chưa sẵn sàng tiếp tục.
 
 ```text
-Master muốn tiếp tục clock
-        ↓
-Slave chưa sẵn sàng
+Master muốn tiếp tục
         ↓
 Slave giữ SCL Low
         ↓
@@ -11963,78 +11246,31 @@ Master chờ
         ↓
 Slave nhả SCL
         ↓
-communication tiếp tục
+transaction tiếp tục
 ```
 
-Trong STM32F1, một số event còn làm peripheral giữ SCL Low trong lúc chờ software xử lý.
+Cơ chế này khả thi nhờ bus Open-Drain đã trình bày tại **7.17**.
 
-Ví dụ:
-
-```text
-ADDR
-BTF
-```
-
-có thể liên quan tới clock stretching tùy mode và trạng thái.
-
-Clock Stretching là một cơ chế tự nhiên của I2C vì các line sử dụng Open-Drain.
+Trên STM32F1, một số trạng thái/event có thể làm peripheral giữ SCL Low trong lúc chờ software xử lý, ví dụ các tình huống liên quan `ADDR` hoặc `BTF`.
 
 ---
 
 <a id="muc-07-25"></a>
 ## 7.25. Arbitration và Multi-Master
 
-I2C hỗ trợ nhiều Master trên cùng bus.
+I2C cho phép nhiều Master dùng chung bus.
 
-Ví dụ:
-
-```text
-Master A ─┐
-          ├── SCL / SDA ── Slaves
-Master B ─┘
-```
-
-Hai Master có thể cùng bắt đầu transaction.
-
-Arbitration dựa trên SDA:
+Arbitration dựa trên việc Master vừa phát vừa quan sát SDA:
 
 ```text
-Master gửi bit
+Master phát bit
       ↓
-đồng thời đọc SDA
+đọc lại SDA
       ↓
-so sánh mức thực tế
+so sánh mức mong muốn với mức thực tế
 ```
 
-Nếu Master cố gửi:
-
-```text
-1
-```
-
-nhưng bus thực tế là:
-
-```text
-0
-```
-
-thì Master đó mất arbitration.
-
-STM32 set:
-
-```text
-ARLO
-→ Arbitration Lost
-```
-
-Sau khi mất arbitration:
-
-```text
-STM32 không tiếp tục làm Master
-→ chuyển về trạng thái phù hợp để bus tiếp tục hoạt động
-```
-
-I2C dùng Open-Drain nên:
+Vì Open-Drain:
 
 ```text
 Low
@@ -12044,33 +11280,34 @@ High
 → line được nhả
 ```
 
-điều này cho phép arbitration mà không gây xung đột điện kiểu Push-Pull.
+Nếu Master cố phát `1` nhưng đọc thấy `0`:
+
+```text
+Master mất arbitration
+→ ARLO = 1
+```
+
+Open-Drain đã được giải thích tại **7.17**; mục này chỉ tập trung vào cơ chế phân xử bus.
 
 ---
 
 <a id="muc-07-26"></a>
 ## 7.26. Repeated START
 
-Repeated START là START được tạo khi Master đã đang giữ bus.
+Repeated START là một START mới khi Master vẫn đang giữ bus, không phát STOP trước đó.
 
-Sơ đồ:
+Mẫu đọc register phổ biến:
 
 ```text
 START
  ↓
 Address + W
  ↓
-ACK
- ↓
 Register Address
- ↓
-ACK
  ↓
 Repeated START
  ↓
 Address + R
- ↓
-ACK
  ↓
 Data
  ↓
@@ -12079,43 +11316,36 @@ NACK
 STOP
 ```
 
-Đây là mẫu đọc register rất phổ biến.
-
-Ví dụ sensor có:
+Ví dụ:
 
 ```text
-Slave Address = 0x68
+Slave address = 0x68
 Register      = 0x75
 ```
 
-Master cần:
+Master thực hiện:
 
 ```text
-1. START
-2. 0x68 + Write
-3. gửi 0x75
-4. Repeated START
-5. 0x68 + Read
-6. nhận data
-7. NACK
-8. STOP
+START
+→ 0x68 + Write
+→ gửi 0x75
+→ Repeated START
+→ 0x68 + Read
+→ nhận data
+→ NACK
+→ STOP
 ```
 
-Trên STM32F1:
-
-```text
-START bit được set khi đang Master
-→ tạo Repeated START sau byte hiện tại
-```
+Định nghĩa START/STOP/ACK/NACK đã nằm tại **7.18**; mục này chỉ mô tả cách nối hai address phase mà không nhả bus.
 
 ---
 
 <a id="muc-07-27"></a>
 ## 7.27. Master Transmit / Master Receive
 
-### Master Transmit
+Mục này áp dụng state flag tại **7.23** và transaction primitive tại **7.18**.
 
-Luồng:
+### Master Transmit
 
 ```text
 BUSY = 0
@@ -12130,14 +11360,11 @@ write Address + W vào DR
   ↓
 ADDR = 1
   ↓
-read SR1
-read SR2
+read SR1 → read SR2
   ↓
-write Data vào DR
+write Data
   ↓
 TxE / BTF
-  ↓
-write byte tiếp theo
   ↓
 ...
   ↓
@@ -12149,13 +11376,12 @@ STOP = 1
 Pseudocode:
 
 ```c
-/* START */
 I2C1->CR1 |= I2C_CR1_START;
+
 while (!(I2C1->SR1 & I2C_SR1_SB))
 {
 }
 
-/* Address + Write */
 (void)I2C1->SR1;
 I2C1->DR = (slave_addr << 1);
 
@@ -12163,27 +11389,25 @@ while (!(I2C1->SR1 & I2C_SR1_ADDR))
 {
 }
 
-/* Clear ADDR */
 (void)I2C1->SR1;
 (void)I2C1->SR2;
 
-/* Data */
 while (!(I2C1->SR1 & I2C_SR1_TXE))
 {
 }
+
 I2C1->DR = data;
 
 while (!(I2C1->SR1 & I2C_SR1_BTF))
 {
 }
 
-/* STOP */
 I2C1->CR1 |= I2C_CR1_STOP;
 ```
 
 ### Master Receive
 
-Master Receive khó hơn vì ACK/NACK và STOP phải được cấu hình đúng thời điểm.
+Master Receive cần xử lý ACK/NACK và STOP theo số byte còn lại.
 
 Nguyên tắc:
 
@@ -12193,14 +11417,9 @@ byte chưa phải cuối
 
 byte cuối
 → NACK
-
-sau đó
-→ STOP
 ```
 
-### Receive 1 byte
-
-Trình tự khái niệm trên STM32F1:
+Receive 1 byte:
 
 ```text
 START
@@ -12220,25 +11439,13 @@ wait RxNE
 read DR
 ```
 
-Điểm quan trọng:
+Điểm cần nhớ:
 
 ```text
 ACK phải được clear trước khi clear ADDR
 ```
 
-để byte duy nhất được NACK đúng lúc.
-
-### Receive 2 byte
-
-STM32F1 dùng sequence đặc biệt với:
-
-```text
-POS
-ACK
-BTF
-```
-
-Khái niệm:
+Receive 2 byte dùng sequence đặc biệt:
 
 ```text
 POS = 1
@@ -12253,86 +11460,42 @@ read DR
 read DR
 ```
 
-### Receive nhiều hơn 2 byte
+Với `N > 2`, giữ ACK cho các byte đầu rồi xử lý `BTF/ACK/STOP` đúng thời điểm khi tiến tới các byte cuối.
 
-Khi còn nhiều byte:
-
-```text
-ACK = 1
-→ nhận liên tục
-```
-
-Khi tiến gần byte cuối:
-
-```text
-dùng BTF
-clear ACK đúng thời điểm
-generate STOP
-đọc các byte cuối theo sequence
-```
-
-Do sequence 1 byte, 2 byte và `N > 2` khác nhau, không nên dùng một trình tự đơn giản duy nhất cho mọi độ dài Receive.
+Do sequence `1 byte`, `2 byte` và `N > 2` khác nhau, không dùng một receive sequence duy nhất cho mọi độ dài.
 
 ---
 
 <a id="muc-07-28"></a>
 ## 7.28. I2C Interrupt / DMA
 
-I2C có hai nhóm interrupt chính.
-
-### Event Interrupt
-
-Bit:
+Interrupt của I2C được chia theo nhóm:
 
 ```text
 ITEVFEN
-```
+→ Event interrupt
 
-Các event:
-
-```text
-SB
-ADDR
-BTF
-STOPF
-...
-```
-
-### Buffer Interrupt
-
-Bit:
-
-```text
 ITBUFEN
-```
+→ Buffer interrupt
 
-liên quan:
-
-```text
-TxE
-RxNE
-```
-
-### Error Interrupt
-
-Bit:
-
-```text
 ITERREN
+→ Error interrupt
 ```
 
-các lỗi:
+Ví dụ nguồn:
 
 ```text
-BERR
-ARLO
-AF
-OVR
-PECERR
-...
+Event
+→ SB, ADDR, BTF, STOPF...
+
+Buffer
+→ TxE, RxNE
+
+Error
+→ BERR, ARLO, AF, OVR, PECERR...
 ```
 
-I2C thường có vector:
+I2C thường có:
 
 ```text
 I2Cx_EV_IRQn
@@ -12342,164 +11505,80 @@ I2Cx_ER_IRQn
 → Error IRQ
 ```
 
-### DMA
+Cơ chế NVIC/ISR thuộc **Chương 4**.
 
-I2C hỗ trợ DMA để truyền/nhận data qua `I2C_DR`.
-
-Luồng:
+DMA trao đổi data với `I2C_DR`:
 
 ```text
 I2C_DR
   ↕
  DMA
   ↕
-SRAM Buffer
+SRAM buffer
 ```
 
-DMA giảm số lần CPU phải xử lý:
-
-```text
-TxE
-RxNE
-```
-
-nhưng software vẫn phải quản lý đúng:
-
-```text
-START
-Address
-ACK / NACK
-STOP
-Repeated START
-Error state
-```
+DMA giảm số lần CPU phục vụ `TxE/RxNE`, nhưng START, address phase, ACK/NACK, STOP, Repeated START và error handling vẫn phải được quản lý đúng. Chi tiết DMA controller thuộc **Chương 9**.
 
 ---
 
 <a id="muc-07-29"></a>
 ## 7.29. Quy trình cấu hình I2C
 
-Ví dụ:
+Ví dụ mục tiêu:
 
 ```text
 I2C1
 Master
-Standard Mode
+Standard-mode
 100 kHz
 PCLK1 = 36 MHz
 ```
 
-### Bước 1 — Bật Clock
-
-```c
-RCC->APB2ENR |= RCC_APB2ENR_IOPBEN;
-RCC->APB1ENR |= RCC_APB1ENR_I2C1EN;
-```
-
-Nếu remap:
+Trình tự:
 
 ```text
-AFIO clock
-+
-AFIO_MAPR
+1. Enable GPIO + I2C clock
+2. Cấu hình SCL/SDA Open-Drain + pull-up theo 7.17
+3. PE = 0 khi cấu hình timing
+4. Ghi CR2.FREQ theo PCLK1
+5. Ghi CCR theo mode/tần số
+6. Ghi TRISE
+7. PE = 1
+8. Thực hiện transaction theo 7.18 / 7.23 / 7.27
 ```
 
-### Bước 2 — GPIO
-
-Mặc định I2C1:
+Với ví dụ:
 
 ```text
 PB6 → SCL
 PB7 → SDA
-```
 
-Cả hai:
-
-```text
-Alternate Function Open-Drain
-```
-
-và bus cần pull-up phù hợp.
-
-### Bước 3 — Disable Peripheral khi cấu hình timing
-
-```c
-I2C1->CR1 &= ~I2C_CR1_PE;
-```
-
-### Bước 4 — CR2.FREQ
-
-```text
 PCLK1 = 36 MHz
 
-FREQ = 36
+FREQ  = 36
+CCR   = 180
+TRISE = 37
 ```
 
-### Bước 5 — CCR
+Nếu dùng I2C1 remap thì cấu hình AFIO theo **Chương 3**.
 
-Standard Mode 100 kHz:
-
-```text
-CCR
-= 36 MHz / (2 × 100 kHz)
-= 180
-```
-
-### Bước 6 — TRISE
-
-Standard Mode:
-
-```text
-TRISE
-= FREQ + 1
-= 37
-```
-
-### Bước 7 — Enable I2C
-
-```c
-I2C1->CR1 |= I2C_CR1_PE;
-```
-
-### Bước 8 — Communication
-
-```text
-check BUSY
- ↓
-START
- ↓
-SB
- ↓
-Address
- ↓
-ADDR
- ↓
-Data / Receive
- ↓
-STOP
-```
-
-### Luồng cấu hình
+Luồng:
 
 ```text
 RCC
  ↓
-GPIO Open-Drain
- ↓
-Pull-Up
+GPIO Open-Drain + Pull-Up
  ↓
 PE = 0
  ↓
-CR2.FREQ
- ↓
-CCR
- ↓
-TRISE
+FREQ / CCR / TRISE
  ↓
 PE = 1
  ↓
 START / Address / Data / STOP
 ```
+
+Mục này chỉ tổng hợp **thứ tự cấu hình**; công thức timing không lặp lại vì đã nằm tại **7.22**.
 
 ---
 
@@ -12509,40 +11588,33 @@ START / Address / Data / STOP
 | Đặc điểm | SPI | I2C |
 |---|---|---|
 | Đồng bộ | Có | Có |
-| Clock | SCK | SCL |
-| Data | MOSI + MISO | SDA |
+| Clock | `SCK` | `SCL` |
+| Data | `MOSI` + `MISO` | `SDA` |
 | Full-Duplex tự nhiên | Có | Không |
-| Số dây cơ bản | 3 + NSS/CS | 2 |
+| Dây cơ bản | SCK + MOSI + MISO + CS/NSS | SCL + SDA |
 | Chọn Slave | NSS/CS | Address |
-| Output Driver | Push-Pull phổ biến | Open-Drain |
-| Pull-Up bắt buộc theo bus | Không | Có |
-| Multiple Slave | Mỗi Slave thường cần CS | Dùng chung bus, khác Address |
-| Addressing | Không phải phần cốt lõi của SPI | 7-bit / 10-bit |
-| ACK/NACK | Không | Có |
+| Output driver điển hình | Push-Pull | Open-Drain |
+| Pull-up theo bus | Không phải đặc trưng bắt buộc của SPI | Có |
+| Nhiều Slave | Thường cần CS riêng | Dùng chung bus, khác address |
+| ACK/NACK | Không theo cơ chế I2C | Có |
 | Repeated START | Không | Có |
-| Clock Stretching | Không | Có |
+| Clock stretching | Không | Có |
 | Arbitration | Không theo cơ chế I2C | Có |
-| Full-Duplex Shift | Có | Không |
-| STM32F1 Speed | phụ thuộc PCLK/Prescaler | Sm 100 kHz, Fm 400 kHz |
-| Protocol State Machine | Đơn giản hơn | Phức tạp hơn |
+| State machine | Đơn giản hơn | Phức tạp hơn |
 
-### Chọn SPI khi
+Tư duy lựa chọn:
 
 ```text
-cần tốc độ cao
-ít Slave
-có đủ chân
-giao thức thiết bị hỗ trợ SPI
+SPI
+→ ưu tiên throughput / Full-Duplex
+→ chấp nhận nhiều signal hơn
+
+I2C
+→ ưu tiên ít dây
+→ nhiều thiết bị dùng chung bus theo address
 ```
 
-### Chọn I2C khi
-
-```text
-muốn ít dây
-nhiều peripheral dùng chung bus
-thiết bị có I2C Address
-tốc độ 100/400 kHz phù hợp
-```
+Các hàng trong bảng chỉ so sánh những cơ chế đã được định nghĩa ở các mục trước, không tạo thêm định nghĩa mới.
 
 ---
 
@@ -12551,31 +11623,34 @@ tốc độ 100/400 kHz phù hợp
 
 ### SPI
 
-1. Master và Slave khác nhau ở vai trò tạo SCK thế nào?
-2. NSS/CS dùng để làm gì?
-3. Vì sao SPI Full-Duplex có thể truyền và nhận đồng thời?
-4. Với PCLK2=72 MHz và `/8`, SCK bằng bao nhiêu?
-5. CPOL điều khiển gì?
-6. CPHA điều khiển gì?
-7. Hardware NSS có hạn chế gì khi thiết bị cần CS toggle cho từng transaction?
-8. `TXE` có nghĩa gì?
-9. `RXNE` có nghĩa gì?
-10. `BSY` có nghĩa gì?
-11. Vì sao Master muốn Read vẫn phải transmit dummy data?
-12. Trước khi CS High sau frame cuối nên kiểm tra gì?
-13. Vì sao SDA/SCL dùng Open-Drain?
-14. Vì sao bus I2C cần Pull-Up?
-15. START Condition là gì?
-16. STOP Condition là gì?
-17. 7-bit Address và Address Byte khác nhau thế nào?
-18. Công thức CCR trong Standard Mode là gì?
-19. Clear `ADDR` bằng trình tự nào?
-20. Clock Stretching là gì?
-21. Arbitration hoạt động dựa trên nguyên tắc gì?
+1. Master và Slave khác nhau ở vai trò tạo `SCK` như thế nào?
+2. `NSS` và `CS` được dùng theo nghĩa nào trong chương?
+3. Vì sao SPI Full-Duplex truyền và nhận đồng thời?
+4. Với `PCLK2 = 72 MHz` và prescaler `/8`, `SCK` bằng bao nhiêu?
+5. `CPOL` và `CPHA` điều khiển hai phần nào của timing?
+6. `DFF` và `LSBFIRST` điều khiển gì?
+7. Software NSS và Hardware NSS khác nhau ở cách điều khiển chip-select như thế nào?
+8. `TXE`, `RXNE`, `BSY` có ý nghĩa gì?
+9. Vì sao Master muốn đọc vẫn phải transmit dummy data?
+10. `OVR` được clear theo sequence nào?
+11. Trước khi đưa CS High sau frame cuối phải bảo đảm điều gì?
+
+### I2C
+
+12. Vì sao `SCL/SDA` dùng Open-Drain và cần pull-up?
+13. START condition và STOP condition được tạo như thế nào?
+14. ACK và NACK khác nhau ở trạng thái SDA tại xung thứ 9 ra sao?
+15. 7-bit Slave address và byte `Address + R/W` khác nhau như thế nào?
+16. Master/Slave khác Transmitter/Receiver ở ý nghĩa nào?
+17. Standard-mode và Fast-mode có tốc độ tối đa bao nhiêu?
+18. `CR2.FREQ`, `CCR`, `TRISE` đóng vai trò gì?
+19. `ADDR` được clear bằng sequence nào?
+20. Clock stretching là gì?
+21. Arbitration hoạt động dựa trên nguyên tắc nào?
 22. Repeated START dùng khi nào?
 23. Hãy mô tả sequence đọc một register của sensor.
 24. Khi nhận byte cuối, Master dùng ACK hay NACK?
-25. Hãy so sánh một transaction đọc register bằng SPI với I2C.
+25. Vì sao receive 1 byte, 2 byte và nhiều hơn 2 byte trên STM32F1 không dùng cùng một sequence?
 
 ---
 
@@ -12591,65 +11666,39 @@ Master
 └── NSS / CS
 ```
 
-Clock:
-
 ```text
-fSCK =
-fPCLK / Prescaler
-```
+SCK
+→ PCLKx / baud-rate prescaler
 
-Timing:
-
-```text
 CPOL + CPHA
-→ SPI Mode 0 / 1 / 2 / 3
-```
+→ timing mode
 
-Data:
+DFF + LSBFIRST
+→ frame format
 
-```text
-DFF
-→ 8 / 16 bit
+SPI_DR
+→ data path
 
-LSBFIRST
-→ MSB / LSB First
-```
-
-Flags:
-
-```text
-TXE
-→ TX buffer trống
-
-RXNE
-→ RX buffer có data
-
-BSY
-→ SPI đang bận
-
-OVR
-→ Receive Overrun
+TXE / RXNE / BSY
+→ trạng thái transfer
 ```
 
 Full-Duplex:
 
 ```text
-Write DR
-  ↓
-shift TX
-+
-shift RX
-  ↓
-Read DR
+write SPI_DR
+      ↓
+shift TX + shift RX
+      ↓
+read SPI_DR
 ```
 
 ### I2C
 
 ```text
-SCL
-SDA
+SCL + SDA
 → Open-Drain
-→ Pull-Up
+→ pull-up
 ```
 
 Transaction:
@@ -12682,45 +11731,21 @@ TRISE
 SCL
 ```
 
-Flags:
+State/flag cần nhận diện:
 
 ```text
 SB
 ADDR
+BTF
 TxE
 RxNE
-BTF
 BUSY
 BERR
 ARLO
 AF
 ```
 
-Flag sequence:
-
-```text
-SB
-→ read SR1
-→ write DR
-
-ADDR
-→ read SR1
-→ read SR2
-```
-
-Repeated START:
-
-```text
-Write Register Address
-        ↓
-Repeated START
-        ↓
-Read Data
-```
-
-**Điểm cần nhớ:**
-
-> **SPI cần xác định đúng `SCK`, `CPOL/CPHA`, frame format và luôn nhớ Full-Duplex nghĩa là truyền đồng thời với nhận. I2C cần hiểu đúng Open-Drain, Address, START/STOP, ACK/NACK, Repeated START và đặc biệt phải giữ đúng trình tự xử lý các flag `SB`, `ADDR`, `BTF`, `RxNE`, `TxE` của state machine STM32F1.**
+> **SPI cần xác định đúng clock, `CPOL/CPHA`, frame format và hiểu Full-Duplex data path. I2C cần hiểu Open-Drain, addressing, START/STOP, ACK/NACK, Repeated START và sequence xử lý flag của STM32F1. Các mục quy trình và ví dụ chỉ áp dụng lại những cơ chế này.**
 
 [↑ Về mục lục](#muc-luc)
 
