@@ -8214,6 +8214,8 @@ TX / RX
 
 Half-Duplex và Synchronous mode được tách sang **6.18**.
 
+![RM0008 Figure 279 — USART block diagram](assets/chapter-6/figure-279.png)
+
 ---
 
 <a id="muc-06-02"></a>
@@ -8328,6 +8330,8 @@ word length
 số payload data bits khi parity được enable
 ```
 
+![RM0008 Figure 280 — Word length programming](assets/chapter-6/figure-280.png)
+
 ### Parity — `PCE / PS`
 
 ```text
@@ -8362,6 +8366,8 @@ Receiver kiểm tra parity và báo lỗi qua `PE` nếu giá trị nhận khôn
 ```
 
 Trong UART communication thông thường, `1 Stop Bit` và `2 Stop Bits` là các cấu hình phổ biến; các giá trị fractional stop bit chủ yếu liên quan tới các mode đặc biệt.
+
+![RM0008 Figure 281 — Configurable stop bits](assets/chapter-6/figure-281.png)
 
 Mục này là nơi tham chiếu chính cho cấu trúc frame và quan hệ `M/PCE/PS/STOP`.
 
@@ -8772,6 +8778,8 @@ sau data word cuối
 
 Nếu sắp disable USART hoặc thực hiện thao tác có thể làm dừng transmitter, chờ `TC = 1` khi cần bảo đảm frame cuối đã truyền xong.
 
+![RM0008 Figure 282 — TC/TXE behavior when transmitting](assets/chapter-6/figure-282.png)
+
 Interrupt enable tương ứng `TXEIE/TCIE` được trình bày tại **6.12**.
 
 ---
@@ -8823,6 +8831,8 @@ uint8_t data = (uint8_t)USART1->DR;
 
 Nếu data cũ chưa được lấy khỏi receive data register mà frame mới cần chuyển vào, có thể xảy ra `ORE`. Cơ chế Overrun Error được trình bày tại **6.11**.
 
+![RM0008 Figure 283 — Start bit detection](assets/chapter-6/figure-283.png)
+
 ---
 
 <a id="muc-06-11"></a>
@@ -8868,6 +8878,8 @@ Break condition
 `NE` báo receiver phát hiện các sample không nhất quán do noise trong quá trình khôi phục bit.
 
 Data vẫn có thể xuất hiện trong data register, nhưng software phải coi frame tương ứng là có lỗi.
+
+![RM0008 Figure 284 — Data sampling for noise detection](assets/chapter-6/figure-284.png)
 
 ### `PE` — Parity Error
 
@@ -8934,6 +8946,8 @@ USART_CR1.PEIE
 ```
 
 Một số error/DMA configuration còn liên quan tới `USART_CR3.EIE`; phải xét cùng mode đang dùng.
+
+![RM0008 Figure 302 — USART interrupt mapping diagram](assets/chapter-6/figure-302.png)
 
 ### Receive interrupt
 
@@ -9217,6 +9231,8 @@ USART transmit data path
 TX
 ```
 
+![RM0008 Figure 297 — Transmission using DMA](assets/chapter-6/figure-297.png)
+
 ### DMA Receive
 
 ```text
@@ -9228,6 +9244,8 @@ DMA
  ↓
 SRAM buffer
 ```
+
+![RM0008 Figure 298 — Reception using DMA](assets/chapter-6/figure-298.png)
 
 Khi DMA đọc receive data register sau mỗi data word, `RXNE` được clear theo data-read mechanism. Nếu data không được lấy kịp và frame mới tới, vẫn có thể xảy ra `ORE`.
 
@@ -9273,6 +9291,8 @@ UART4 / UART5
 → không có CTS/RTS tương ứng
 ```
 
+![RM0008 Figure 299 — Hardware flow control between two USARTs](assets/chapter-6/figure-299.png)
+
 ### CTS — Clear To Send
 
 Enable bằng:
@@ -9293,6 +9313,8 @@ CTS deasserted
 
 Nếu CTS thay đổi khi một frame đang được truyền, frame hiện tại được hoàn tất trước khi transmitter dừng theo flow-control state.
 
+![RM0008 Figure 301 — CTS flow control](assets/chapter-6/figure-301.png)
+
 ### RTS — Request To Send
 
 Enable bằng:
@@ -9302,6 +9324,8 @@ USART_CR3.RTSE
 ```
 
 RTS phản ánh khả năng tiếp nhận data của receiver và được dùng để báo cho phía bên kia khi nào nên tiếp tục/dừng gửi theo hardware flow-control protocol.
+
+![RM0008 Figure 300 — RTS flow control](assets/chapter-6/figure-300.png)
 
 ### CTS interrupt
 
@@ -9372,6 +9396,8 @@ USART
 ├── RX
 └── CK
 ```
+
+![RM0008 Figure 289 — USART example of synchronous transmission](assets/chapter-6/figure-289.png)
 
 `UART4/UART5` không có synchronous clock output tương ứng.
 
