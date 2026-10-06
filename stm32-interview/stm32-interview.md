@@ -5429,6 +5429,8 @@ Processor mode và privilege khi chạy handler đã được trình bày tại 
 <a id="muc-04-03"></a>
 ## 4.3. Vector Table và ISR / Handler
 
+**Vector Table** **là một vùng nhớ cố định và đặc biệt vi điều khiển, chứa danh sách các địa chỉ bộ nhớ (con trỏ hàm) của các chương trình phục vụ ngắt (ISR)**.
+
 Vector table đã được trình bày tại **1.5. Reset Sequence** và **1.10. Startup Code**. Trong chương này chỉ cần tập trung vào quan hệ giữa exception number/IRQ và handler.
 
 Ví dụ:
