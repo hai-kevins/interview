@@ -10325,6 +10325,136 @@ Master và Slave phải dùng timing tương thích. Khi thay đổi `CPOL/CPHA`
 
 ![RM0008 Figure 240 — Data clock timing diagram](assets/chapter-7/figure-240.png)
 
+
+### Cách hoạt động của 4 SPI Mode
+
+Trong mỗi bit time:
+
+```text
+một cạnh SCK
+→ lấy mẫu (Sample / Capture)
+
+cạnh còn lại
+→ dịch dữ liệu (Shift)
+→ chuẩn bị bit kế tiếp trên MOSI / MISO
+```
+
+`CPOL` quyết định SCK idle ở mức nào, còn `CPHA` quyết định **cạnh thứ nhất hay cạnh thứ hai** được dùng để lấy mẫu.
+
+> `Shift` ở đây là Shift Register chuyển sang bit kế tiếp trên đường dữ liệu, không phải CPU ghi lại `SPI_DR`.
+
+#### Mode 0 — `CPOL = 0`, `CPHA = 0`
+
+```text
+SCK idle = 0
+
+Rising edge  (cạnh thứ nhất)
+→ Sample
+
+Falling edge (cạnh thứ hai)
+→ Shift sang bit kế tiếp
+```
+
+Vì lấy mẫu ngay tại cạnh đầu tiên nên bit đầu tiên phải ổn định trên MOSI/MISO **trước Rising edge đầu tiên**.
+
+```text
+Idle Low
+   ↓
+Data đã sẵn sàng
+   ↓
+Rising  → Sample
+   ↓
+Falling → Shift
+   ↓
+Rising  → Sample bit tiếp theo
+```
+
+#### Mode 1 — `CPOL = 0`, `CPHA = 1`
+
+```text
+SCK idle = 0
+
+Rising edge  (cạnh thứ nhất)
+→ Shift
+
+Falling edge (cạnh thứ hai)
+→ Sample
+```
+
+Ở Mode 1, cạnh đầu tiên dùng để đưa/chuyển bit ra đường dữ liệu; receiver lấy mẫu tại cạnh thứ hai.
+
+```text
+Idle Low
+   ↓
+Rising  → Shift
+   ↓
+Falling → Sample
+   ↓
+Rising  → Shift bit tiếp theo
+```
+
+#### Mode 2 — `CPOL = 1`, `CPHA = 0`
+
+```text
+SCK idle = 1
+
+Falling edge (cạnh thứ nhất)
+→ Sample
+
+Rising edge  (cạnh thứ hai)
+→ Shift sang bit kế tiếp
+```
+
+Tương tự Mode 0, vì `CPHA = 0` nên bit đầu tiên phải ổn định **trước cạnh thứ nhất**, nhưng do `CPOL = 1` nên cạnh thứ nhất là Falling edge.
+
+```text
+Idle High
+   ↓
+Data đã sẵn sàng
+   ↓
+Falling → Sample
+   ↓
+Rising  → Shift
+   ↓
+Falling → Sample bit tiếp theo
+```
+
+#### Mode 3 — `CPOL = 1`, `CPHA = 1`
+
+```text
+SCK idle = 1
+
+Falling edge (cạnh thứ nhất)
+→ Shift
+
+Rising edge  (cạnh thứ hai)
+→ Sample
+```
+
+Ở Mode 3, Falling edge dùng để shift dữ liệu và Rising edge dùng để lấy mẫu.
+
+```text
+Idle High
+   ↓
+Falling → Shift
+   ↓
+Rising  → Sample
+   ↓
+Falling → Shift bit tiếp theo
+```
+
+Có thể nhớ nhanh:
+
+| SPI Mode | SCK idle | Cạnh thứ nhất | Cạnh thứ hai |
+|---|---|---|---|
+| Mode 0 | Low | **Sample** ↑ | Shift ↓ |
+| Mode 1 | Low | Shift ↑ | **Sample** ↓ |
+| Mode 2 | High | **Sample** ↓ | Shift ↑ |
+| Mode 3 | High | Shift ↓ | **Sample** ↑ |
+
+Trong Figure 240, RM0008 minh họa dữ liệu theo thứ tự **MSB First** (`LSBFIRST = 0`), nhưng quy tắc chọn cạnh Sample/Shift của `CPOL/CPHA` vẫn giữ nguyên nếu đổi thứ tự bit.
+
+
 ---
 
 <a id="muc-07-07"></a>
