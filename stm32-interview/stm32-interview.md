@@ -16255,179 +16255,196 @@ CPU process Half B
 <a id="chuong-10"></a>
 # 10. Debug bằng ST-Link
 
-Debug firmware không chỉ là đặt breakpoint rồi xem chương trình dừng ở đâu. Một quy trình debug tốt phải liên kết được:
+Chương này dùng một mục chính cho mỗi khái niệm debug. Các mục xử lý lỗi và quy trình chỉ áp dụng lại cơ chế đã nêu và dẫn chiếu về mục chính để tránh lặp nội dung.
+
+Luồng tổng quát:
 
 ```text
-Source Code
-    ↓
-CPU State
-    ↓
-Core Registers
-    ↓
-Memory
-    ↓
-Peripheral Registers
-    ↓
-Interrupt / DMA / Fault State
-    ↓
-Tín hiệu thực tế trên chân
+Host PC / IDE / GDB
+        ↓
+   Debugger / Debug Server
+        ↓
+     ST-Link
+        ↓
+     SWD / JTAG
+        ↓
+   STM32F1 target
+        ↓
+processor + memory + peripheral
 ```
 
-ST-Link là cầu nối giữa máy tính và khối debug phần cứng bên trong STM32.
+Khi debug firmware, nên liên hệ được ba lớp:
 
 ```text
-PC / IDE / GDB
-      ↓ USB
-    ST-Link
-      ↓ SWD / JTAG
-     STM32
-      ↓
-Core + Memory + Peripheral
+source-level state
+→ function / variable / line
+
+processor state
+→ PC / LR / SP / xPSR / memory
+
+hardware state
+→ peripheral register / interrupt / DMA / fault / pin signal
 ```
+
+## Quy ước thuật ngữ
+
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **host** | Máy tính chạy IDE/GDB/debugger. |
+| **target** | STM32F1 MCU/board đang được program hoặc debug. |
+| **debug probe** | Phần cứng trung gian giữa host và target; trong chương này là **ST-Link**. |
+| **debugger** | Phần mềm điều khiển debug session, ví dụ GDB hoặc debugger tích hợp trong IDE. |
+| **debug server** | Thành phần phần mềm kết nối debugger với debug probe/target. |
+| **programming** | Ghi firmware vào non-volatile memory của target. |
+| **debugging** | Quan sát/điều khiển trạng thái target để tìm nguyên nhân lỗi. |
+| **debug session** | Khoảng thời gian debugger đã kết nối target và có thể halt/run/inspect. |
+| **SWD** | Serial Wire Debug; giao diện debug hai tín hiệu chính `SWDIO` và `SWCLK`. |
+| **JTAG** | Giao diện debug/scan dùng các tín hiệu `JTMS`, `JTCK`, `JTDI`, `JTDO`, `NJTRST`. |
+| **SWJ** | Cấu hình Serial Wire/JTAG debug port của STM32F1. |
+| **SWDIO** | Serial Wire Debug I/O; đường dữ liệu hai chiều của SWD. |
+| **SWCLK** | Serial Wire Clock; clock SWD do probe tạo. |
+| **NRST** | Reset input của target; đặc biệt hữu ích cho reset và Connect Under Reset. |
+| **SWO** | Serial Wire Output; đường trace một chiều, trên STM32F1 dùng chức năng `TRACESWO` của PB3 khi được cấu hình phù hợp. |
+| **Run / Resume** | Cho processor tiếp tục thực thi. |
+| **Halt** | Dừng processor qua debug logic. Không mặc định có nghĩa mọi peripheral hay thiết bị ngoài đều dừng. |
+| **breakpoint** | Điểm dừng theo luồng thực thi instruction. |
+| **hardware breakpoint** | Breakpoint dùng tài nguyên debug phần cứng như FPB, không cần sửa instruction trong Flash. |
+| **watchpoint** | Điểm dừng theo memory access, thường dùng tài nguyên DWT. |
+| **step** | Điều khiển debugger chạy một bước ở mức source/instruction theo khả năng debug information và compiler output. |
+| **core register** | Thanh ghi processor như `R0-R15`, `xPSR`, `CONTROL`, `PRIMASK`... |
+| **memory-mapped register** | Thanh ghi hệ thống/peripheral có địa chỉ trong memory map. |
+| **Call Stack** | Chuỗi call frame mà debugger dựng lại từ processor state, stack và debug/unwind information. |
+| **debug symbol / debug information** | Thông tin trong ELF giúp ánh xạ machine code về function, variable và source line. |
+| **read side effect** | Việc đọc một register làm thay đổi trạng thái phần cứng hoặc góp phần vào clear sequence. |
+| **DBGMCU** | Khối debug-specific của STM32, cung cấp identification, low-power debug và peripheral freeze cho các peripheral được hỗ trợ. |
+| **peripheral freeze** | Cơ chế dừng một peripheral được hỗ trợ khi processor bị debugger halt. |
+| **fault status** | Trạng thái fault trong các register như `CFSR`, `HFSR`, `MMFAR`, `BFAR`. |
+| **stacked PC / stacked LR** | Giá trị `PC/LR` được hardware lưu trong exception stack frame khi exception entry. |
+| **Connect Under Reset** | Kết nối debug trong khi target đang được giữ/reset để debugger giành quyền điều khiển trước khi firmware chạy quá xa. |
+| **trace** | Cơ chế quan sát event/instrumentation qua debug trace path mà không cần halt CPU cho từng event. |
+
+Tên register/bit giữ nguyên ký hiệu STM32F1/Cortex-M3 như `AFIO_MAPR.SWJ_CFG`, `DBGMCU_CR`, `DBGMCU_APB1_FZ`, `SCB->CFSR`, `PC`, `LR`, `SP`.
+
+---
 
 <a id="muc-10-01"></a>
 ## 10.1. Debug là gì? Programming và Debugging
 
-ST-Link có thể được dùng cho cả:
-
-```text
-Programming
-và
-Debugging
-```
-
-nhưng đây là hai chức năng khác nhau.
+ST-Link có thể phục vụ cả **programming** và **debugging**, nhưng hai thao tác này có mục tiêu khác nhau.
 
 ### Programming
-
-Programming là ghi firmware vào bộ nhớ chương trình.
 
 ```text
 ELF / HEX / BIN
       ↓
-   ST-Link
+    ST-Link
       ↓
- STM32 Flash
+target Flash
 ```
 
 Mục tiêu:
 
 ```text
-firmware được lưu vào target
-→ MCU có thể boot và chạy
+firmware được ghi vào target
+→ target có image để boot/chạy
 ```
 
 ### Debugging
 
-Debugging là quan sát và điều khiển trạng thái của target khi firmware đang chạy.
+Debugging là quan sát và điều khiển target để xác định trạng thái thực tế của firmware/hardware.
 
-Debugger có thể:
+Các thao tác điển hình:
 
 ```text
-Run
+Run / Resume
 Halt
 Reset
 Breakpoint
 Step
-Read / Write Core Register
-Read / Write Memory
-Quan sát Peripheral Register
-Quan sát Variable
-Xem Call Stack
-Đặt Watchpoint
+Watchpoint
+Read / Write core register
+Read / Write memory
+Inspect peripheral register
+Inspect variable / Call Stack
 ```
 
 Do đó:
 
 ```text
-Flash thành công
+programming thành công
 ≠
-Debug session đang hoạt động
+debug session đã hoạt động
 ```
 
-### ELF và Debug Symbol
+### ELF và debug information
 
-File `.elf` thường chứa:
+ELF có thể chứa:
 
 ```text
-Machine Code
-Symbol
-Function Name
-Variable Information
-Source Mapping
-Debug Information
+machine code
+symbols
+function/variable information
+source mapping
+debug information
 ```
 
-Nhờ symbol/debug information, debugger có thể ánh xạ:
+Nhờ đó debugger có thể ánh xạ:
 
 ```text
-0x08001234
+machine-code address
+→ function
+→ source file
+→ source line
 ```
 
-thành:
+Raw `.bin` chỉ là byte image và không tự mang đầy đủ symbol/source-level debug information như ELF.
 
-```text
-main.c
-function_name()
-line ...
-```
-
-Nếu chỉ có raw `.bin`, debugger vẫn có thể truy cập target nhưng sẽ mất phần lớn thông tin source-level nếu không có symbol tương ứng.
+Phân biệt host, debugger, debug server, probe và target được trình bày tại **10.2**.
 
 ---
 
 <a id="muc-10-02"></a>
 ## 10.2. ST-Link là gì?
 
-ST-Link là debug/programming probe dùng để giao tiếp với STM32.
-
-Luồng:
+**ST-Link** là debug/programming probe dùng để nối host với STM32 target.
 
 ```text
 IDE / GDB
    ↓
+Debugger
+   ↓
 Debug Server
-   ↓
-USB
-   ↓
+   ↓ USB
 ST-Link
-   ↓
-SWD / JTAG
-   ↓
-STM32 Debug Port
+   ↓ SWD / JTAG
+STM32 target
 ```
 
-Phần cứng debug nằm trong MCU bao gồm các khối của Cortex-M3 và phần debug-specific của STM32.
-
-ST-Link không phải CPU.
+Cần phân biệt:
 
 ```text
 ST-Link
-→ probe bên ngoài
+→ debug probe bên ngoài target
 
-Cortex-M3 Debug Logic
-→ nằm bên trong MCU
+Cortex-M3 debug logic
+→ nằm bên trong target MCU
 ```
 
-### ST-Link làm được gì?
-
-Tùy toolchain và target:
+Probe chuyển các yêu cầu từ debugger thành transaction debug phù hợp để:
 
 ```text
-Flash program
-Erase Flash
-Reset target
-Halt / Resume CPU
-Read / Write register
-Read / Write memory
-Set breakpoint
-Set watchpoint
-Trace qua SWO
+program / erase Flash
+reset target
+halt / resume processor
+đọc / ghi core register
+đọc / ghi memory
+đặt breakpoint / watchpoint
+nhận trace nếu hardware/tool hỗ trợ
 ```
 
-### Kết nối Target
+### Kết nối target
 
-Một kết nối SWD thực tế nên có:
+Một kết nối SWD thực tế cần tối thiểu các tín hiệu thích hợp như:
 
 ```text
 SWDIO
@@ -16436,11 +16453,13 @@ GND
 VTref
 ```
 
-và thường nên có thêm:
+và nên có:
 
 ```text
 NRST
 ```
+
+nếu muốn reset/recovery thuận tiện.
 
 Nếu dùng trace:
 
@@ -16450,25 +16469,43 @@ SWO
 
 có thể được nối thêm.
 
-`VTref` cho probe biết mức logic của target. Không nên giả định ST-Link luôn cấp nguồn cho target; target phải được cấp nguồn đúng theo board/probe đang dùng.
+`VTref` cho probe biết mức điện áp logic của target. Không mặc định ST-Link luôn là nguồn cấp điện cho board; cách cấp nguồn phụ thuộc probe/board cụ thể.
+
+Các chân và chức năng của SWD/JTAG được tách tại **10.3–10.4**.
 
 ---
 
 <a id="muc-10-03"></a>
 ## 10.3. SWD và JTAG
 
-STM32F1 Cortex-M3 hỗ trợ Serial Wire/JTAG Debug Port.
+STM32F1 với Cortex-M3 hỗ trợ Serial Wire/JTAG Debug Port.
 
-Hai giao diện:
+### SWD
 
 ```text
-JTAG
 SWD
+→ Serial Wire Debug
 ```
+
+Hai tín hiệu chính:
+
+```text
+SWDIO
+SWCLK
+```
+
+Trên STM32F1:
+
+```text
+PA13 → SWDIO / JTMS
+PA14 → SWCLK / JTCK
+```
+
+SWD thường được ưu tiên khi chỉ cần debug/programming vì dùng ít debug pin hơn JTAG.
 
 ### JTAG
 
-Các tín hiệu JTAG chính trên STM32F1:
+Các tín hiệu JTAG chính:
 
 ```text
 JTMS
@@ -16478,7 +16515,7 @@ JTDO
 NJTRST
 ```
 
-Các chân thường liên quan:
+Các pin STM32F1 thường liên quan:
 
 ```text
 PA13 → JTMS / SWDIO
@@ -16488,49 +16525,11 @@ PB3  → JTDO / TRACESWO
 PB4  → NJTRST
 ```
 
-### SWD
-
-`SWD`:
-
-```text
-Serial Wire Debug
-```
-
-Hai tín hiệu debug chính:
-
-```text
-SWDIO
-SWCLK
-```
-
-Mapping:
-
-```text
-PA13 → SWDIO
-PA14 → SWCLK
-```
-
-Sơ đồ:
-
-```text
-ST-Link                  STM32
-
-SWDIO  ←──────────────→  PA13
-SWCLK  ───────────────→  PA14
-GND    ────────────────  GND
-NRST   ────────────────  NRST
-VTref  ←───────────────  Target VDD
-```
-
-### Vì sao SWD thường được ưu tiên?
-
-SWD chỉ cần hai chân debug chính.
-
-Nếu dùng:
+Nếu application không cần JTAG nhưng vẫn cần debug:
 
 ```text
 JTAG disabled
-SWD retained
+SWD enabled
 ```
 
 thì có thể giải phóng:
@@ -16541,68 +16540,61 @@ PB3
 PB4
 ```
 
-cho GPIO hoặc peripheral trong khi vẫn giữ:
+trong khi giữ:
 
 ```text
 PA13
 PA14
 ```
 
-để debug.
+cho SWD.
+
+Cách chọn trạng thái JTAG/SWD trên STM32F1 nằm tại **10.5**.
 
 ---
 
 <a id="muc-10-04"></a>
 ## 10.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
 
-### SWDIO
+Mục này tập trung vào vai trò từng tín hiệu; mapping SWD/JTAG đã được nêu tại **10.3**.
+
+### `SWDIO`
 
 ```text
 Serial Wire Debug I/O
 ```
 
-Là đường dữ liệu hai chiều giữa probe và target.
+Đường dữ liệu hai chiều:
 
 ```text
 ST-Link
-↔
-SWDIO
-↔
-Cortex-M Debug Port
+↔ SWDIO
+↔ target debug port
 ```
 
-### SWCLK
+### `SWCLK`
 
 ```text
 Serial Wire Clock
 ```
 
-Clock do probe tạo cho giao tiếp SWD.
+Clock của giao tiếp SWD do debug probe tạo.
 
-### NRST
+### `NRST`
 
-`NRST` không bắt buộc trong mọi debug session, nhưng rất hữu ích.
+`NRST` cho phép probe tác động reset target.
 
-Nó cho phép debugger:
+Ứng dụng quan trọng:
 
 ```text
 Reset target
 Connect Under Reset
-Giữ MCU reset trong lúc thiết lập kết nối
+recovery khi firmware chạy lỗi rất sớm
 ```
 
-Đặc biệt hữu ích nếu firmware:
+`Connect Under Reset` được áp dụng tại **10.19**, nên không lặp lại quy trình recovery tại đây.
 
-```text
-disable SWD
-reconfigure debug pins
-crash rất sớm
-vào low-power quá sớm
-```
-
-### SWO
-
-`SWO`:
+### `SWO`
 
 ```text
 Serial Wire Output
@@ -16615,20 +16607,17 @@ PB3
 → JTDO / TRACESWO
 ```
 
-SWO có thể được dùng cho:
+SWO là tín hiệu **tùy chọn** cho trace:
 
 ```text
-ITM message
-Event trace
-Một số dạng timestamp / instrumentation
+không nối SWO
+→ SWD breakpoint / step / memory access vẫn có thể hoạt động
+
+muốn SWO trace
+→ cần pin/wiring + trace configuration phù hợp
 ```
 
-SWO là optional:
-
-```text
-không cần SWO
-→ vẫn breakpoint / step / inspect qua SWD bình thường
-```
+Trace được trình bày tại **10.18**.
 
 ---
 
@@ -16638,20 +16627,15 @@ không cần SWO
 STM32F1 dùng:
 
 ```text
-SWJ
-→ Serial Wire/JTAG
-```
-
-Cấu hình debug pin nằm trong:
-
-```text
 AFIO_MAPR.SWJ_CFG
 ```
 
-Các trạng thái quan trọng về mặt sử dụng:
+để chọn cấu hình Serial Wire/JTAG debug port.
+
+Các trạng thái cần nhận diện:
 
 ```text
-Full JTAG + SWD enabled
+JTAG + SWD enabled
 
 JTAG disabled
 SWD enabled
@@ -16659,16 +16643,14 @@ SWD enabled
 JTAG + SWD disabled
 ```
 
-### Cấu hình thường dùng
-
-Trong firmware phát triển:
+Trong giai đoạn phát triển, cấu hình thường hữu ích là:
 
 ```text
-Disable JTAG
-Keep SWD
+disable JTAG
+keep SWD
 ```
 
-cho phép sử dụng:
+để giải phóng:
 
 ```text
 PA15
@@ -16676,374 +16658,270 @@ PB3
 PB4
 ```
 
-cho peripheral khác nhưng vẫn giữ debug qua:
+nhưng vẫn giữ:
 
 ```text
 PA13
 PA14
 ```
 
-### Nếu Disable cả SWD
+cho SWD.
 
-Nếu firmware thực thi cấu hình:
+Cơ chế AFIO và pin remapping đã được trình bày tại **3.13**; tại đây chỉ tập trung vào ảnh hưởng của `SWJ_CFG` tới debug connection.
 
-```text
-JTAG disabled
-+
-SWD disabled
-```
-
-thì:
-
-```text
-debug connection có thể mất
-```
-
-sau khi đoạn code này chạy.
-
-Đây không nhất thiết làm MCU "brick" vĩnh viễn. Nếu Flash vẫn có thể được truy cập trước khi firmware kịp tắt SWD, có thể recovery bằng:
-
-```text
-Connect Under Reset
-→ halt / erase / reprogram
-```
-
-NRST vì thế rất hữu ích trên header debug.
-
-### Quy tắc thực tế
-
-Trong giai đoạn phát triển:
-
-```text
-cần thêm chân?
-→ ưu tiên disable JTAG
-→ giữ SWD
-```
-
-Chỉ disable toàn bộ debug port khi có yêu cầu hệ thống rõ ràng và đã có phương án programming/recovery phù hợp.
+Nếu firmware disable cả JTAG và SWD, probe có thể mất kết nối sau khi code đó chạy. Cách recovery bằng `NRST`/Connect Under Reset được xử lý tại **10.19**.
 
 ---
 
 <a id="muc-10-06"></a>
 ## 10.6. Debug Session hoạt động như thế nào?
 
-Một session điển hình:
+Một debug session điển hình:
 
 ```text
 Build
- ↓
-ELF
- ↓
-Flash Target
- ↓
-Attach Debugger
- ↓
-Reset / Halt
- ↓
+  ↓
+ELF + debug information
+  ↓
+Program target nếu cần
+  ↓
+Connect / Attach
+  ↓
+Reset hoặc Halt
+  ↓
 Run
- ↓
-Breakpoint / Exception
- ↓
+  ↓
+Breakpoint / Watchpoint / manual Halt / fault
+  ↓
 Halt
- ↓
-Inspect
- ↓
+  ↓
+Inspect state
+  ↓
 Resume
 ```
 
-### Khi CPU bị Halt
-
-Debugger có thể đọc:
+Khi processor bị halt, debugger có thể quan sát tùy cấu hình/tool:
 
 ```text
-Core Registers
-Memory
-Stack
-Peripheral Registers
+core registers
+memory
+stack
+peripheral registers
+variables / Call Stack
 ```
 
-và xác định instruction hiện tại qua:
+`PC` giúp xác định execution context hiện tại; cách sử dụng `PC/LR/SP` nằm tại **10.12**.
+
+### Halt không có nghĩa toàn hệ thống dừng
 
 ```text
-PC
+processor Halt
+≠
+mọi phần cứng đều Halt
 ```
 
-### Khi Resume
-
-```text
-CPU tiếp tục execute
-```
-
-từ state hiện tại, trừ khi debugger hoặc reset sequence đã làm thay đổi context.
-
-### Debugger không nhất thiết dừng toàn hệ thống
-
-CPU halt không đồng nghĩa:
-
-```text
-toàn bộ MCU và môi trường ngoài cùng dừng
-```
-
-Một số thứ có thể tiếp tục:
+Trong khi processor dừng, các thành phần sau **có thể** vẫn tiếp tục nếu clock/thiết kế cho phép:
 
 ```text
 Timer không được freeze
 DMA
-Peripheral clocked độc lập
 Watchdog
-External UART source
-External sensor
-External motor / power stage
+một số peripheral
+external UART source
+external sensor
+motor / power stage ngoài MCU
 ```
 
-Do đó breakpoint có thể làm thay đổi timing của hệ thống so với chạy tự do.
+Đây là nguyên nhân breakpoint có thể làm timing của hệ thống khác với free-running execution.
+
+Cơ chế dừng peripheral được hỗ trợ nằm tại **10.14**.
 
 ---
 
 <a id="muc-10-07"></a>
 ## 10.7. Breakpoint
 
-Breakpoint yêu cầu debugger dừng CPU khi execution tới một vị trí.
+**Breakpoint** dừng processor khi execution đạt vị trí đã chọn.
 
 ```text
-Instruction A
+execution
    ↓
-Instruction B
+breakpoint condition
    ↓
-Breakpoint
+processor Halt
    ↓
-CPU Halt
+inspect state
 ```
 
-Khi halt:
+Breakpoint phù hợp để trả lời:
 
 ```text
-PC
-→ vị trí breakpoint / instruction liên quan
+code path này có chạy không?
+processor tới đây với state nào?
+biến/register có giá trị gì trước/sau đoạn code?
 ```
 
-Debugger có thể kiểm tra:
+### Hardware breakpoint
+
+Code trong Flash thường dùng hardware breakpoint qua tài nguyên debug của Cortex-M3 như **FPB**.
 
 ```text
-Variables
-Registers
-Memory
-Call Stack
-Peripheral State
+hardware breakpoint
+→ không cần sửa Flash instruction
 ```
 
-### Hardware Breakpoint
+Số comparator phần cứng có giới hạn, vì vậy số hardware breakpoint đồng thời cũng có giới hạn.
 
-Code chạy từ Flash thường sử dụng hardware breakpoint của Cortex-M thông qua khối debug như FPB.
+### Ảnh hưởng của breakpoint
 
-Hardware breakpoint:
+Tác động hệ thống khi halt đã được trình bày tại **10.6**. Vì vậy khi debug code phụ thuộc timing, peripheral hoặc external device, không nên giả định trạng thái sau một breakpoint hoàn toàn giống trạng thái khi firmware chạy tự do.
 
-```text
-không cần sửa Flash instruction
-```
-
-nhưng số lượng:
-
-```text
-có giới hạn
-```
-
-Nếu đặt quá nhiều breakpoint, debugger có thể báo hết hardware resource hoặc phải dùng cơ chế khác nếu có thể.
-
-### Breakpoint trong vòng lặp
-
-Ví dụ:
-
-```c
-while (1)
-{
-    task();
-}
-```
-
-Breakpoint bên trong `task()` có thể giúp xác nhận:
-
-```text
-code path có thực sự chạy không
-```
-
-nhưng không nên giữ breakpoint lâu nếu external system vẫn hoạt động.
+Watchpoint là cơ chế khác, dựa trên memory access, và được trình bày tại **10.9**.
 
 ---
 
 <a id="muc-10-08"></a>
 ## 10.8. Step Into / Step Over / Step Out / Continue
 
+Các lệnh stepping được hiểu ở mức debugger/source view:
+
 ### Step Into
 
-Nếu có:
-
-```c
-foo();
-```
-
-Step Into:
-
 ```text
-đi vào foo()
+foo();
+↓
+đi vào code của foo() nếu debugger có thể biểu diễn call đó
 ```
 
 ### Step Over
 
-Step Over:
-
 ```text
-chạy qua foo()
-→ dừng ở statement sau call
+foo();
+↓
+chạy qua call
+↓
+dừng ở vị trí source tiếp theo phù hợp
 ```
 
 ### Step Out
 
-Nếu đang ở:
-
 ```text
-foo()
-```
-
-Step Out:
-
-```text
-chạy cho tới khi return khỏi foo()
+đang ở trong foo()
+↓
+chạy cho tới khi rời current function theo debug/unwind state
 ```
 
 ### Continue / Resume
 
 ```text
-CPU chạy tiếp
+processor chạy tiếp
 ```
 
-cho tới:
+cho tới khi gặp điều kiện dừng như:
 
 ```text
-breakpoint tiếp theo
-manual halt
-exception được debugger bắt
+breakpoint
+watchpoint
+manual Halt
+fault/exception mà debugger được cấu hình để bắt
 ```
 
-### Source Line không bằng một Instruction
-
-Một dòng C:
-
-```c
-x = a + b;
-```
-
-có thể tạo:
+### Source line không đồng nghĩa một instruction
 
 ```text
-nhiều instruction
+một dòng C
+↔
+có thể là nhiều instruction
+hoặc không còn mapping 1:1
 ```
 
-hoặc bị compiler:
+Compiler có thể:
 
 ```text
 inline
 reorder
-remove
 fold
+remove
+merge
 ```
 
-Do đó source stepping phụ thuộc:
-
-```text
-Debug Information
-Compiler Optimization
-```
+Do đó hành vi source stepping phụ thuộc debug information và compiler optimization. Phần optimization được tập trung tại **10.17**.
 
 ---
 
 <a id="muc-10-09"></a>
 ## 10.9. Watchpoint
 
-Breakpoint theo dõi:
+Cần phân biệt:
 
 ```text
-Program Execution
+Breakpoint
+→ theo dõi execution location
+
+Watchpoint
+→ theo dõi memory access
 ```
 
-Watchpoint theo dõi:
+Cortex-M3 có **DWT — Data Watchpoint and Trace**. Debugger có thể dùng comparator phần cứng để dừng khi một địa chỉ phù hợp bị:
 
 ```text
-Memory Access
+read
+write
+hoặc access
 ```
 
-Cortex-M3 có Data Watchpoint and Trace:
+tùy khả năng hardware/tool.
 
-```text
-DWT
-```
-
-và debugger có thể dùng hardware comparator để dừng khi:
-
-```text
-đọc một địa chỉ
-ghi một địa chỉ
-truy cập một địa chỉ
-```
-
-tùy khả năng của tool/debug hardware.
-
-### Ví dụ
-
-Có biến:
+Ví dụ:
 
 ```c
 volatile uint32_t state;
 ```
 
-Bug:
+Nếu `state` bị thay đổi ngoài dự kiến:
 
 ```text
-state tự nhiên đổi sai
+Watchpoint: break on write to &state
+        ↓
+instruction ghi state chạy
+        ↓
+processor Halt
+        ↓
+xem PC + Call Stack
 ```
 
-Đặt watchpoint:
+Watchpoint đặc biệt hữu ích cho:
 
 ```text
-Break on Write to &state
+memory corruption
+buffer overwrite
+bad pointer
+biến bị ghi ngoài dự kiến
 ```
 
-Khi bất kỳ instruction nào ghi vào `state`:
+Giống hardware breakpoint, số comparator watchpoint có giới hạn.
 
-```text
-CPU Halt
-```
-
-sau đó kiểm tra:
-
-```text
-PC
-Call Stack
-instruction gây write
-```
-
-### Watchpoint hữu ích cho
-
-```text
-Memory corruption
-Buffer overwrite
-Sai pointer
-Biến bị ghi ngoài dự kiến
-```
-
-Giống hardware breakpoint, số watchpoint comparator có giới hạn.
+`PC` và Call Stack dùng để truy nguồn instruction ghi dữ liệu được trình bày tại **10.12**.
 
 ---
 
 <a id="muc-10-10"></a>
 ## 10.10. Registers / Memory / Peripheral Registers
 
-Debugger có thể quan sát ba lớp chính.
-
-### Core Registers
+Debugger có thể quan sát ba lớp chính:
 
 ```text
-R0 ... R12
+core registers
+memory
+memory-mapped registers
+```
+
+### Core registers
+
+Ví dụ:
+
+```text
+R0-R12
 SP
 LR
 PC
@@ -17054,48 +16932,34 @@ BASEPRI
 FAULTMASK
 ```
 
-Tùy trạng thái/core support, debugger có thể hiển thị thêm các system register khác.
-
-Các register cần ưu tiên:
+Ý nghĩa kiến trúc của các core register đã được trình bày tại **1.4** và stack tại **1.9**. Trong chương debug, các register thường được ưu tiên để xác định execution context là:
 
 ```text
 PC
-→ đang execute ở đâu
-
 LR
-→ return / exception return information
-
 SP
-→ stack hiện tại
-
 xPSR
-→ processor status
 ```
+
+Cách đọc chúng khi debug nằm tại **10.12**.
 
 ### Memory
 
-Có thể xem:
+Debugger có thể đọc/ghi các vùng phù hợp như:
 
 ```text
 Flash
 SRAM
-Stack
-Global Variable
-Peripheral Address Space
+stack
+global/static data
+peripheral address space
 ```
 
-Ví dụ:
+Memory map STM32F1 đã được trình bày tại **1.7**.
 
-```text
-0x20000000
-→ đầu SRAM trên nhiều STM32F1
-```
+### Peripheral registers
 
-địa chỉ cụ thể phải theo memory map của MCU.
-
-### Peripheral Registers
-
-Có thể kiểm tra:
+Peripheral register giúp kiểm tra **hardware state thực tế**:
 
 ```text
 RCC
@@ -17110,68 +16974,50 @@ DMA
 DBGMCU
 ```
 
-Ví dụ UART không truyền:
+Ví dụ khi USART1 không truyền, thay vì chỉ đọc source code có thể kiểm tra:
 
 ```text
-RCC_APB2ENR
-→ USART1EN?
-
-GPIOA_CRH
-→ PA9 AF Push-Pull?
-
-USART1_BRR
-→ Baud?
-
-USART1_CR1
-→ UE / TE?
-
-USART1_SR
-→ TXE / TC / Error?
+RCC clock enable
+→ GPIO configuration
+→ USART_BRR
+→ UE / TE
+→ TXE / TC / error flags
 ```
 
-Đây là cách debug theo state thực tế của peripheral thay vì chỉ đọc source code.
+Chi tiết ý nghĩa từng register/flag thuộc chương peripheral tương ứng.
 
-### Cảnh báo: Read Side Effect
+### Read side effect
 
-Không phải mọi register đều có thể được đọc tùy ý mà không tác động.
+Không phải memory-mapped register nào cũng là phép đọc thụ động.
 
-Các ví dụ đã gặp:
+Các clear sequence đã được trình bày ở chương peripheral, ví dụ:
 
 ```text
 USART:
-read SR
-then read DR
-→ clear một số receive error flags
+đọc SR rồi đọc DR
+→ tham gia clear một số receive error flags
 
 SPI:
-read DR
-then read SR
-→ clear OVR
+đọc DR rồi đọc SR
+→ clear OVR theo sequence
 
 I2C:
-read SR1
-then read SR2
+đọc SR1 rồi đọc SR2
 → clear ADDR
 ```
 
-Nếu debugger tự refresh register window:
-
-```text
-nó có thể phát sinh các bus read
-```
-
-và trong một số trường hợp làm thay đổi state machine.
+Nếu debugger tự refresh Peripheral Register view, nó có thể phát sinh bus read và trong một số trường hợp làm thay đổi hardware state.
 
 Vì vậy:
 
-> **Peripheral Register Window không phải lúc nào cũng là phép quan sát hoàn toàn không ảnh hưởng hệ thống.**
+> **Quan sát peripheral register qua debugger không phải lúc nào cũng hoàn toàn không xâm lấn.**
 
 ---
 
 <a id="muc-10-11"></a>
 ## 10.11. Variables / Watch / Expressions
 
-Debugger có thể đánh giá:
+Debugger dùng debug information để biểu diễn object/source-level state như:
 
 ```c
 counter
@@ -17183,81 +17029,97 @@ TIM2->CNT
 USART1->SR
 ```
 
-### Watch
+### Watch / Expressions
 
-Watch dùng để theo dõi expression trong lúc debug.
-
-Ví dụ:
+Watch window có thể theo dõi expression:
 
 ```text
 counter
 rx_length
 adc_buffer[0]
-current_state
-```
-
-### Expressions
-
-Có thể tính:
-
-```text
 buffer_end - buffer_start
 ```
 
-hoặc inspect:
+hoặc memory expression nếu debugger hỗ trợ, ví dụ:
 
-```text
+```c
 *(uint32_t *)0x20000000
 ```
 
-nếu debugger hỗ trợ expression tương ứng.
+### Variable location không cố định khi optimization bật
 
-### Optimized Out
-
-Compiler có thể:
+Một variable có thể:
 
 ```text
-xóa variable
-giữ variable trong register
-gộp expression
-inline function
+nằm trong memory
+nằm tạm trong register
+bị compiler gộp/xóa
+không còn location ổn định ở một điểm source cụ thể
 ```
 
-khi optimization bật.
-
-Debugger có thể hiển thị:
+Debugger khi đó có thể hiển thị:
 
 ```text
 <optimized out>
 ```
 
-Điều này không đồng nghĩa:
-
-```text
-variable chắc chắn bị lỗi
-```
-
-mà có thể chỉ là không còn location ổn định để debugger ánh xạ theo source.
+Đây không tự động chứng minh firmware sai; quan hệ giữa source và optimized machine code được trình bày tại **10.17**.
 
 ### Live Watch
 
-Một số IDE hỗ trợ đọc biến trong lúc CPU chạy.
-
-Cần nhớ:
-
-```text
-Live Watch
-→ tạo debug access qua SWD
-```
-
-Nếu hệ thống timing-sensitive, lượng truy cập debug có thể làm thay đổi hành vi hoặc bus contention ở mức nhỏ.
+Một số tool cho phép đọc biến khi processor vẫn chạy. Việc này tạo debug access tới target và không nên mặc định là hoàn toàn không ảnh hưởng timing/bus behavior của một hệ thống nhạy thời gian.
 
 ---
 
 <a id="muc-10-12"></a>
 ## 10.12. Call Stack / PC / LR / SP
 
+Định nghĩa kiến trúc của `PC`, `LR`, `SP`, MSP/PSP và exception stack frame đã được trình bày tại **Chương 1**. Mục này tập trung vào **cách dùng chúng khi debug**.
+
+### `PC`
+
+`PC` giúp trả lời:
+
+```text
+processor đang dừng quanh instruction nào?
+```
+
+Khi crash hoặc halt bất ngờ, đây thường là một trong những giá trị đầu tiên cần kiểm tra.
+
+### `LR`
+
+`LR` giúp suy luận return context:
+
+```text
+function call
+→ return information
+
+exception handler
+→ có thể chứa EXC_RETURN
+```
+
+Vì vậy trong Handler mode không được mặc định `LR` luôn là một code address thông thường.
+
+### `SP`
+
+`SP` giúp xác định stack hiện hành và vùng stack cần kiểm tra.
+
+```text
+Thread mode
+→ có thể dùng MSP hoặc PSP
+
+Handler mode
+→ dùng MSP
+```
+
 ### Call Stack
+
+Debugger dựng Call Stack để trả lời:
+
+```text
+current function được gọi từ đâu?
+chuỗi call nào dẫn tới execution point hiện tại?
+```
 
 Ví dụ:
 
@@ -17270,200 +17132,96 @@ Sensor_Read()
  ↓
 I2C_ReadRegister()
  ↓
-current function
+current frame
 ```
 
-Call Stack giúp trả lời:
+Call Stack phụ thuộc stack/debug/unwind state. Nếu:
 
 ```text
-CPU tới đây từ đâu?
-```
-
-### PC
-
-`PC`:
-
-```text
-Program Counter
-```
-
-chứa địa chỉ instruction hiện tại/tiếp theo theo trạng thái pipeline/debug presentation.
-
-Khi crash:
-
-```text
-PC
-→ vị trí cần kiểm tra đầu tiên
-```
-
-### LR
-
-`LR`:
-
-```text
-Link Register
-```
-
-Trong function call:
-
-```text
-LR
-→ return address information
-```
-
-Trong exception:
-
-```text
-LR
-→ có thể chứa EXC_RETURN
-```
-
-không phải luôn là địa chỉ code thông thường.
-
-### SP
-
-`SP`:
-
-```text
-Stack Pointer
-```
-
-Cortex-M có:
-
-```text
-MSP
-PSP
-```
-
-Handler mode sử dụng:
-
-```text
-MSP
-```
-
-Thread mode có thể dùng:
-
-```text
-MSP
-hoặc
-PSP
-```
-
-tùy `CONTROL.SPSEL`.
-
-### Call Stack có thể sai
-
-Nếu:
-
-```text
-Stack corruption
-bad SP
+stack corruption
+SP sai
 memory overwrite
 optimized code phức tạp
 ```
 
-thì debugger có thể không reconstruct Call Stack chính xác.
+thì Call Stack có thể không được reconstruct đầy đủ hoặc chính xác.
 
-Do đó Call Stack là bằng chứng hữu ích nhưng không phải luôn tuyệt đối.
+Vì vậy khi nghi stack corruption, cần kết hợp:
+
+```text
+PC / LR / SP
++
+raw stack memory
++
+disassembly
++
+fault status nếu có
+```
+
+HardFault-specific analysis nằm tại **10.16**.
 
 ---
 
 <a id="muc-10-13"></a>
 ## 10.13. Debug Interrupt
 
-Giả sử:
+Cơ chế exception, NVIC, priority, masking và peripheral pending flag đã được trình bày tại **Chương 4**. Khi debug một interrupt không chạy, kiểm tra theo đúng các tầng đó thay vì định nghĩa lại cơ chế interrupt.
+
+Luồng kiểm tra:
 
 ```text
-EXTI interrupt không chạy
+source event có xảy ra?
+        ↓
+source/peripheral flag có set?
+        ↓
+interrupt source enable có bật?
+        ↓
+NVIC IRQ có enable?
+        ↓
+IRQ có Pending?
+        ↓
+priority / masking có chặn?
+        ↓
+vector / handler có đúng?
+        ↓
+ISR có service + clear source đúng?
 ```
 
-Không nên chỉ đặt breakpoint trong ISR rồi kết luận:
+Ví dụ EXTI:
 
 ```text
-không vào ISR
-→ NVIC lỗi
+GPIO level/edge
+→ AFIO_EXTICR
+→ RTSR / FTSR
+→ IMR
+→ EXTI_PR
+→ NVIC
+→ handler
 ```
 
-Phải kiểm tra theo từng tầng.
+Ví dụ Timer:
 
 ```text
-External Event
-      ↓
-Peripheral / EXTI Flag
-      ↓
-Peripheral Interrupt Enable
-      ↓
-NVIC Enable
-      ↓
-NVIC Pending
-      ↓
-Priority / Masking
-      ↓
-Vector Table
-      ↓
-ISR
+TIMxCLK
+→ CNT
+→ source flag như UIF/CCxIF
+→ source enable như UIE/CCxIE
+→ NVIC
+→ handler
 ```
 
-### Ví dụ EXTI
+Nếu IRQ đã Pending nhưng chưa được phục vụ, kiểm tra thêm:
 
 ```text
-GPIO pin có đổi mức?
-      ↓
-AFIO_EXTICR đúng?
-      ↓
-RTSR / FTSR đúng?
-      ↓
-IMR unmask?
-      ↓
-EXTI_PR set?
-      ↓
-NVIC IRQ enabled?
-      ↓
-Handler name đúng?
+PRIMASK
+BASEPRI
+current exception priority
+priority grouping / priority
 ```
-
-### Ví dụ Timer
-
-```text
-TIMxCLK có chạy?
-      ↓
-CNT có thay đổi?
-      ↓
-UIF được set?
-      ↓
-UIE = 1?
-      ↓
-NVIC Enable?
-      ↓
-TIMx_IRQHandler()?
-```
-
-### Priority / Masking
-
-Nếu IRQ đã pending nhưng không chạy:
-
-```text
-PRIMASK?
-BASEPRI?
-priority?
-CPU đang ở exception priority cao hơn?
-```
-
-cần được kiểm tra.
 
 ### Breakpoint trong ISR
 
-Breakpoint trong ISR sẽ làm CPU halt.
-
-Trong thời gian halt:
-
-```text
-external source có thể tiếp tục tạo event
-peripheral flag có thể tích lũy
-DMA có thể tiếp tục
-```
-
-nên state sau khi resume có thể khác run-time bình thường.
+Ảnh hưởng của processor Halt đã được nêu tại **10.6**. Khi dừng trong ISR, external event, DMA hoặc peripheral không được freeze có thể tiếp tục thay đổi state. Vì vậy phải thận trọng khi suy luận timing từ một run có breakpoint trong ISR.
 
 ---
 
@@ -17476,9 +17234,7 @@ STM32F1 có khối:
 DBGMCU
 ```
 
-để cung cấp các chức năng debug-specific.
-
-Các register quan trọng:
+với các register cần nhận diện:
 
 ```text
 DBGMCU_IDCODE
@@ -17487,108 +17243,90 @@ DBGMCU_APB1_FZ
 DBGMCU_APB2_FZ
 ```
 
-### DBGMCU_IDCODE
+### `DBGMCU_IDCODE`
 
-Cho phép debugger/software đọc:
+Cung cấp thông tin như:
 
 ```text
 Device Identifier
 Revision Identifier
 ```
 
-hữu ích để xác định silicon revision/device family ở mức debug.
+hữu ích khi xác định device/revision trong quá trình debug.
 
-### Freeze Peripheral
+### Peripheral freeze
 
-Khi CPU bị debugger halt:
+Khi processor halt:
 
 ```text
-CPU
+processor
 → dừng
+
+peripheral
+→ không mặc định dừng
 ```
 
-nhưng peripheral có thể vẫn tiếp tục.
-
-DBGMCU freeze bits cho phép một số peripheral dừng đồng bộ với core halt.
-
-Ví dụ:
+Với peripheral có freeze bit tương ứng:
 
 ```text
-CPU Halt
+debugger Halt
 +
-DBG_TIM2_STOP = 1
-→ TIM2 dừng
+freeze bit = 1
+→ peripheral đó dừng theo debug freeze mechanism
 ```
 
-Khi resume:
-
-```text
-TIM2 tiếp tục
-```
-
-### Timer Freeze
-
-Có thể freeze các Timer được hỗ trợ bởi device.
-
-Ví dụ register-level theo macro CMSIS/device header:
+Ví dụ Timer:
 
 ```c
 DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_TIM2_STOP;
 ```
 
-Tên macro có thể khác nhẹ theo version header/toolchain, nhưng ý nghĩa phần cứng là:
+Tên macro có thể phụ thuộc device header, nhưng ý nghĩa cần nhớ là:
 
 ```text
-halt core
-→ freeze TIM2 counter
+processor Halt
+→ TIM2 được freeze nếu bit hỗ trợ đã bật
 ```
 
-### Watchdog Freeze
+### Watchdog
 
-Một số bit debug cho phép freeze:
+Một số debug freeze bit áp dụng cho:
 
 ```text
 IWDG
 WWDG
 ```
 
-khi CPU halt.
-
-Nếu không freeze:
+Nếu watchdog không được freeze:
 
 ```text
-CPU dừng tại breakpoint
-      ↓
-Watchdog vẫn chạy
-      ↓
+processor dừng tại breakpoint
+        ↓
+watchdog tiếp tục
+        ↓
 timeout
-      ↓
-MCU reset
+        ↓
+target reset
 ```
 
-Debugger có thể làm người phát triển tưởng rằng:
+### Giới hạn
 
 ```text
-firmware tự reset ngẫu nhiên
+peripheral freeze
+≠
+freeze toàn bộ MCU
 ```
 
-### Freeze không áp dụng cho mọi Peripheral
+Chỉ peripheral có debug freeze support/bit tương ứng mới chịu cơ chế này. Thiết bị ngoài MCU không bị DBGMCU freeze.
 
-Không nên giả định:
-
-```text
-DBGMCU freeze
-→ toàn bộ peripheral dừng
-```
-
-Chỉ các peripheral có bit freeze tương ứng mới chịu cơ chế này.
+Low-power debug qua `DBGMCU_CR` được tách tại **10.15**.
 
 ---
 
 <a id="muc-10-15"></a>
 ## 10.15. Debug trong Sleep / Stop / Standby
 
-`DBGMCU_CR` có các cơ chế debug low-power:
+`DBGMCU_CR` có các bit:
 
 ```text
 DBG_SLEEP
@@ -17596,63 +17334,33 @@ DBG_STOP
 DBG_STANDBY
 ```
 
-Mục tiêu:
+cho phép duy trì khả năng debug trong low-power mode tương ứng theo cơ chế của STM32F1.
+
+Mục đích:
 
 ```text
-giữ debug capability
+target vào low-power mode
+        ↓
+debug logic cần thiết vẫn được giữ theo cấu hình
+        ↓
+debugger có thể tiếp tục kiểm soát/quan sát phù hợp
 ```
 
-khi MCU đi vào low-power mode tương ứng.
+### Ảnh hưởng tới phép đo công suất
 
-### Sleep
-
-Nếu debug Sleep được enable:
+Khi low-power debug được bật, một số debug/clock resource phải tiếp tục hoạt động. Vì vậy:
 
 ```text
-CPU Sleep
-→ debug connection vẫn có thể được duy trì
-```
-
-### Stop
-
-Nếu debug Stop được enable:
-
-```text
-MCU vào Stop
-→ debugger vẫn có khả năng duy trì session theo cơ chế debug
-```
-
-### Standby
-
-Tương tự, debug Standby có cơ chế riêng.
-
-### Ảnh hưởng đến Power Measurement
-
-Khi bật debug trong low-power:
-
-```text
-một số clock/debug logic vẫn phải hoạt động
-```
-
-nên:
-
-```text
-current consumption
+dòng đo trong debug session
 ≠
-release low-power consumption
+dòng tiêu thụ release thực tế
 ```
 
-Vì vậy khi đo dòng điện thật:
+Nếu mục tiêu là đo power đại diện sản phẩm, cần kiểm tra cả trường hợp không duy trì debug low-power support.
 
-```text
-tắt debug low-power support nếu cần phép đo đại diện sản phẩm
-```
+### Không thay thế wakeup configuration
 
-và kiểm tra hệ thống ngoài debug session.
-
-### Debug Low-Power không thay thế Wakeup Design
-
-Firmware vẫn phải cấu hình đúng:
+`DBG_SLEEP/STOP/STANDBY` chỉ phục vụ debug. Wakeup path của firmware vẫn phải được cấu hình đúng, ví dụ:
 
 ```text
 EXTI
@@ -17661,43 +17369,24 @@ Wakeup Pin
 Interrupt / Event
 ```
 
-theo low-power mode.
+theo low-power mode đang sử dụng.
 
-DBGMCU chỉ giúp debugger duy trì khả năng quan sát/điều khiển.
+Nếu target vào Stop/Standby quá sớm làm probe khó attach, cách recovery được xử lý tại **10.19**.
 
 ---
 
 <a id="muc-10-16"></a>
 ## 10.16. Debug HardFault
 
-Khi firmware vào:
+Exception stack frame đã được trình bày tại **1.9** và exception/fault model liên quan nằm trong **Chương 4**. Mục này tập trung vào quy trình thu thập bằng chứng khi firmware vào `HardFault_Handler()`.
 
-```c
-HardFault_Handler()
-```
+### 1. Kiểm tra fault status
 
-không nên chỉ reset MCU.
-
-Cần thu thập fault state trước.
-
-### Bước 1 — Core State
-
-Kiểm tra:
+Các register chính:
 
 ```text
-PC
-LR
-SP
-xPSR
-```
-
-### Bước 2 — Fault Status Registers
-
-Cortex-M3 có:
-
-```text
-SCB->CFSR
 SCB->HFSR
+SCB->CFSR
 SCB->MMFAR
 SCB->BFAR
 ```
@@ -17705,64 +17394,37 @@ SCB->BFAR
 Trong đó:
 
 ```text
-CFSR
-→ Configurable Fault Status
-
 HFSR
-→ HardFault Status
+→ HardFault Status Register
+
+CFSR
+→ Configurable Fault Status Register
+  ├── MemManage fault status
+  ├── BusFault status
+  └── UsageFault status
 
 MMFAR
-→ MemManage Fault Address
+→ MemManage Fault Address Register
 
 BFAR
-→ BusFault Address
+→ BusFault Address Register
 ```
 
-`MMFAR` và `BFAR` chỉ có ý nghĩa khi status tương ứng báo địa chỉ hợp lệ.
+`MMFAR`/`BFAR` chỉ được dùng như fault address khi status tương ứng cho biết giá trị address hợp lệ.
 
-### CFSR
+### 2. Xét `HFSR.FORCED`
 
-Có thể xem CFSR thành ba nhóm:
-
-```text
-CFSR
-├── MemManage Fault Status
-├── BusFault Status
-└── UsageFault Status
-```
-
-Các nguyên nhân có thể gồm:
-
-```text
-invalid memory access
-stacking / unstacking fault
-undefined instruction
-invalid state
-divide by zero nếu trap được bật
-unaligned access nếu trap được bật
-```
-
-### HFSR.FORCED
-
-Nếu configurable fault bị escalate thành HardFault:
+Nếu:
 
 ```text
 HFSR.FORCED = 1
 ```
 
-là một dấu hiệu quan trọng.
+một configurable fault có thể đã escalate thành HardFault. Khi đó cần đọc `CFSR` để tìm fault gốc.
 
-Khi đó phải xem:
+### 3. Lấy exception stack frame
 
-```text
-CFSR
-```
-
-để tìm fault gốc.
-
-### Exception Stack Frame
-
-Khi exception entry, hardware stack:
+Hardware basic exception frame chứa:
 
 ```text
 R0
@@ -17775,13 +17437,21 @@ PC
 xPSR
 ```
 
-`stacked PC` thường cho biết instruction context tại thời điểm exception xảy ra.
+Hai giá trị đặc biệt hữu ích:
 
-### MSP hay PSP?
+```text
+stacked PC
+→ execution context khi fault xảy ra
 
-`EXC_RETURN` trong `LR` giúp xác định stack được dùng trước exception.
+stacked LR
+→ return context được stack
+```
 
-Một handler thường dùng pattern:
+### 4. Xác định MSP hay PSP
+
+`EXC_RETURN` trong `LR` của handler cho biết context trước exception dùng stack nào.
+
+Pattern thường dùng:
 
 ```c
 __attribute__((naked))
@@ -17797,7 +17467,7 @@ void HardFault_Handler(void)
 }
 ```
 
-Hàm C:
+Hàm C nhận pointer tới basic exception stack frame:
 
 ```c
 void HardFault_C(uint32_t *stack)
@@ -17826,125 +17496,84 @@ void HardFault_C(uint32_t *stack)
 }
 ```
 
-Khi breakpoint đặt trong `HardFault_C()`:
+### 5. Đối chiếu source/disassembly
 
-```text
-pc
-→ stacked PC
-
-lr
-→ stacked LR
-```
-
-có thể được dùng để truy vết.
-
-### Các nguyên nhân thường gặp
-
-```text
-NULL pointer
-invalid pointer
-stack overflow
-stack corruption
-buffer overflow
-bad function pointer
-access peripheral/memory sai địa chỉ
-BusFault bị escalate
-UsageFault bị escalate
-```
-
-### Quy trình
+Quy trình:
 
 ```text
 HardFault
- ↓
-HFSR
- ↓
-CFSR
- ↓
+   ↓
+HFSR / CFSR
+   ↓
 BFAR / MMFAR nếu valid
- ↓
-Stacked PC / LR
- ↓
-Disassembly / Source
- ↓
-xác định instruction gây fault
+   ↓
+stacked PC / LR
+   ↓
+source + disassembly
+   ↓
+instruction gây fault
+   ↓
+root cause
 ```
+
+Các nguyên nhân thường gặp:
+
+```text
+NULL / invalid pointer
+buffer overflow
+stack overflow / corruption
+bad function pointer
+access sai memory/peripheral address
+BusFault / UsageFault / MemManage fault bị escalate
+```
+
+Không nên chỉ reset target ngay khi vào HardFault vì sẽ làm mất bằng chứng quan trọng.
 
 ---
 
 <a id="muc-10-17"></a>
 ## 10.17. Debug với Compiler Optimization
 
-Compiler optimization làm thay đổi mối quan hệ giữa source C và machine code.
+Compiler optimization thay đổi quan hệ giữa source code và machine code.
 
-### -O0
-
-```text
-ít optimization
-→ source stepping thường dễ theo dõi
-```
-
-### -O1 / -O2 / -Os
-
-Compiler có thể:
+Với optimization cao hơn, compiler có thể:
 
 ```text
-Inline function
-Remove dead code
-Reorder instruction
-Merge expressions
-Giữ variable trong register
-Eliminate variable
+inline function
+remove dead code
+reorder instruction
+merge expression
+giữ value trong register
+eliminate variable
 ```
 
-Debugger có thể hiển thị:
+Do đó các hiện tượng sau là có thể xảy ra:
 
 ```text
-<optimized out>
+source line bị nhảy khi step
+variable hiển thị <optimized out>
+Call Stack khó đọc hơn
+breakpoint source-line không nằm đúng nơi trực giác mong đợi
 ```
 
-### Một dòng C không còn map 1:1
+Điều này liên hệ trực tiếp tới **10.8**, **10.11** và **10.12**; không cần định nghĩa lại stepping/Watch/Call Stack tại đây.
 
-Ví dụ:
+### `volatile`
 
-```c
-a = b + c;
-foo(a);
-```
+`volatile` có semantics của ngôn ngữ C/C++, không phải một tùy chọn "để debugger nhìn thấy variable".
 
-compiler có thể:
+Trong phạm vi nội dung đã dùng:
 
 ```text
-gộp tính toán
-inline foo()
-không tạo object "a" ở memory
+volatile
+→ yêu cầu compiler thực hiện các observable access phù hợp
 ```
 
-nên:
+Nó thường xuất hiện với:
 
 ```text
-Step
-Watch
-Call Stack
-```
-
-có thể khác với kỳ vọng khi nhìn source.
-
-### Volatile
-
-`volatile` không phải công cụ để "làm debugger thấy biến".
-
-Nó có semantics ngôn ngữ:
-
-```text
-compiler phải thực hiện observable access theo yêu cầu của volatile
-```
-
-Nó thường dùng cho:
-
-```text
-Memory-Mapped I/O
-Data được thay đổi ngoài luồng code hiện tại
+memory-mapped I/O
+state có thể thay đổi ngoài luồng thực thi thông thường
 ```
 
 nhưng:
@@ -17953,54 +17582,50 @@ nhưng:
 volatile
 ≠ atomic
 ≠ lock
-≠ thread/ISR synchronization đầy đủ
+≠ đầy đủ synchronization giữa ISR/thread
 ```
 
-### Debug và Release
+Điểm này đã được dùng ở **Chương 4**.
 
-Không nên chỉ kiểm thử:
+### Debug build và release-like build
+
+Không nên chỉ kiểm tra firmware ở:
 
 ```text
-Debug build -O0
+-O0
 ```
 
-Firmware còn phải được kiểm tra với optimization gần cấu hình release.
-
-Một số bug chỉ xuất hiện khi optimized:
+Các lỗi phụ thuộc:
 
 ```text
-Undefined Behavior
-Race Condition
-Timing Dependency
-Thiếu volatile ở MMIO/shared flag
-Stack usage khác
+undefined behavior
+race condition
+timing
+lifetime / bad pointer
+shared-state assumptions
 ```
+
+có thể chỉ lộ ra khi dùng optimization gần cấu hình release.
 
 ---
 
 <a id="muc-10-18"></a>
 ## 10.18. SWO / Trace
 
-Breakpoint debugging là:
+Breakpoint/watchpoint có thể làm processor halt. Trace được dùng khi cần quan sát event/instrumentation mà không dừng CPU cho từng event.
 
-```text
-Halt-based Debug
-```
-
-SWO/Trace cho phép quan sát một số thông tin mà không cần halt CPU ở mọi event.
-
-Luồng:
+Một trace path khái niệm:
 
 ```text
 Cortex-M3
    ↓
-ITM / Trace Logic
+ITM / DWT / trace logic
    ↓
 SWO
    ↓
-ST-Link
+ST-Link / supported probe
    ↓
-IDE
+debug tool
 ```
 
 ### ITM
@@ -18011,564 +17636,300 @@ IDE
 Instrumentation Trace Macrocell
 ```
 
-có thể phát:
+có thể được dùng để phát software instrumentation/debug information qua trace path khi được cấu hình phù hợp.
+
+### So với halt-based debug
 
 ```text
-software instrumentation
-event information
-debug text
+Breakpoint / Watchpoint
+→ có thể Halt processor
+
+SWO / Trace
+→ quan sát stream/event mà không cần Halt cho từng event
 ```
 
-qua trace path.
-
-### Ưu điểm
-
-```text
-không cần đặt breakpoint cho mỗi event
-ít phá timing hơn halt-debug
-```
-
-### Hạn chế
+Trace vẫn không phải "zero overhead":
 
 ```text
 trace bandwidth có giới hạn
-cần cấu hình trace clock
-cần SWO wiring / support
-vẫn có instrumentation overhead
+cần cấu hình clock/path
+cần SWO wiring/support
+software instrumentation vẫn có cost
 ```
 
-### SWO và PB3
+### SWO pin
 
-Trên STM32F1:
+Pin `PB3 / TRACESWO` đã được nêu tại **10.4**. Nếu PB3 đã được giải phóng để dùng làm GPIO/peripheral khác bằng SWJ configuration, muốn dùng SWO phải cấu hình lại pin/debug function phù hợp.
 
-```text
-PB3
-→ JTDO / TRACESWO
-```
-
-Nếu muốn dùng SWO, cấu hình debug pin/trace phải giữ chức năng trace phù hợp.
-
-### SWO khác UART Debug Print
-
-UART debug print:
+### SWO khác UART logging
 
 ```text
-CPU
-→ USART
-→ USB-UART / Terminal
-```
+UART logging
+→ USART peripheral
+→ TX pin
+→ USB-UART / terminal
 
-SWO:
-
-```text
-CPU Trace / ITM
+SWO trace
+→ debug/trace logic
 → SWO
-→ Debug Probe
+→ debug probe/tool
 ```
 
-Hai đường hoàn toàn khác nhau.
+Hai data path độc lập.
 
 ---
 
 <a id="muc-10-19"></a>
 ## 10.19. Các lỗi kết nối ST-Link thường gặp
 
-### 1. No Target Found
+Mục này chỉ tổng hợp triệu chứng và trỏ về cơ chế đã giải thích.
 
-Kiểm tra:
+| Triệu chứng | Kiểm tra chính | Dẫn chiếu |
+|---|---|---|
+| `No target found` | Target power, `VTref`, GND, `SWDIO`, `SWCLK`, wiring | **10.2–10.4** |
+| Kết nối chập chờn | SWD clock quá cao so với wiring/signal integrity | **10.3–10.4** |
+| Kết nối mất ngay sau reset | Firmware thay `SWJ_CFG`, chiếm/debug pin hoặc disable SWD | **10.5** |
+| Target vào Stop/Standby quá sớm | Low-power path và debug configuration | **10.15** |
+| Target reset khi đang dừng breakpoint | Watchdog/peripheral không được freeze | **10.14** |
+| Firmware crash rất sớm | Dùng reset/recovery rồi debug fault/startup | **10.16** |
+| Debug access bị hạn chế | Option Bytes / protection configuration | kiểm tra đúng device/reference manual |
 
-```text
-Target có nguồn?
-VTref đúng?
-GND chung?
-SWDIO đúng?
-SWCLK đúng?
-NRST đúng?
-```
+### Connect Under Reset
 
-### 2. SWD Clock quá cao
-
-Nếu wiring dài hoặc signal integrity kém:
-
-```text
-SWD frequency cao
-→ communication không ổn định
-```
-
-Có thể thử:
+Khi firmware chạy quá sớm và làm debugger mất quyền truy cập:
 
 ```text
-giảm SWD Clock
+probe giữ/tác động NRST
+        ↓
+thiết lập debug connection khi target còn reset
+        ↓
+halt target trước khi firmware chạy xa
+        ↓
+erase / reprogram / inspect theo mục tiêu
 ```
 
-### 3. Firmware Disable SWD
-
-Nếu code cấu hình:
+Cơ chế này đặc biệt hữu ích khi firmware:
 
 ```text
-SWJ_CFG
-→ JTAG + SWD disabled
+disable SWD
+reconfigure debug pins
+vào low-power rất sớm
+crash/reset loop trước khi attach bình thường
 ```
 
-debugger có thể mất kết nối sau reset.
+`NRST` đã được định nghĩa tại **10.4**, nên mục này chỉ áp dụng nó cho recovery.
 
-Phương án recovery thường:
+### Protection
 
-```text
-Connect Under Reset
-```
-
-sau đó:
-
-```text
-halt
-erase
-hoặc
-flash firmware không disable SWD
-```
-
-### 4. Firmware vào Low-Power quá sớm
-
-```text
-Reset
- ↓
-firmware lập tức vào Stop / Standby
- ↓
-debugger khó attach
-```
-
-Thử:
-
-```text
-Connect Under Reset
-```
-
-hoặc tạm sửa startup flow.
-
-### 5. Debug Pin bị chiếm
-
-Kiểm tra:
-
-```text
-PA13 / PA14
-→ không bị code đổi sai mode trước khi attach
-
-PA15 / PB3 / PB4
-→ SWJ_CFG phù hợp
-```
-
-### 6. Target liên tục Reset
-
-Nguyên nhân có thể:
-
-```text
-IWDG
-WWDG
-BOR / POR
-NRST noise
-HardFault + software reset
-Power instability
-```
-
-Nếu chỉ reset khi dừng ở breakpoint:
-
-```text
-Watchdog không freeze
-```
-
-là một nghi vấn mạnh.
-
-### 7. Option Bytes / Read Protection
-
-Các cơ chế bảo vệ Flash có thể hạn chế:
-
-```text
-debug access
-memory read
-programming
-```
-
-tùy protection level/configuration.
-
-Khi xử lý protection phải hiểu hậu quả:
-
-```text
-mass erase
-mất firmware
-mất data Flash
-```
-
-trước khi thay đổi setting.
+Khi thay Option Bytes hoặc protection level, phải hiểu hậu quả trước khi thao tác; một số chuyển đổi có thể dẫn tới mass erase hoặc mất dữ liệu Flash. Không dùng recovery action phá dữ liệu nếu chưa xác định rõ trạng thái bảo vệ của target.
 
 ---
 
 <a id="muc-10-20"></a>
 ## 10.20. Quy trình Debug có hệ thống
 
-Debug hiệu quả là thu hẹp lỗi theo tầng.
+Mục tiêu của debug có hệ thống là **thu hẹp lỗi bằng bằng chứng**, không thay nhiều cấu hình cùng lúc rồi thử lại.
 
-Không nên:
-
-```text
-đổi nhiều register cùng lúc
-build
-flash
-thử lại
-```
-
-mà không biết thay đổi nào ảnh hưởng kết quả.
-
-Một quy trình tốt:
+Luồng chung:
 
 ```text
-1. Xác định symptom
+1. Xác định symptom chính xác
         ↓
-2. Xác định subsystem
+2. Xác định subsystem liên quan
         ↓
-3. Kiểm tra Clock
+3. Đặt một giả thuyết
         ↓
-4. Kiểm tra GPIO / Pin Mapping
+4. Chọn register / memory / signal để kiểm chứng
         ↓
-5. Kiểm tra Configuration Register
+5. Thu thập state
         ↓
-6. Kiểm tra Status Flag
+6. So sánh expected với actual
         ↓
-7. Kiểm tra Interrupt / DMA
+7. Loại bỏ hoặc xác nhận giả thuyết
         ↓
-8. Kiểm tra Data Path
+8. Sửa một nguyên nhân đã có bằng chứng
         ↓
-9. Kiểm tra timing / external signal
-        ↓
-10. Chỉ thay một giả thuyết mỗi lần
+9. Re-test
 ```
 
-### Debug RCC / Clock
+### Checklist theo subsystem
+
+Không định nghĩa lại peripheral tại đây; dùng các chương tương ứng làm nguồn chính.
+
+| Subsystem | Chuỗi kiểm tra ngắn | Nguồn chính |
+|---|---|---|
+| RCC/Clock | source ready → SYSCLK/HCLK/PCLK → peripheral clock enable | **Chương 2** |
+| GPIO | clock → `MODE/CNF` → `IDR/ODR` → AFIO/remap | **Chương 3** |
+| Interrupt | source flag → source enable → NVIC → masking/priority → vector/ISR | **Chương 4**, **10.13** |
+| Timer/PWM | `TIMxCLK` → PSC/ARR/CNT → flag/channel → GPIO AF | **Chương 5** |
+| USART | clock/GPIO → BRR → UE/TE/RE → TXE/RXNE/TC/error | **Chương 6** |
+| SPI | clock/GPIO → mode/timing → TXE/RXNE/BSY/error → CS/NSS | **Chương 7** |
+| I2C | clock/GPIO/pull-up → BUSY/START/address → event/error flags | **Chương 7** |
+| ADC | ADCCLK/GPIO → sampling/sequence/trigger → EOC/result/DMA | **Chương 8** |
+| DMA | mapping → peripheral request → address/count/direction/width → HT/TC/TE | **Chương 9** |
+| HardFault | HFSR/CFSR → valid fault address → stacked PC/LR → disassembly | **10.16** |
+
+### Nguyên tắc kiểm chứng
+
+Mỗi bước nên trả lời được:
 
 ```text
-Clock Source ready?
-      ↓
-SYSCLK source đúng?
-      ↓
-HCLK / PCLK đúng?
-      ↓
-Peripheral Enable bit đúng?
+Giả thuyết là gì?
+Dữ liệu nào xác nhận nó?
+Dữ liệu nào bác bỏ nó?
 ```
 
-### Debug GPIO
+Ví dụ:
 
 ```text
-GPIO Clock?
- ↓
-CRL / CRH?
- ↓
-MODE / CNF?
- ↓
-ODR / IDR?
- ↓
-AFIO Remap?
+Giả thuyết:
+USART1 không truyền vì peripheral chưa được enable
+
+Bằng chứng cần đọc:
+RCC clock enable
+USART_CR1.UE
+USART_CR1.TE
+USART_SR.TXE
+
+Nếu các bit đều đúng:
+→ loại giả thuyết này
+→ chuyển sang GPIO/BRR/data path
 ```
 
-### Debug Timer
-
-```text
-TIMxCLK?
- ↓
-PSC?
- ↓
-ARR?
- ↓
-CEN?
- ↓
-CNT có chạy?
- ↓
-UIF / CCxIF?
- ↓
-GPIO AF?
-```
-
-### Debug UART
-
-```text
-USART Clock?
- ↓
-GPIO TX / RX?
- ↓
-BRR?
- ↓
-UE / TE / RE?
- ↓
-TXE / RXNE / TC?
- ↓
-ORE / FE / NE / PE?
-```
-
-### Debug SPI
-
-```text
-SPI Clock?
- ↓
-GPIO?
- ↓
-MSTR?
- ↓
-CPOL / CPHA?
- ↓
-BR?
- ↓
-TXE / RXNE?
- ↓
-BSY?
- ↓
-OVR / MODF?
- ↓
-CS timing?
-```
-
-### Debug I2C
-
-```text
-PCLK1?
- ↓
-GPIO Open-Drain + Pull-Up?
- ↓
-BUSY?
- ↓
-START?
- ↓
-SB?
- ↓
-ADDR?
- ↓
-TxE / RxNE / BTF?
- ↓
-AF / ARLO / BERR?
-```
-
-### Debug ADC
-
-```text
-ADCCLK ≤ 14 MHz?
- ↓
-GPIO Analog?
- ↓
-Sampling Time?
- ↓
-Sequence / Rank?
- ↓
-ADON?
- ↓
-Calibration?
- ↓
-Trigger?
- ↓
-EOC?
- ↓
-ADC_DR?
- ↓
-DMA?
-```
-
-### Debug DMA
-
-```text
-DMA Clock?
- ↓
-Correct Channel Mapping?
- ↓
-Peripheral DMA Request?
- ↓
-EN?
- ↓
-CPAR / CMAR?
- ↓
-CNDTR?
- ↓
-DIR?
- ↓
-PSIZE / MSIZE?
- ↓
-PINC / MINC?
- ↓
-HT / TC / TE?
-```
-
-### Debug Interrupt
-
-```text
-Peripheral Flag?
- ↓
-Peripheral Interrupt Enable?
- ↓
-NVIC Enable?
- ↓
-Pending?
- ↓
-Priority / Masking?
- ↓
-Vector?
- ↓
-ISR?
-```
-
-### Debug Crash
-
-```text
-HardFault?
- ↓
-HFSR / CFSR?
- ↓
-BFAR / MMFAR?
- ↓
-Stacked PC?
- ↓
-Disassembly?
-```
-
-### Nguyên tắc cuối
-
-Mỗi lần debug nên trả lời được:
-
-```text
-Mình đang kiểm tra giả thuyết nào?
-Register / signal nào chứng minh nó?
-Kết quả nào sẽ bác bỏ giả thuyết?
-```
-
-Đó là cách tránh "debug bằng thử ngẫu nhiên".
+Khi debugger có thể ảnh hưởng hệ thống, đặc biệt do Halt hoặc read side effect, phải xét các lưu ý tại **10.6**, **10.10** và **10.14** trước khi kết luận.
 
 ---
 
 <a id="muc-10-21"></a>
 ## 10.21. Câu hỏi tự kiểm tra
 
-1. Programming khác Debugging như thế nào?
-2. ST-Link có vai trò gì?
-3. Hai tín hiệu SWD chính là gì?
-4. NRST giúp gì trong debug?
-5. `Connect Under Reset` hữu ích trong những tình huống nào?
-6. `AFIO_MAPR.SWJ_CFG` dùng để làm gì?
-7. Cấu hình nào giúp giải phóng PA15/PB3/PB4 mà vẫn debug được?
-8. Breakpoint dùng để làm gì?
-9. Watchpoint khác Breakpoint như thế nào?
-10. `PC` cho biết gì?
-11. Call Stack dùng để làm gì?
-12. Vì sao đọc peripheral register bằng debugger đôi khi có side effect?
-13. Khi interrupt không chạy, nên kiểm tra những tầng nào?
-14. Freeze Peripheral dùng để làm gì?
-15. Vì sao watchdog có thể reset MCU khi dừng ở breakpoint?
-16. Khi vào HardFault, bốn core state nào nên xem trước?
-17. `SCB->CFSR` dùng để làm gì?
-18. Vì sao stacked PC quan trọng?
-19. `No target found` nên kiểm tra những gì?
-20. Hãy mô tả một quy trình debug firmware từ symptom tới root cause.
+1. Programming và Debugging khác nhau ở mục tiêu nào?
+2. Host, debugger, debug server, ST-Link và target nằm ở các lớp nào?
+3. SWD và JTAG khác nhau về số tín hiệu debug chính như thế nào?
+4. `SWDIO` và `SWCLK` có vai trò gì?
+5. `NRST` giúp gì cho reset và Connect Under Reset?
+6. `SWO` dùng cho mục đích nào và có bắt buộc để breakpoint/step qua SWD không?
+7. `AFIO_MAPR.SWJ_CFG` ảnh hưởng debug pin như thế nào?
+8. Cấu hình nào giúp giải phóng PA15/PB3/PB4 nhưng vẫn giữ SWD?
+9. Vì sao processor Halt không đồng nghĩa toàn hệ thống Halt?
+10. Breakpoint và Watchpoint khác nhau ở điều kiện dừng nào?
+11. Vì sao source stepping có thể khác trực giác khi compiler optimization bật?
+12. Core register và memory-mapped register khác nhau như thế nào khi inspect?
+13. Vì sao đọc peripheral register qua debugger có thể có side effect?
+14. `PC`, `LR`, `SP` và Call Stack giúp suy luận execution context như thế nào?
+15. Khi IRQ không chạy, nên kiểm tra các tầng nào trước khi kết luận NVIC có lỗi?
+16. `DBGMCU` peripheral freeze giải quyết vấn đề gì?
+17. Vì sao watchdog có thể reset target khi dừng ở breakpoint?
+18. Low-power debug có thể ảnh hưởng power measurement như thế nào?
+19. Khi vào HardFault, nên đọc `HFSR/CFSR`, fault address và stacked PC theo thứ tự nào?
+20. `HFSR.FORCED` gợi ý điều gì?
+21. `volatile` có phải là công cụ để buộc debugger luôn nhìn thấy variable không?
+22. SWO trace khác UART logging ở data path nào?
+23. `Connect Under Reset` hữu ích khi firmware tạo loại lỗi kết nối nào?
+24. Hãy mô tả một quy trình debug từ symptom → hypothesis → evidence → root cause.
 
 ---
 
 ## 10.22. Tóm tắt
 
-ST-Link:
+Kiến trúc debug:
 
 ```text
-PC / IDE
-   ↓
+Host
+ ↓
+Debugger / Debug Server
+ ↓
 ST-Link
-   ↓
+ ↓
 SWD / JTAG
-   ↓
-STM32
+ ↓
+STM32F1 target
 ```
 
 SWD:
 
 ```text
-PA13
-→ SWDIO
+PA13 → SWDIO
+PA14 → SWCLK
 
-PA14
-→ SWCLK
+NRST
+→ reset / Connect Under Reset
+
+PB3 / SWO
+→ optional trace
 ```
 
-Nếu cần giải phóng JTAG pins:
+Công cụ dừng:
 
 ```text
-Disable JTAG
-Keep SWD
-```
-
-Breakpoint:
-
-```text
-Execution
- ↓
 Breakpoint
- ↓
-CPU Halt
- ↓
-Inspect
-```
+→ execution location
 
-Watchpoint:
-
-```text
-Memory Access
- ↓
 Watchpoint
- ↓
-CPU Halt
+→ memory access
 ```
 
-Core state:
+State cần quan sát:
 
 ```text
-PC
-LR
-SP
-xPSR
+source-level
+→ variable / expression / Call Stack
+
+processor
+→ PC / LR / SP / xPSR / memory
+
+hardware
+→ peripheral register / interrupt / DMA / fault
 ```
 
-Peripheral debug:
+Halt semantics:
 
 ```text
-Clock
- ↓
-Configuration
- ↓
-Status Flag
- ↓
-Interrupt / DMA
- ↓
-Data
+processor Halt
+≠
+mọi peripheral / external device Halt
 ```
 
-DBGMCU:
+`DBGMCU`:
 
 ```text
 DBGMCU_CR
 → low-power debug
 
-DBGMCU_APB1_FZ
-DBGMCU_APB2_FZ
-→ peripheral freeze
+DBGMCU_APB1_FZ / DBGMCU_APB2_FZ
+→ freeze các peripheral được hỗ trợ
 ```
 
 HardFault:
 
 ```text
-HardFault
- ↓
-HFSR
- ↓
-CFSR
- ↓
-BFAR / MMFAR
- ↓
-Stacked PC
- ↓
-Source / Disassembly
+HFSR / CFSR
+    ↓
+BFAR / MMFAR nếu valid
+    ↓
+stacked PC / LR
+    ↓
+source / disassembly
+    ↓
+root cause
 ```
 
-Điểm cần nhớ:
+Quy trình chung:
 
-> **ST-Link chỉ là probe. Muốn debug firmware hiệu quả phải đọc được trạng thái thật của Cortex-M3 và peripheral: `PC/LR/SP`, memory, status flag, interrupt/DMA state và fault registers. Breakpoint dừng CPU nhưng không bảo đảm toàn hệ thống cùng dừng; vì vậy phải hiểu `DBGMCU`, peripheral freeze và các side effect của debugger khi quan sát register.**
+```text
+symptom
+  ↓
+subsystem
+  ↓
+hypothesis
+  ↓
+evidence
+  ↓
+expected vs actual
+  ↓
+root cause
+```
+
+> **ST-Link là debug probe, không phải nơi thực thi firmware. Debug hiệu quả cần đọc đúng trạng thái của processor và hardware, đồng thời hiểu rằng breakpoint/debugger access có thể làm thay đổi timing hoặc peripheral state. Mỗi khái niệm trong chương chỉ được định nghĩa tại mục chính; các mục xử lý lỗi chỉ áp dụng lại và dẫn chiếu tới cơ chế tương ứng.**
 
 [↑ Về mục lục](#muc-luc)
