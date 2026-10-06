@@ -10753,6 +10753,99 @@ write 0xFF
 
 ![RM0008 Figure 238 — SPI block diagram](assets/chapter-7/figure-238.png)
 
+
+### Dummy byte / dummy frame
+
+Trong SPI **Full-Duplex**, mỗi xung `SCK` đồng thời dịch:
+
+```text
+1 bit từ Master → Slave
++
+1 bit từ Slave → Master
+```
+
+Vì `SCK` do Master tạo, khi Master muốn **chỉ đọc dữ liệu** từ Slave thì Master vẫn phải thực hiện một lần truyền để tạo clock.
+
+Dữ liệu truyền đi lúc này thường không có giá trị sử dụng và được gọi là **dummy data**.
+
+Với frame 8-bit:
+
+```text
+dummy byte
+→ thường dùng 0x00 hoặc 0xFF
+```
+
+Ví dụ:
+
+```text
+Master muốn đọc 1 byte
+        ↓
+write 0xFF vào SPI_DR
+        ↓
+SPI tạo 8 xung SCK
+        ↓
+MOSI phát 8 bit dummy
+        +
+MISO nhận 8 bit thật từ Slave
+        ↓
+đọc SPI_DR
+→ lấy byte nhận được
+```
+
+Có thể hình dung:
+
+```text
+Master                         Slave
+
+0xFF (dummy)
+   │
+   └──── MOSI ───────────────→ bỏ qua / không dùng
+          8 xung SCK
+   ┌──── MISO ←─────────────── data cần đọc
+   │
+ received_data
+```
+
+Ngược lại, khi Master **chỉ quan tâm dữ liệu gửi đi**, SPI vẫn đồng thời nhận một frame từ MISO:
+
+```text
+Master ghi dữ liệu thật
+→ Slave nhận dữ liệu
+
+Master đồng thời nhận một frame
+→ nếu protocol không cần
+→ software đọc để phục vụ receive path rồi bỏ giá trị đó
+```
+
+Vì vậy, trong Full-Duplex:
+
+```text
+muốn đọc
+→ vẫn phải transmit để tạo SCK
+
+muốn ghi
+→ receive path vẫn hoạt động
+```
+
+Giá trị dummy **không mặc định luôn là tùy ý**. `0x00` hoặc `0xFF` chỉ nên dùng khi protocol của Slave cho phép; nếu datasheet của thiết bị quy định giá trị khác thì phải làm theo thiết bị đó.
+
+Nếu `DFF = 1`:
+
+```text
+16-bit frame
+→ cùng nguyên lý
+→ truyền một dummy frame 16-bit thay vì dummy byte 8-bit
+```
+
+Mục **7.15** áp dụng cơ chế này khi dùng:
+
+```c
+uint8_t data = SPI1_Transfer(0xFFU);
+```
+
+để tạo `SCK` và nhận dữ liệu từ Slave.
+
+
 Ý nghĩa `TXE`, `RXNE`, `BSY` được tách tại **7.10**.
 
 ---
