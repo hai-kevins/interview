@@ -11127,6 +11127,8 @@ Interrupt
 DMA
 ```
 
+![RM0008 Figure 270 — I2C block diagram](assets/chapter-7/figure-270.png)
+
 Cấu trúc điện của `SCL/SDA` nằm tại **7.17**; transaction cơ bản nằm tại **7.18**.
 
 ---
@@ -11224,6 +11226,8 @@ Receiver nhả SDA High
 ```
 
 Trong Master Receiver, NACK thường được dùng cho byte cuối để báo không nhận thêm data.
+
+![RM0008 Figure 269 — I2C bus protocol](assets/chapter-7/figure-269.png)
 
 Cách tạo address phase và phân biệt 7-bit address với address byte nằm tại **7.19**.
 
@@ -11716,6 +11720,8 @@ while (!(I2C1->SR1 & I2C_SR1_BTF))
 I2C1->CR1 |= I2C_CR1_STOP;
 ```
 
+![RM0008 Figure 273 — Transfer sequence diagram for Master Transmitter](assets/chapter-7/figure-273.png)
+
 ### Master Receive
 
 Master Receive cần xử lý ACK/NACK và STOP theo số byte còn lại.
@@ -11756,6 +11762,8 @@ read DR
 ACK phải được clear trước khi clear ADDR
 ```
 
+![RM0008 Figure 277 — Master Receiver, N = 1](assets/chapter-7/figure-277.png)
+
 Receive 2 byte dùng sequence đặc biệt:
 
 ```text
@@ -11771,7 +11779,11 @@ read DR
 read DR
 ```
 
+![RM0008 Figure 276 — Master Receiver, N = 2](assets/chapter-7/figure-276.png)
+
 Với `N > 2`, giữ ACK cho các byte đầu rồi xử lý `BTF/ACK/STOP` đúng thời điểm khi tiến tới các byte cuối.
+
+![RM0008 Figure 275 — Master Receiver, N > 2](assets/chapter-7/figure-275.png)
 
 Do sequence `1 byte`, `2 byte` và `N > 2` khác nhau, không dùng một receive sequence duy nhất cho mọi độ dài.
 
@@ -11815,6 +11827,8 @@ I2Cx_EV_IRQn
 I2Cx_ER_IRQn
 → Error IRQ
 ```
+
+![RM0008 Figure 278 — I2C interrupt mapping diagram](assets/chapter-7/figure-278.png)
 
 Cơ chế NVIC/ISR thuộc **Chương 4**.
 
