@@ -5308,7 +5308,7 @@ Hạn chế:
 
 ### Interrupt
 
-`Interrupt` là cơ chế trong đó peripheral hoặc khối phần cứng tạo **interrupt request** khi một sự kiện cần được processor xử lý xảy ra.
+`Interrupt` là cơ chế trong đó peripheral hoặc khối phần cứng tạo **interrupt request** khi một sự kiện xảy ra cần được processor xử lý.
 
 Luồng khái niệm:
 
