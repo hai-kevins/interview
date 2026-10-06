@@ -8352,6 +8352,66 @@ PS = 1
 → Odd parity
 ```
 
+**Parity bit** là bit kiểm tra chẵn/lẻ được phần cứng USART tự động tính toán khi transmit và kiểm tra lại khi receive. Cơ chế này dựa trên **số lượng bit `1` trong data bits kết hợp với parity bit**.
+
+Với **Even parity**:
+
+```text
+tổng số bit 1 trong:
+data bits + parity bit
+→ phải là số chẵn
+```
+
+Ví dụ:
+
+```text
+data = 01000001
+→ có 2 bit 1
+
+Even parity
+→ parity bit = 0
+
+tổng số bit 1
+→ vẫn là 2
+→ chẵn
+```
+
+Với **Odd parity**:
+
+```text
+tổng số bit 1 trong:
+data bits + parity bit
+→ phải là số lẻ
+```
+
+Với cùng dữ liệu:
+
+```text
+data = 01000001
+→ có 2 bit 1
+
+Odd parity
+→ parity bit = 1
+
+tổng số bit 1
+→ thành 3
+→ lẻ
+```
+
+Ở phía receiver:
+
+```text
+nhận data bits + parity bit
+        ↓
+hardware kiểm tra tính chẵn/lẻ
+        ↓
+đúng với PS?
+   ├── có    → parity hợp lệ
+   └── không → PE = 1
+```
+
+Parity có khả năng phát hiện mọi lỗi làm **lật một số lẻ bit** trong phần được kiểm tra, nhưng có thể không phát hiện lỗi khi **một số chẵn bit** cùng bị lật. Vì vậy parity chỉ là cơ chế phát hiện lỗi đơn giản; nếu protocol cần khả năng kiểm tra lỗi mạnh hơn, tầng dữ liệu/application thường dùng thêm checksum hoặc CRC.
+
 Receiver kiểm tra parity và báo lỗi qua `PE` nếu giá trị nhận không hợp lệ; error flags được trình bày tại **6.11**.
 
 ### Stop bit — `STOP`
