@@ -10168,6 +10168,8 @@ CS
 → tên thường dùng ở phía thiết bị ngoài / GPIO chip-select
 ```
 
+![RM0008 Figure 239 — Single master/single slave application](assets/chapter-7/figure-239.png)
+
 ---
 
 <a id="muc-07-04"></a>
@@ -10321,6 +10323,8 @@ Bốn mode:
 
 Master và Slave phải dùng timing tương thích. Khi thay đổi `CPOL/CPHA`, cấu hình khi `SPE = 0` như trong quy trình tại **7.14**.
 
+![RM0008 Figure 240 — Data clock timing diagram](assets/chapter-7/figure-240.png)
+
 ---
 
 <a id="muc-07-07"></a>
@@ -10448,6 +10452,8 @@ write 0xFF
 → đồng thời nhận 8 bit từ Slave
 ```
 
+![RM0008 Figure 238 — SPI block diagram](assets/chapter-7/figure-238.png)
+
 Ý nghĩa `TXE`, `RXNE`, `BSY` được tách tại **7.10**.
 
 ---
@@ -10486,6 +10492,8 @@ read SPI_DR
 ```
 
 Khi kết thúc transaction, cần bảo đảm frame cuối đã hoàn tất trước khi deassert CS hoặc disable SPI; quy trình sử dụng các flag này được áp dụng tại **7.15**.
+
+![RM0008 Figure 241 — TXE/RXNE/BSY behavior in Master / Full-Duplex mode](assets/chapter-7/figure-241.png)
 
 ---
 
@@ -10620,6 +10628,10 @@ SRAM TX buffer
     ↓ DMA
 SRAM RX buffer
 ```
+
+![RM0008 Figure 247 — Transmission using DMA](assets/chapter-7/figure-247.png)
+
+![RM0008 Figure 248 — Reception using DMA](assets/chapter-7/figure-248.png)
 
 Chi tiết DMA controller, channel và transfer configuration thuộc **Chương 9**; mục này chỉ nêu liên kết SPI với DMA.
 
