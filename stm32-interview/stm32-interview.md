@@ -8124,46 +8124,39 @@ active/shadow value
 <a id="chuong-06"></a>
 # 6. UART / USART
 
-STM32F10xxx sử dụng peripheral `USART` cho truyền thông nối tiếp. Khi USART hoạt động ở chế độ bất đồng bộ với `TX/RX`, cách sử dụng tương ứng với UART.
+STM32F1 có các peripheral `USART` và, trên một số part number, `UART`. Chương này tập trung vào **truyền nối tiếp bất đồng bộ**; các mode synchronous/half-duplex chỉ được tóm tắt tại **6.18**.
 
-Luồng tổng quát:
+Mỗi khái niệm được giải thích đầy đủ tại một mục chính. Các mục Polling, Interrupt, DMA, quy trình cấu hình và ví dụ chỉ áp dụng lại các cơ chế đã nêu, tránh lặp lại định nghĩa của frame, flag, GPIO, NVIC hoặc DMA.
 
-```text
-Peripheral Clock
-      ↓
-Baud Rate Generator
-      ↓
-USART
-├── Transmitter
-│   └── TX
-└── Receiver
-    └── RX
-```
+## Quy ước thuật ngữ
 
-Các khối liên quan:
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **UART** | Universal Asynchronous Receiver/Transmitter; khối/giao tiếp truyền nối tiếp bất đồng bộ. |
+| **USART** | Universal Synchronous/Asynchronous Receiver/Transmitter; hỗ trợ cả asynchronous mode và synchronous mode. |
+| **asynchronous mode** | Mode không dùng đường `CK` để đồng bộ từng bit; hai phía phải thống nhất baud rate và frame format. |
+| **synchronous mode** | Mode của USART có thêm clock `CK`; được trình bày tại **6.18**. |
+| **transmitter / receiver** | Khối phát / khối thu của peripheral. |
+| **TX / RX** | Tín hiệu transmit output / receive input trong asynchronous mode. |
+| **frame** | Chuỗi bit trên đường truyền gồm Start bit, data word, parity nếu enable và Stop bit. |
+| **data word** | Các bit dữ liệu của một frame; số data bit thực tế phụ thuộc `M` và việc parity có được enable hay không. |
+| **baud rate** | Symbol rate của đường truyền. Với UART nhị phân NRZ thông thường, một symbol mang một bit nên giá trị baud numerically bằng bit/s. |
+| **`fCK`** | Peripheral clock dùng bởi baud-rate generator: `PCLK2` cho USART1, `PCLK1` cho USART2/USART3/UART4/UART5 trong phạm vi part có các peripheral đó. |
+| **`USARTDIV`** | Hệ số chia dạng fixed-point dùng để tạo baud rate. |
+| **`USART_DR`** | Data Register được software/DMA ghi khi transmit và đọc khi receive. |
+| **TDR / RDR** | Transmit Data Register / Receive Data Register trong data path nội bộ, được truy cập qua `USART_DR`. |
+| **Transmit Shift Register** | Shift register đưa frame ra chân TX. |
+| **Receive Shift Register** | Shift register lấy mẫu RX và khôi phục frame nhận. |
+| **`TXE`** | Transmit Data Register Empty; có thể nạp data word tiếp theo. |
+| **`TC`** | Transmission Complete; frame cuối đã truyền hoàn tất. |
+| **`RXNE`** | Read Data Register Not Empty; data nhận đã sẵn sàng trong `USART_DR`. |
+| **`IDLE`** | Idle Line detected; receiver phát hiện đường RX trở lại trạng thái idle theo cơ chế USART. |
+| **receive error flags** | `ORE`, `FE`, `NE`, `PE`: Overrun, Framing, Noise, Parity error. |
+| **hardware flow control** | Cơ chế `CTS/RTS` điều phối việc truyền/nhận bằng tín hiệu phần cứng. |
 
-```text
-RCC
-→ cấp clock cho USART
+Trong chương này, **UART communication** dùng để chỉ giao tiếp bất đồng bộ nói chung; khi nói về register/peripheral cụ thể của STM32F1, dùng đúng tên instance như `USART1`, `USART2`, `UART4` và tên register `USARTx_*`.
 
-GPIO
-→ TX / RX
-
-USART_BRR
-→ Baud Rate
-
-USART_DR
-→ dữ liệu truyền / nhận
-
-USART_SR
-→ trạng thái và lỗi
-
-NVIC
-→ USART Interrupt
-
-DMA
-→ truyền dữ liệu USART ↔ SRAM
-```
+---
 
 <a id="muc-06-01"></a>
 ## 6.1. UART và USART là gì?
@@ -8184,19 +8177,23 @@ Quan hệ:
 
 ```text
 USART
-├── Asynchronous
-│   └── truyền kiểu UART
+├── Asynchronous mode
+│   └── hoạt động theo cơ chế UART
 │
-└── Synchronous
+└── Synchronous mode
     └── có thêm clock CK
 ```
 
-STM32F10xxx USART còn hỗ trợ:
+Vì vậy, khi `USART1/2/3` của STM32F1 chạy ở asynchronous mode với `TX/RX`, cách truyền nhận tương ứng với UART communication.
+
+Một số STM32F1 còn có peripheral `UART4/UART5`; các instance này chỉ hỗ trợ asynchronous communication, không có synchronous clock output như USART.
+
+Các mode/tính năng cần nhận diện:
 
 ```text
-Full-Duplex Asynchronous
-Synchronous one-way communication
+Asynchronous Full-Duplex
 Single-Wire Half-Duplex
+Synchronous mode
 LIN
 Smartcard
 IrDA
@@ -8205,131 +8202,103 @@ CTS / RTS
 DMA
 ```
 
-Phần nền tảng tập trung vào:
+Phần chính của chương tập trung vào:
 
 ```text
-Asynchronous
+Asynchronous mode
++
 Full-Duplex
-TX + RX
++
+TX / RX
 ```
+
+Half-Duplex và Synchronous mode được tách sang **6.18**.
 
 ---
 
 <a id="muc-06-02"></a>
 ## 6.2. Truyền nối tiếp bất đồng bộ
 
-Truyền nối tiếp gửi các bit lần lượt theo thời gian trên một đường tín hiệu.
-
-Ví dụ một byte:
+Trong truyền nối tiếp, các bit được truyền lần lượt theo thời gian trên đường tín hiệu.
 
 ```text
-D0 → D1 → D2 → D3 → D4 → D5 → D6 → D7
+D0 → D1 → D2 → ... → Dn
 ```
 
-Trong USART bất đồng bộ:
+`Asynchronous` ở đây có nghĩa là hai thiết bị **không dùng một đường clock `CK` chung để đánh dấu từng bit**.
+
+Receiver đồng bộ với một frame nhờ Start bit và lấy mẫu dữ liệu theo baud rate đã cấu hình.
+
+Hai phía phải thống nhất:
 
 ```text
-không có đường clock CK dùng để đồng bộ từng bit
+baud rate
+data word length
+parity
+stop bits
 ```
 
-Hai thiết bị phải thống nhất các tham số:
-
-```text
-Baud Rate
-Word Length
-Parity
-Stop Bits
-```
-
-Ví dụ:
-
-```text
-115200 baud
-8 data bits
-No parity
-1 stop bit
-```
-
-được viết:
-
-```text
-115200 8N1
-```
+Chi tiết frame format nằm tại **6.3–6.4**; cách tạo baud rate nằm tại **6.5–6.6**.
 
 ### Full-Duplex
 
-Full-Duplex cho phép:
+Trong asynchronous Full-Duplex:
 
 ```text
 TX
-→ truyền
+→ transmit
 
 RX
-→ nhận
+→ receive
 
-TX và RX có thể hoạt động đồng thời
+TX và RX
+→ có thể hoạt động đồng thời
 ```
 
-Kết nối hai thiết bị:
+Đường nối vật lý `TX ↔ RX` và GPIO configuration được trình bày tại **6.7**, nên không lặp lại ở đây.
 
-```text
-MCU A TX ─────────→ RX MCU B
-MCU A RX ←───────── TX MCU B
-GND      ────────── GND
-```
+> **Asynchronous không có nghĩa peripheral không cần clock nội bộ.** USART vẫn cần `fCK` để chạy baud-rate generator và logic transmit/receive; chỉ không có đường `CK` dùng để đồng bộ từng bit giữa hai thiết bị.
 
 ---
 
 <a id="muc-06-03"></a>
 ## 6.3. UART Frame: Start / Data / Parity / Stop
 
-Một frame bất đồng bộ gồm:
+Một asynchronous frame có cấu trúc:
 
 ```text
 Idle
  ↓
-Start Bit
+Start bit
  ↓
-Data
+Data word
  ↓
 Parity nếu enable
  ↓
-Stop Bit
+Stop bit
 ```
 
-USART truyền data:
+USART truyền data theo thứ tự:
 
 ```text
 LSB first
 ```
 
-### Idle
-
-Khi không truyền:
+### Idle và Start bit
 
 ```text
-TX = logic 1
+Idle
+→ logic 1
+
+Start bit
+→ logic 0
 ```
 
-### Start Bit
+Start bit báo cho receiver biết một frame mới bắt đầu.
 
-Start Bit:
+### Word length — `M`
 
-```text
-logic 0
-```
-
-Dùng để báo receiver rằng một frame mới bắt đầu.
-
-### Data Word
-
-Word length được cấu hình bằng:
-
-```text
-USART_CR1.M
-```
-
-Hai lựa chọn:
+`USART_CR1.M` chọn word length:
 
 ```text
 M = 0
@@ -8339,26 +8308,37 @@ M = 1
 → 9-bit word
 ```
 
-### Parity
+Khi parity **không** được enable, toàn bộ word là data.
 
-Parity được điều khiển bởi:
+Khi parity **được** enable, parity chiếm vị trí MSB của word:
 
 ```text
-USART_CR1.PCE
-USART_CR1.PS
+M = 0 + parity
+→ 7 data bits + 1 parity bit
+
+M = 1 + parity
+→ 8 data bits + 1 parity bit
 ```
 
-Trong đó:
+Vì vậy phải phân biệt:
+
+```text
+word length
+≠
+số payload data bits khi parity được enable
+```
+
+### Parity — `PCE / PS`
 
 ```text
 PCE = 0
-→ parity disable
+→ parity disabled
 
 PCE = 1
-→ parity enable
+→ parity enabled
 ```
 
-Khi parity enable:
+Khi parity enabled:
 
 ```text
 PS = 0
@@ -8368,13 +8348,9 @@ PS = 1
 → Odd parity
 ```
 
-### Stop Bit
+Receiver kiểm tra parity và báo lỗi qua `PE` nếu giá trị nhận không hợp lệ; error flags được trình bày tại **6.11**.
 
-Stop Bit có mức:
-
-```text
-logic 1
-```
+### Stop bit — `STOP`
 
 `USART_CR2.STOP`:
 
@@ -8385,14 +8361,9 @@ logic 1
 11 → 1.5 Stop Bits
 ```
 
-Trong truyền UART thông thường, các cấu hình quan trọng nhất là:
+Trong UART communication thông thường, `1 Stop Bit` và `2 Stop Bits` là các cấu hình phổ biến; các giá trị fractional stop bit chủ yếu liên quan tới các mode đặc biệt.
 
-```text
-1 Stop Bit
-2 Stop Bits
-```
-
-`0.5` và `1.5` Stop Bit được dùng trong Smartcard mode.
+Mục này là nơi tham chiếu chính cho cấu trúc frame và quan hệ `M/PCE/PS/STOP`.
 
 ---
 
@@ -8409,22 +8380,16 @@ Ký hiệu:
 └──── 8 Data Bits
 ```
 
-Cấu hình 8N1:
+Với STM32F1:
 
 ```text
-M = 0
-PCE = 0
-STOP = 00
+8N1
+→ M = 0
+→ PCE = 0
+→ STOP = 00
 ```
 
-Frame:
-
-```text
-Idle  Start   Data[7:0]                Stop
- 1      0    D0 D1 D2 D3 D4 D5 D6 D7   1
-```
-
-Tổng số bit:
+Frame có:
 
 ```text
 1 Start
@@ -8442,93 +8407,59 @@ Tổng số bit:
 115200 bit/s
 ```
 
-throughput lý tưởng của 8N1:
+nếu các frame được truyền liên tục:
 
 ```text
-115200 / 10
+payload throughput lý tưởng
+≈ 115200 / 10
 ≈ 11520 byte/s
 ```
 
-nếu các frame được truyền liên tục.
+### Ví dụ có parity
 
-### Quan hệ giữa M và Parity
-
-Parity sử dụng vị trí MSB của word.
-
-Các frame:
-
-| `M` | `PCE` | Frame data |
-|---|---|---|
-| `0` | `0` | 8 data bits |
-| `0` | `1` | 7 data bits + parity |
-| `1` | `0` | 9 data bits |
-| `1` | `1` | 8 data bits + parity |
-
-Do đó muốn:
+Quan hệ giữa `M` và parity đã được định nghĩa tại **6.3**. Áp dụng:
 
 ```text
 8E1
+→ M = 1
+→ PCE = 1
+→ PS = 0
+→ STOP = 00
 ```
-
-cần:
-
-```text
-M   = 1
-PCE = 1
-PS  = 0
-STOP = 00
-```
-
-Tương tự:
 
 ```text
 8O1
+→ M = 1
+→ PCE = 1
+→ PS = 1
+→ STOP = 00
 ```
 
-cần:
-
-```text
-M   = 1
-PCE = 1
-PS  = 1
-STOP = 00
-```
-
-### Khi ghi / đọc USART_DR với Parity
-
-Khi parity được enable:
-
-```text
-Transmit:
-MSB của data word
-→ được thay bằng parity bit
-
-Receive:
-MSB đọc từ DR
-→ chứa parity bit nhận được
-```
+Do parity chiếm một bit trong configured word length, không được cấu hình `M = 0`, `PCE = 1` rồi gọi đó là `8E1`; trường hợp đó chỉ còn 7 data bits.
 
 ---
 
 <a id="muc-06-05"></a>
 ## 6.5. Baud Rate
 
-Baud Rate biểu diễn tốc độ symbol của đường truyền.
+`Baud rate` là symbol rate của đường truyền.
 
-Trong UART NRZ thông thường:
+Với UART nhị phân NRZ thông thường:
 
 ```text
 1 symbol
 → 1 bit
 ```
 
-nên thường có thể xem:
+nên về giá trị số:
 
 ```text
-Baud Rate ≈ bit/s
+baud rate
+=
+bit rate
 ```
 
-Các giá trị phổ biến:
+Các baud rate thường gặp:
 
 ```text
 9600
@@ -8539,41 +8470,45 @@ Các giá trị phổ biến:
 ...
 ```
 
-Hai thiết bị phải dùng Baud Rate đủ tương thích để receiver lấy mẫu đúng.
+Hai thiết bị phải dùng baud rate đủ gần nhau để receiver lấy mẫu các bit đúng thời điểm.
 
-Baud Rate của USART STM32F1 được tạo bằng:
+Trên STM32F1:
 
 ```text
-Peripheral Clock
-      ↓
-Fractional Baud Rate Generator
-      ↓
-Transmit / Receive Baud
+fCK
+ ↓
+baud-rate generator
+ ↓
+transmitter / receiver timing
 ```
 
-Transmitter và Receiver sử dụng cùng Baud Rate Generator.
+Transmitter và receiver của cùng một USART dùng cùng baud-rate generator.
+
+Mục này chỉ định nghĩa **baud rate**; nguồn `fCK`, công thức `USARTDIV` và `USART_BRR` được trình bày tại **6.6**.
 
 ---
 
 <a id="muc-06-06"></a>
 ## 6.6. USART Clock và USART_BRR
 
-Clock cấp cho USART:
+Nguồn peripheral clock đã được trình bày ở **2.9. Clock của các Peripheral quan trọng**. Với USART/UART của STM32F1:
 
 ```text
 USART1
-→ PCLK2
+→ fCK = PCLK2
 
 USART2
 USART3
 UART4
 UART5
-→ PCLK1
+→ fCK = PCLK1
 ```
 
-Peripheral tồn tại hay không phụ thuộc từng mã STM32F10xxx.
+Peripheral cụ thể có tồn tại hay không phụ thuộc part number.
 
-### Công thức Baud Rate
+### Công thức baud rate
+
+Trong asynchronous mode thông thường:
 
 ```text
 Baud =
@@ -8582,15 +8517,7 @@ fCK
 16 × USARTDIV
 ```
 
-Trong đó:
-
-```text
-fCK
-→ PCLK2 với USART1
-→ PCLK1 với USART2/USART3/UART4/UART5
-```
-
-`USARTDIV`:
+với:
 
 ```text
 USARTDIV
@@ -8600,13 +8527,7 @@ DIV_Mantissa
 DIV_Fraction / 16
 ```
 
-Thanh ghi:
-
-```text
-USART_BRR
-```
-
-có cấu trúc:
+`USART_BRR` mã hóa:
 
 ```text
 BRR[15:4]
@@ -8616,7 +8537,7 @@ BRR[3:0]
 → DIV_Fraction
 ```
 
-### Ví dụ USART1 115200 baud
+### Ví dụ USART1 — 115200 baud
 
 Cho:
 
@@ -8625,140 +8546,111 @@ PCLK2 = 72 MHz
 Baud  = 115200
 ```
 
-Ta có:
+suy ra:
 
 ```text
 USARTDIV
 =
-72,000,000
-────────────────
-16 × 115200
-
-= 39.0625
+72,000,000 / (16 × 115200)
+=
+39.0625
 ```
 
-Suy ra:
+Do đó:
 
 ```text
 DIV_Mantissa = 39
-```
-
-Phần thập phân:
-
-```text
-0.0625 × 16
-= 1
-```
-
-Nên:
-
-```text
 DIV_Fraction = 1
 ```
 
-BRR:
+và:
 
 ```text
-BRR
-= (39 << 4) | 1
-= 0x271
+USART_BRR = 0x271
 ```
 
-### Ví dụ USART2 115200 baud với PCLK1 = 36 MHz
+### Ví dụ USART2 — 115200 baud
+
+Cho:
+
+```text
+PCLK1 = 36 MHz
+Baud  = 115200
+```
+
+suy ra:
 
 ```text
 USARTDIV
 =
-36,000,000
-────────────────
-16 × 115200
-
-= 19.53125
+36,000,000 / (16 × 115200)
+=
+19.53125
 ```
 
-Phần fraction:
+Fractional part:
 
 ```text
 0.53125 × 16
 = 8.5
 ```
 
-Làm tròn gần nhất:
+sau khi làm tròn phù hợp:
 
 ```text
 DIV_Fraction ≈ 9
 ```
 
-Nên giá trị thực tế sẽ có một sai số baud nhỏ.
+Giá trị baud thực tế có một sai số nhỏ so với baud mục tiêu.
 
-### Điểm cần nhớ
+Điểm cần nhớ:
 
 ```text
-BRR giống nhau
+cùng USART_BRR
 +
-Peripheral Clock khác nhau
-→ Baud Rate khác nhau
+fCK khác nhau
+→ baud rate khác nhau
 ```
 
-Không được copy `USART_BRR` giữa USART1 và USART2 mà không kiểm tra `PCLK2/PCLK1`.
-
-`USART_BRR` không nên được thay đổi trong khi đang communication.
+Vì vậy không copy `USART_BRR` giữa USART1 và USART2 nếu chưa xác định lại `PCLK2/PCLK1`.
 
 ---
 
 <a id="muc-06-07"></a>
 ## 6.7. TX / RX và GPIO
 
-Giao tiếp bất đồng bộ full-duplex tối thiểu cần:
+GPIO mode, Alternate Function và remapping đã được trình bày tại **Chương 3**. Đối với UART communication trên STM32F1, bảng tra nhanh là:
+
+| Tín hiệu | GPIO configuration thường dùng |
+|---|---|
+| `TX` | Alternate Function Output Push-Pull |
+| `RX` | Floating Input hoặc Input with Pull-Up |
+
+Ví dụ default mapping của USART1:
 
 ```text
-TX
-→ Transmit Data Output
+PA9
+→ USART1_TX
 
-RX
-→ Receive Data Input
+PA10
+→ USART1_RX
 ```
 
-Trên STM32F1:
+Một remap của USART1:
 
 ```text
-TX
-→ Alternate Function Push-Pull
+PB6
+→ USART1_TX
 
-RX
-→ Input Floating
-  hoặc Input Pull-Up
+PB7
+→ USART1_RX
 ```
 
-### USART1 mặc định
-
-```text
-PA9  → USART1_TX
-PA10 → USART1_RX
-```
-
-### USART1 Remap
-
-```text
-PB6 → USART1_TX
-PB7 → USART1_RX
-```
-
-Remap được cấu hình bằng:
-
-```text
-AFIO_MAPR
-```
-
-và phải bật:
-
-```text
-AFIOEN
-```
-
-trước khi truy cập AFIO.
+Cơ chế AFIO/remap không lặp lại tại đây; xem **3.13**.
 
 ### Nối hai thiết bị
+
+Trong kết nối UART Full-Duplex thông thường:
 
 ```text
 Device A TX → Device B RX
@@ -8766,35 +8658,18 @@ Device A RX ← Device B TX
 GND A       ↔ GND B
 ```
 
-Không nối:
+Tức là TX của một phía nối với RX của phía còn lại.
 
-```text
-TX → TX
-RX → RX
-```
-
-trong kết nối UART thông thường giữa hai thiết bị.
+Pin mapping cụ thể luôn phải kiểm tra theo đúng part number/package.
 
 ---
 
 <a id="muc-06-08"></a>
 ## 6.8. USART_DR và cơ chế truyền dữ liệu
 
-Thanh ghi:
+`USART_DR` là data register mà software hoặc DMA dùng để trao đổi dữ liệu với USART.
 
-```text
-USART_DR
-```
-
-có hai chức năng:
-
-```text
-Write
-→ Transmit Data Register — TDR
-
-Read
-→ Receive Data Register — RDR
-```
+Có thể nhìn data path theo hai hướng.
 
 ### Transmit path
 
@@ -8805,44 +8680,43 @@ CPU / DMA
     ↓
 Transmit Shift Register
     ↓
-   TX Pin
+   TX
 ```
+
+Software ghi data word vào `USART_DR`; peripheral chuyển nó qua transmit data path rồi shift từng bit ra TX theo frame format đã cấu hình tại **6.3**.
 
 ### Receive path
 
 ```text
-RX Pin
-  ↓
+RX
+ ↓
 Receive Shift Register
-  ↓
- RDR
-  ↓ read USART_DR
+ ↓
+RDR
+ ↓ read USART_DR
 CPU / DMA
 ```
 
-### Transmit Shift Register
+Receiver lấy mẫu RX, khôi phục frame và chuyển data nhận được vào receive data path để software/DMA đọc qua `USART_DR`.
 
-Shift Register gửi:
+Điểm cần nhớ:
 
 ```text
-Start
-Data LSB first
-Parity nếu có
-Stop
+write USART_DR
+→ transmit path
+
+read USART_DR
+→ receive path
 ```
 
-ra TX theo Baud Rate.
-
-### Receive Shift Register
-
-Receiver lấy mẫu RX, phục hồi các bit và sau khi nhận xong character sẽ chuyển dữ liệu vào RDR.
+Các trạng thái "có thể ghi tiếp" và "có data để đọc" được báo bằng `TXE` và `RXNE`, trình bày tại **6.9–6.10**.
 
 ---
 
 <a id="muc-06-09"></a>
 ## 6.9. TXE và TC
 
-Hai flag:
+Hai transmit flag cần phân biệt:
 
 ```text
 USART_SR.TXE
@@ -8852,116 +8726,73 @@ USART_SR.TC
 → Transmission Complete
 ```
 
-### TXE
+### `TXE`
 
-`TXE = 1` khi:
+`TXE = 1` khi transmit data register đã trống và có thể nhận data word tiếp theo.
 
-```text
-dữ liệu từ TDR
-→ đã chuyển sang Transmit Shift Register
-```
-
-Điều này có nghĩa:
-
-```text
-TDR trống
-→ có thể ghi data tiếp theo
-```
-
-TXE được clear khi:
+Luồng:
 
 ```text
 write USART_DR
+      ↓
+TDR có data
+      ↓
+data chuyển sang Transmit Shift Register
+      ↓
+TXE = 1
+      ↓
+có thể ghi data tiếp theo
 ```
 
-Luồng truyền liên tục:
+`TXE` dùng để **feed** liên tục dữ liệu vào transmitter.
 
-```text
-TXE = 1
- ↓
-write byte 1 vào DR
- ↓
-TDR → Shift Register
- ↓
-TXE = 1
- ↓
-write byte 2
- ↓
-...
-```
+### `TC`
 
-### TC
+`TC = 1` khi transmission của frame cuối đã hoàn tất và transmit data register cũng trống.
 
-`TC = 1` khi:
-
-```text
-frame chứa data đã truyền hoàn tất
-+
-TXE = 1
-```
-
-Tức:
+Có thể nhớ:
 
 ```text
 TXE
-→ buffer truyền trống
+→ có thể nạp data tiếp
 
 TC
-→ frame cuối đã đi hết ra đường truyền
+→ frame cuối đã đi hết khỏi transmitter
 ```
 
-### So sánh
-
-| Flag | Ý nghĩa |
-|---|---|
-| `TXE` | Có thể nạp byte tiếp theo |
-| `TC` | Frame cuối đã truyền hoàn tất |
-
-Khi gửi nhiều byte:
+Do đó:
 
 ```text
-TXE
-→ dùng để feed byte tiếp theo
+nhiều data word liên tiếp
+→ dùng TXE để nạp tiếp
+
+sau data word cuối
+→ dùng TC khi cần xác nhận toàn bộ transmission đã hoàn tất
 ```
 
-Sau byte cuối:
+Nếu sắp disable USART hoặc thực hiện thao tác có thể làm dừng transmitter, chờ `TC = 1` khi cần bảo đảm frame cuối đã truyền xong.
 
-```text
-TC
-→ dùng khi cần xác nhận transmission hoàn tất
-```
-
-Trước khi disable USART hoặc chuyển sang trạng thái có thể làm dừng transmission:
-
-```text
-phải chờ TC = 1
-```
+Interrupt enable tương ứng `TXEIE/TCIE` được trình bày tại **6.12**.
 
 ---
 
 <a id="muc-06-10"></a>
 ## 6.10. RXNE và quá trình nhận dữ liệu
 
-Flag:
-
-```text
-USART_SR.RXNE
-```
-
-là:
+`USART_SR.RXNE`:
 
 ```text
 Read Data Register Not Empty
 ```
 
-Khi một character được nhận:
+Luồng:
 
 ```text
 RX
  ↓
 Receive Shift Register
  ↓
-RDR
+data chuyển vào RDR
  ↓
 RXNE = 1
 ```
@@ -8970,17 +8801,17 @@ RXNE = 1
 
 ```text
 RXNE = 1
-→ dữ liệu đã sẵn sàng trong USART_DR
+→ data nhận đã sẵn sàng để đọc qua USART_DR
 ```
 
-Trong single-buffer mode:
+Trong reception thông thường:
 
 ```text
 read USART_DR
-→ clear RXNE
+→ RXNE được clear
 ```
 
-Ví dụ:
+Ví dụ polling:
 
 ```c
 while (!(USART1->SR & USART_SR_RXNE))
@@ -8990,120 +8821,68 @@ while (!(USART1->SR & USART_SR_RXNE))
 uint8_t data = (uint8_t)USART1->DR;
 ```
 
-### Yêu cầu thời gian
-
-Software phải đọc dữ liệu trước khi character tiếp theo cần chuyển vào RDR.
-
-Nếu:
-
-```text
-RXNE vẫn = 1
-+
-character mới nhận xong
-```
-
-thì có thể xảy ra:
-
-```text
-Overrun Error
-```
+Nếu data cũ chưa được lấy khỏi receive data register mà frame mới cần chuyển vào, có thể xảy ra `ORE`. Cơ chế Overrun Error được trình bày tại **6.11**.
 
 ---
 
 <a id="muc-06-11"></a>
 ## 6.11. Error Flags: ORE / FE / NE / PE
 
-Các lỗi quan trọng trong `USART_SR`:
+Các receive error flag quan trọng trong `USART_SR`:
+
+| Flag | Tên | Ý nghĩa |
+|---|---|---|
+| `ORE` | Overrun Error | Data mới tới khi receive data register chưa được giải phóng kịp |
+| `FE` | Framing Error | Stop bit không được nhận ở trạng thái hợp lệ |
+| `NE` | Noise Error | Receiver phát hiện nhiễu trong quá trình lấy mẫu |
+| `PE` | Parity Error | Parity nhận được không khớp với parity tính toán |
+
+### `ORE` — Overrun Error
+
+Quan hệ:
 
 ```text
-ORE
-→ Overrun Error
-
-NE
-→ Noise Error
-
-FE
-→ Framing Error
-
-PE
-→ Parity Error
-```
-
-### ORE — Overrun Error
-
-ORE xảy ra khi:
-
-```text
-RDR đang chứa data chưa đọc
 RXNE = 1
-      ↓
-character mới nhận xong
-      ↓
-không thể chuyển character mới vào RDR
-      ↓
-ORE = 1
++
+data cũ chưa được đọc
++
+frame mới hoàn tất
+→ ORE
 ```
 
-Khi ORE xảy ra:
+Khi đó ít nhất một data word không thể được nhận đúng vào receive data register.
+
+### `FE` — Framing Error
+
+`FE` thường liên quan tới:
 
 ```text
-data cũ trong RDR vẫn còn
-shift register sẽ bị ghi đè
-ít nhất một data đã bị mất
+Stop bit không hợp lệ
+baud mismatch
+noise
+Break condition
 ```
 
-Một nguyên nhân thường gặp:
+### `NE` — Noise Error
+
+`NE` báo receiver phát hiện các sample không nhất quán do noise trong quá trình khôi phục bit.
+
+Data vẫn có thể xuất hiện trong data register, nhưng software phải coi frame tương ứng là có lỗi.
+
+### `PE` — Parity Error
+
+`PE` chỉ có ý nghĩa khi parity được enable.
 
 ```text
-CPU hoặc DMA không lấy data đủ nhanh
+parity nhận
+≠
+parity tính toán
+→ PE = 1
 ```
 
-### FE — Framing Error
+### Clear receive error flags
 
-FE xảy ra khi:
-
-```text
-Stop Bit không được nhận đúng tại thời điểm mong đợi
-```
-
-Có thể liên quan đến:
-
-```text
-mất đồng bộ
-noise quá lớn
-baud không phù hợp
-Break character
-```
-
-### NE — Noise Error
-
-Receiver dùng kỹ thuật oversampling để phân biệt dữ liệu hợp lệ và noise.
-
-Nếu các mẫu tại điểm quyết định không一致:
-
-```text
-NE = 1
-```
-
-Data vẫn được chuyển vào `USART_DR`, nhưng phải được xem là không đảm bảo.
-
-### PE — Parity Error
-
-Khi parity enable:
-
-```text
-receiver tính parity
-       ↓
-so với parity nhận được
-       ↓
-không khớp
-       ↓
-PE = 1
-```
-
-### Clear ORE / NE / FE / PE
-
-Các flag này dùng trình tự:
+Đối với các receive error flag này, trình tự software quan trọng là:
 
 ```text
 read USART_SR
@@ -9111,39 +8890,41 @@ read USART_SR
 read USART_DR
 ```
 
-Đối với `PE`, software phải chờ `RXNE` được set trước khi hoàn tất trình tự clear bằng đọc `DR`.
+Không xử lý chúng như các bit read/write độc lập thông thường.
+
+Mục này là nơi tham chiếu chính cho `ORE/FE/NE/PE`; các phần Interrupt và ví dụ chỉ dẫn chiếu lại.
 
 ---
 
 <a id="muc-06-12"></a>
 ## 6.12. USART Interrupt
 
-Các nguồn interrupt quan trọng:
+Cơ chế exception/NVIC và quy ước thiết kế ISR đã được trình bày tại **Chương 4**. Mục này chỉ tập trung vào **nguồn interrupt của USART**.
+
+Các nguồn thường gặp:
 
 ```text
+RXNE
 TXE
 TC
-RXNE
 IDLE
 PE
-ORE
-FE
-NE
+ORE / FE / NE
 CTS
 LIN Break
 ```
 
-Các bit enable thường dùng:
+Các interrupt-enable bit quan trọng:
 
 ```text
+USART_CR1.RXNEIE
+→ RXNE Interrupt Enable
+
 USART_CR1.TXEIE
 → TXE Interrupt Enable
 
 USART_CR1.TCIE
 → TC Interrupt Enable
-
-USART_CR1.RXNEIE
-→ RXNE Interrupt Enable
 
 USART_CR1.IDLEIE
 → IDLE Interrupt Enable
@@ -9152,28 +8933,12 @@ USART_CR1.PEIE
 → Parity Error Interrupt Enable
 ```
 
-Trong multi-buffer/DMA reception:
+Một số error/DMA configuration còn liên quan tới `USART_CR3.EIE`; phải xét cùng mode đang dùng.
+
+### Receive interrupt
 
 ```text
-USART_CR3.EIE
-```
-
-liên quan đến interrupt khi:
-
-```text
-FE
-ORE
-NE
-```
-
-với `DMAR = 1`.
-
-### Receive Interrupt
-
-Luồng:
-
-```text
-Character received
+frame received
       ↓
 RXNE = 1
       ↓
@@ -9181,11 +8946,7 @@ RXNEIE = 1
       ↓
 USARTx IRQ
       ↓
-NVIC
-      ↓
-USARTx_IRQHandler()
-      ↓
-read USART_DR
+ISR đọc USART_DR
 ```
 
 Ví dụ:
@@ -9202,7 +8963,7 @@ void USART1_IRQHandler(void)
 }
 ```
 
-### Transmit Interrupt
+### Transmit interrupt
 
 ```text
 TDR trống
@@ -9211,31 +8972,27 @@ TXE = 1
   ↓
 TXEIE = 1
   ↓
-USART IRQ
+USARTx IRQ
+  ↓
+ISR ghi data tiếp theo
 ```
 
-ISR có thể ghi byte tiếp theo vào `USART_DR`.
-
-Khi không còn byte cần gửi:
+Khi TX buffer đã hết data:
 
 ```text
 disable TXEIE
 ```
 
-để tránh interrupt liên tục do `TXE` vẫn ở trạng thái `1`.
+nếu không, `TXE = 1` tiếp tục thỏa điều kiện interrupt.
+
+Nếu cần xác nhận frame cuối đã truyền hoàn tất, dùng `TC/TCIE` theo **6.9**.
 
 ---
 
 <a id="muc-06-13"></a>
 ## 6.13. IDLE Line
 
-Flag:
-
-```text
-USART_SR.IDLE
-```
-
-được set khi receiver phát hiện Idle Line.
+`USART_SR.IDLE` báo receiver phát hiện Idle Line.
 
 Nếu:
 
@@ -9243,9 +9000,9 @@ Nếu:
 IDLEIE = 1
 ```
 
-USART có thể tạo interrupt.
+USART có thể tạo interrupt khi `IDLE` được set.
 
-Clear IDLE:
+Trình tự clear:
 
 ```text
 read USART_SR
@@ -9253,44 +9010,46 @@ read USART_SR
 read USART_DR
 ```
 
-IDLE chỉ được set lại sau khi `RXNE` đã từng được set, tức phải có hoạt động nhận mới trước một Idle Line mới.
+`IDLE` chỉ có thể được báo lại sau khi reception đã có hoạt động mới.
 
 ### Ứng dụng
 
-IDLE Line hữu ích khi:
-
-```text
-nhận dữ liệu có độ dài thay đổi
-```
-
-Luồng khái niệm:
+`IDLE` đặc biệt hữu ích với dữ liệu có độ dài không cố định:
 
 ```text
 RX data
 RX data
 RX data
       ↓
-đường RX rỗi
+RX trở lại idle
       ↓
 IDLE
       ↓
-xác định một đoạn dữ liệu đã kết thúc
+software xác định một burst dữ liệu đã kết thúc
 ```
 
-IDLE thường được kết hợp với:
+Một pattern phổ biến là:
 
 ```text
-DMA Receive
+USART RX
+   ↓
+DMA
+   ↓
+RAM buffer
+   ↓
+IDLE interrupt
+   ↓
+xử lý số byte đã nhận
 ```
 
-để nhận chuỗi dữ liệu mà không cần interrupt cho từng byte.
+Phần DMA-specific được trình bày tại **6.16** và cơ chế DMA controller nằm ở **Chương 9**.
 
 ---
 
 <a id="muc-06-14"></a>
 ## 6.14. UART bằng Polling
 
-Polling trực tiếp kiểm tra các flag trong `USART_SR`.
+Khái niệm Polling và khác biệt với Interrupt đã được trình bày tại **4.1**. Với USART, Polling chỉ có nghĩa software chủ động kiểm tra các status flag đã nêu tại **6.9–6.11**.
 
 ### Transmit một byte
 
@@ -9325,23 +9084,17 @@ static void USART1_Write(const uint8_t *data, uint32_t length)
 }
 ```
 
-Luồng:
+Ở đây:
 
 ```text
-TXE?
- ↓ yes
-Write DR
- ↓
-TXE?
- ↓
-Write byte tiếp
- ↓
-...
- ↓
-byte cuối
- ↓
-wait TC
+TXE
+→ nạp data tiếp theo
+
+TC
+→ xác nhận frame cuối đã truyền hoàn tất
 ```
+
+Ý nghĩa hai flag đã được giải thích tại **6.9**.
 
 ### Receive một byte
 
@@ -9356,41 +9109,25 @@ static uint8_t USART1_ReadByte(void)
 }
 ```
 
-### Đặc điểm Polling
-
-Ưu điểm:
-
-```text
-đơn giản
-dễ kiểm tra
-ít trạng thái
-```
-
-Hạn chế:
-
-```text
-CPU phải chờ flag
-blocking
-khó mở rộng khi nhiều công việc chạy đồng thời
-```
+Đây là **blocking polling** vì hàm chờ tới khi flag đạt trạng thái yêu cầu. Periodic/non-blocking polling là một cách tổ chức khác và đã được phân biệt tại **4.1**.
 
 ---
 
 <a id="muc-06-15"></a>
 ## 6.15. UART bằng Interrupt
 
-Interrupt cho phép CPU làm việc khác cho tới khi USART có sự kiện.
+Cơ chế NVIC/ISR đã được trình bày tại **Chương 4**; nguồn USART interrupt nằm tại **6.12**. Mục này chỉ mô tả pattern xử lý dữ liệu.
 
 ### Receive
 
-Enable:
+Enable nguồn `RXNE` và IRQ tương ứng:
 
 ```c
 USART1->CR1 |= USART_CR1_RXNEIE;
 NVIC_EnableIRQ(USART1_IRQn);
 ```
 
-Handler:
+ISR:
 
 ```c
 volatile uint8_t rx_data;
@@ -9401,83 +9138,64 @@ void USART1_IRQHandler(void)
     if (USART1->SR & USART_SR_RXNE)
     {
         rx_data = (uint8_t)USART1->DR;
-        rx_ready = 1;
+        rx_ready = 1U;
     }
 }
 ```
 
-Main:
+Thread mode:
 
 ```c
-while (1)
+if (rx_ready)
 {
-    if (rx_ready)
-    {
-        rx_ready = 0;
+    rx_ready = 0U;
 
-        /* xử lý rx_data */
-    }
+    /* xử lý rx_data */
 }
 ```
 
-### Buffer nhiều byte
-
-Thay vì giữ một byte:
+Nếu cần nhận liên tục nhiều byte:
 
 ```text
 ISR
  ↓
-read DR
+read USART_DR
  ↓
-ghi vào RAM buffer
+ghi vào RAM buffer / ring buffer
  ↓
-cập nhật write index
+cập nhật index
  ↓
 return
 ```
 
-Có thể dùng:
-
-```text
-Ring Buffer
-```
-
-để nhận dữ liệu liên tục.
-
 ### Transmit
 
-Với interrupt-driven TX:
+Pattern interrupt-driven TX:
 
 ```text
-software có buffer TX
+TX buffer có data
       ↓
 enable TXEIE
       ↓
 TXE interrupt
       ↓
-ISR ghi byte tiếp theo
+ISR ghi data tiếp theo vào USART_DR
       ↓
-hết buffer
+hết TX buffer
       ↓
 disable TXEIE
 ```
 
-Nếu cần biết frame cuối đã rời TX:
+Nếu application cần biết thời điểm frame cuối đã rời transmitter, dùng `TC/TCIE` sau data cuối.
 
-```text
-TC / TCIE
-```
-
-được dùng sau byte cuối.
+Shared-data và `volatile` giữa ISR/Thread mode đã được trình bày tại **4.19**, nên không lặp lại ở đây.
 
 ---
 
 <a id="muc-06-16"></a>
 ## 6.16. UART bằng DMA
 
-USART hỗ trợ DMA cho transmit và receive.
-
-Các bit:
+Cơ chế DMA controller được trình bày tại **Chương 9**. Đối với USART, hai bit kết nối peripheral với DMA là:
 
 ```text
 USART_CR3.DMAT
@@ -9490,13 +9208,11 @@ USART_CR3.DMAR
 ### DMA Transmit
 
 ```text
-SRAM Buffer
+SRAM buffer
     ↓
 DMA
     ↓
-USART TDR
-    ↓
-Shift Register
+USART transmit data path
     ↓
 TX
 ```
@@ -9506,171 +9222,141 @@ TX
 ```text
 RX
  ↓
-Receive Shift Register
- ↓
-RDR
+USART receive data path
  ↓
 DMA
  ↓
-SRAM Buffer
+SRAM buffer
 ```
 
-Ưu điểm:
-
-```text
-CPU không cần xử lý từng byte
-phù hợp dữ liệu liên tục
-giảm số interrupt
-```
-
-Trong multibuffer reception:
-
-```text
-RXNE được set sau mỗi byte
-→ DMA read DR
-→ RXNE được clear
-```
-
-Nếu DMA không phục vụ kịp và data mới tới:
-
-```text
-ORE có thể xảy ra
-```
+Khi DMA đọc receive data register sau mỗi data word, `RXNE` được clear theo data-read mechanism. Nếu data không được lấy kịp và frame mới tới, vẫn có thể xảy ra `ORE`.
 
 ### DMA + IDLE
 
-Một mô hình thường dùng:
+Pattern thường dùng cho packet/burst có độ dài thay đổi:
 
 ```text
 USART RX
    ↓
 DMA
    ↓
-Buffer
+RAM buffer
    ↓
-IDLE interrupt
+IDLE
    ↓
-xử lý số byte đã nhận
+xác định số byte đã nhận
+   ↓
+xử lý buffer
 ```
 
-Chi tiết channel, transfer count và DMA flags được triển khai ở chương DMA.
+`IDLE` đã được giải thích tại **6.13**; channel mapping, transfer count và DMA flags được trình bày tại **9.17. DMA + UART** và các mục DMA liên quan.
 
 ---
 
 <a id="muc-06-17"></a>
 ## 6.17. Hardware Flow Control: CTS / RTS
 
-USART1/2/3 hỗ trợ hardware flow control với:
+Một số USART của STM32F1 hỗ trợ hardware flow control bằng:
 
 ```text
 CTS
 RTS
 ```
 
-UART4/UART5 không có các chức năng CTS/RTS tương ứng.
+Trong phạm vi các instance được nêu trong chương:
+
+```text
+USART1 / USART2 / USART3
+→ có CTS/RTS
+
+UART4 / UART5
+→ không có CTS/RTS tương ứng
+```
 
 ### CTS — Clear To Send
 
-Bit:
+Enable bằng:
 
 ```text
 USART_CR3.CTSE
 ```
 
-Khi enable:
+Về mặt logic:
 
 ```text
 CTS asserted
-→ USART được phép truyền
+→ transmitter được phép bắt đầu data tiếp theo
 
 CTS deasserted
 → transmission mới bị hoãn
 ```
 
-Nếu CTS thay đổi khi một character đang được truyền:
-
-```text
-character hiện tại được truyền xong
-→ sau đó transmitter mới dừng
-```
+Nếu CTS thay đổi khi một frame đang được truyền, frame hiện tại được hoàn tất trước khi transmitter dừng theo flow-control state.
 
 ### RTS — Request To Send
 
-Bit:
+Enable bằng:
 
 ```text
 USART_CR3.RTSE
 ```
 
-RTS cho biết receiver có khả năng nhận dữ liệu hay không.
+RTS phản ánh khả năng tiếp nhận data của receiver và được dùng để báo cho phía bên kia khi nào nên tiếp tục/dừng gửi theo hardware flow-control protocol.
 
-Khái niệm:
-
-```text
-RTS asserted
-→ có chỗ trong receive buffer
-→ phía bên kia có thể gửi
-```
-
-### CTS Interrupt
+### CTS interrupt
 
 ```text
 CTSIE
-→ interrupt khi CTS thay đổi
+→ cho phép interrupt liên quan tới thay đổi CTS
 ```
 
-Hardware Flow Control hữu ích khi hai thiết bị không thể luôn xử lý dữ liệu với cùng tốc độ.
+Hardware flow control hữu ích khi receiver không thể luôn tiêu thụ data với tốc độ mà transmitter muốn gửi.
 
 ---
 
 <a id="muc-06-18"></a>
 ## 6.18. Half-Duplex và Synchronous Mode
 
+Các mode này là khả năng mở rộng của USART; chúng không thay đổi các khái niệm frame/flag cơ bản đã được trình bày ở các mục trước.
+
 ### Single-Wire Half-Duplex
 
-Bit:
+Enable bằng:
 
 ```text
-USART_CR3.HDSEL
+USART_CR3.HDSEL = 1
 ```
 
-Khi:
-
-```text
-HDSEL = 1
-```
-
-USART hoạt động ở single-wire half-duplex.
-
-Khái niệm:
+Mô hình:
 
 ```text
 một đường data
 ←→
-vừa TX vừa RX
+dùng luân phiên cho transmit và receive
 ```
 
-Do chỉ có một đường:
+Do chỉ có một đường data:
 
 ```text
-không truyền và nhận đồng thời như Full-Duplex
+Half-Duplex
+→ không transmit và receive đồng thời như Full-Duplex TX/RX
 ```
 
 ### Synchronous Mode
 
-USART có thể xuất clock:
+USART có thể xuất thêm clock:
 
 ```text
 CK
 ```
 
-Bit:
+Enable bằng:
 
 ```text
 USART_CR2.CLKEN
 ```
 
-Các bit:
+Các bit liên quan:
 
 ```text
 CPOL
@@ -9678,9 +9364,7 @@ CPHA
 LBCL
 ```
 
-điều khiển clock synchronous.
-
-Luồng:
+Mô hình:
 
 ```text
 USART
@@ -9689,18 +9373,11 @@ USART
 └── CK
 ```
 
-Trong synchronous mode:
-
-```text
-CK
-→ transmitter clock output
-```
-
-UART4/UART5 không có synchronous clock output tương ứng.
+`UART4/UART5` không có synchronous clock output tương ứng.
 
 ### Các mode khác
 
-USART còn hỗ trợ:
+USART còn có các mode/tính năng như:
 
 ```text
 LIN
@@ -9709,7 +9386,7 @@ IrDA
 Multiprocessor communication
 ```
 
-Các mode này sử dụng thêm các bit trong `CR1/CR2/CR3` và có quy tắc frame riêng.
+Các mode này có quy tắc riêng và không được triển khai chi tiết trong chương cơ bản này.
 
 ---
 
@@ -9728,189 +9405,61 @@ RX = PA10
 PCLK2 = 72 MHz
 ```
 
-### Bước 1 — Bật Clock
-
-USART1 và GPIOA nằm trên APB2:
-
-```c
-RCC->APB2ENR |= RCC_APB2ENR_IOPAEN
-               | RCC_APB2ENR_USART1EN;
-```
-
-Nếu dùng remap:
+Quy trình tổng quát:
 
 ```text
-bật AFIOEN
-+
-cấu hình AFIO_MAPR
+1. Xác định USART instance và fCK
+        ↓
+2. Enable peripheral/GPIO clock
+        ↓
+3. Cấu hình TX/RX GPIO và remap nếu cần
+        ↓
+4. Giữ UE = 0 trong giai đoạn cấu hình chính
+        ↓
+5. Cấu hình frame: M / parity / STOP
+        ↓
+6. Tính và ghi USART_BRR
+        ↓
+7. Cấu hình flow control / DMA / mode đặc biệt nếu dùng
+        ↓
+8. Enable transmitter / receiver: TE / RE
+        ↓
+9. Enable USART: UE = 1
+        ↓
+10. Enable interrupt tại USART/NVIC nếu dùng
+        ↓
+11. Bắt đầu transmit / receive
 ```
 
-### Bước 2 — TX GPIO
-
-PA9:
+Dẫn chiếu cho từng bước:
 
 ```text
-Alternate Function Push-Pull
+Clock source / peripheral clock
+→ Chương 2 và 6.6
+
+GPIO / remap
+→ Chương 3 và 6.7
+
+Frame format
+→ 6.3–6.4
+
+Baud / BRR
+→ 6.5–6.6
+
+TXE / TC / RXNE
+→ 6.9–6.10
+
+Error flags
+→ 6.11
+
+Interrupt
+→ 6.12 và Chương 4
+
+DMA
+→ 6.16 và Chương 9
 ```
 
-Ví dụ maximum output speed 50 MHz:
-
-```text
-MODE = 11
-CNF  = 10
-→ 0b1011
-```
-
-PA9 nằm trong `GPIOA_CRH`, shift:
-
-```text
-(9 - 8) × 4
-= 4
-```
-
-```c
-GPIOA->CRH &= ~(0xFU << 4);
-GPIOA->CRH |=  (0xBU << 4);
-```
-
-### Bước 3 — RX GPIO
-
-PA10:
-
-```text
-Input Floating
-```
-
-```text
-MODE = 00
-CNF  = 01
-→ 0b0100
-```
-
-Shift:
-
-```text
-(10 - 8) × 4
-= 8
-```
-
-```c
-GPIOA->CRH &= ~(0xFU << 8);
-GPIOA->CRH |=  (0x4U << 8);
-```
-
-### Bước 4 — Enable USART
-
-```c
-USART1->CR1 |= USART_CR1_UE;
-```
-
-### Bước 5 — Word Length
-
-8N1:
-
-```text
-M = 0
-```
-
-```c
-USART1->CR1 &= ~USART_CR1_M;
-```
-
-### Bước 6 — Parity
-
-No Parity:
-
-```text
-PCE = 0
-```
-
-```c
-USART1->CR1 &= ~USART_CR1_PCE;
-```
-
-### Bước 7 — Stop Bit
-
-1 Stop Bit:
-
-```text
-STOP = 00
-```
-
-```c
-USART1->CR2 &= ~USART_CR2_STOP;
-```
-
-### Bước 8 — Baud Rate
-
-Với:
-
-```text
-PCLK2 = 72 MHz
-115200 baud
-```
-
-```text
-BRR = 0x271
-```
-
-```c
-USART1->BRR = 0x271U;
-```
-
-### Bước 9 — Enable Transmitter / Receiver
-
-```c
-USART1->CR1 |= USART_CR1_TE
-               | USART_CR1_RE;
-```
-
-Khi `TE` được set:
-
-```text
-transmitter gửi Idle Frame trước data đầu tiên
-```
-
-Receiver bắt đầu tìm Start Bit khi:
-
-```text
-RE = 1
-```
-
-### Bước 10 — Nếu dùng Interrupt
-
-Ví dụ RXNE:
-
-```c
-USART1->CR1 |= USART_CR1_RXNEIE;
-
-NVIC_SetPriority(USART1_IRQn, 5);
-NVIC_EnableIRQ(USART1_IRQn);
-```
-
-### Luồng đầy đủ
-
-```text
-RCC Clock
-   ↓
-GPIO TX / RX
-   ↓
-UE
-   ↓
-M
-   ↓
-Parity
-   ↓
-STOP
-   ↓
-BRR
-   ↓
-TE / RE
-   ↓
-Interrupt / DMA nếu cần
-   ↓
-Transmit / Receive
-```
+Mục này chỉ xác định **thứ tự cấu hình**; code hoàn chỉnh cho USART1 115200 8N1 nằm tại **6.20**.
 
 ---
 
@@ -9928,6 +9477,12 @@ Baud = 115200
 Polling
 ```
 
+Theo **6.6**:
+
+```text
+USART_BRR = 0x271
+```
+
 ### Initialization
 
 ```c
@@ -9937,34 +9492,33 @@ static void USART1_Init_115200_8N1(void)
     RCC->APB2ENR |= RCC_APB2ENR_IOPAEN
                    | RCC_APB2ENR_USART1EN;
 
-    /* PA9: Alternate Function Push-Pull, 50 MHz */
+    /* PA9: Alternate Function Output Push-Pull, 50 MHz */
     GPIOA->CRH &= ~(0xFU << 4);
     GPIOA->CRH |=  (0xBU << 4);
 
-    /* PA10: Input Floating */
+    /* PA10: Floating Input */
     GPIOA->CRH &= ~(0xFU << 8);
     GPIOA->CRH |=  (0x4U << 8);
 
-    /* USART enable */
-    USART1->CR1 |= USART_CR1_UE;
+    /* Configure USART while disabled */
+    USART1->CR1 &= ~USART_CR1_UE;
 
-    /* 8-bit word */
-    USART1->CR1 &= ~USART_CR1_M;
-
-    /* No parity */
-    USART1->CR1 &= ~USART_CR1_PCE;
-
-    /* 1 stop bit */
+    /* 8N1 */
+    USART1->CR1 &= ~(USART_CR1_M | USART_CR1_PCE);
     USART1->CR2 &= ~USART_CR2_STOP;
 
-    /* 72 MHz / (16 × 39.0625) = 115200 */
+    /* PCLK2 = 72 MHz, Baud = 115200 */
     USART1->BRR = 0x271U;
 
-    /* TX + RX enable */
-    USART1->CR1 |= USART_CR1_TE
-                   | USART_CR1_RE;
+    /* Full-Duplex TX + RX */
+    USART1->CR1 |= USART_CR1_TE | USART_CR1_RE;
+
+    /* Enable USART */
+    USART1->CR1 |= USART_CR1_UE;
 }
 ```
+
+GPIO encoding đã được trình bày ở **Chương 3**; `8N1` tại **6.4**; giá trị `BRR` tại **6.6**.
 
 ### Transmit Byte
 
@@ -10041,315 +9595,120 @@ WriteByte()
 PC / USB-UART
 ```
 
----
+### Các lỗi cần kiểm tra
 
-### Quy trình xử lý lỗi khi nhận
+| Hiện tượng / lỗi cấu hình | Mục cần kiểm tra |
+|---|---|
+| Baud sai | **6.5–6.6** và clock ở **Chương 2** |
+| TX/RX không hoạt động | **6.7**, peripheral clock và pin mapping |
+| Nhầm `TXE` với `TC` | **6.9** |
+| Receive bị mất data / `ORE` | **6.10–6.11** |
+| Clear receive error flag sai | **6.11** |
+| Cấu hình `8E1/8O1` sai số data bit | **6.3–6.4** |
+| Interrupt lặp liên tục do `TXEIE` | **6.12**, **6.15** |
+| Variable-length DMA receive không xác định được điểm kết thúc | **6.13**, **6.16** |
 
-Một handler có thể kiểm tra:
-
-```text
-PE
-FE
-NE
-ORE
-RXNE
-```
-
-Ví dụ khái niệm:
-
-```c
-void USART1_IRQHandler(void)
-{
-    uint32_t sr = USART1->SR;
-
-    if (sr & (USART_SR_PE |
-              USART_SR_FE |
-              USART_SR_NE |
-              USART_SR_ORE))
-    {
-        volatile uint32_t dummy = USART1->DR;
-        (void)dummy;
-
-        /* ghi nhận / xử lý lỗi */
-        return;
-    }
-
-    if (sr & USART_SR_RXNE)
-    {
-        uint8_t data = (uint8_t)USART1->DR;
-
-        /* lưu data */
-    }
-}
-```
-
-Việc đọc `SR` rồi đọc `DR` thực hiện trình tự clear các receive error flag tương ứng.
-
----
-
-### Các lỗi cấu hình thường gặp
-
-#### Dùng sai Peripheral Clock khi tính BRR
-
-Sai:
-
-```text
-USART1 dùng PCLK1
-```
-
-Đúng:
-
-```text
-USART1
-→ PCLK2
-
-USART2/3, UART4/5
-→ PCLK1
-```
-
-#### Nhầm TXE với TC
-
-Sai:
-
-```text
-TXE = 1
-→ byte cuối đã truyền xong
-```
-
-Đúng:
-
-```text
-TXE
-→ TDR trống
-
-TC
-→ frame cuối truyền hoàn tất
-```
-
-#### Không đọc DR đủ nhanh
-
-```text
-RXNE = 1
-+
-data mới tới
-→ ORE
-```
-
-#### Clear Error Flag sai cách
-
-`ORE/NE/FE/PE` không được xử lý như một bit read/write thông thường.
-
-Trình tự:
-
-```text
-read SR
-→ read DR
-```
-
-#### Cấu hình 8E1 với M = 0
-
-Nếu:
-
-```text
-M = 0
-PCE = 1
-```
-
-frame thực tế là:
-
-```text
-7 data bits + parity
-```
-
-Muốn:
-
-```text
-8 data bits + parity
-```
-
-phải dùng:
-
-```text
-M = 1
-PCE = 1
-```
-
-#### GPIO sai Mode
-
-```text
-TX
-→ AF Push-Pull
-
-RX
-→ Input
-```
-
-#### Disable USART trước TC
-
-Sau byte cuối:
-
-```text
-wait TC = 1
-```
-
-trước khi disable USART nếu muốn bảo đảm frame cuối không bị hỏng.
+Mục ví dụ này chỉ ghép các khối đã giải thích; không lặp lại định nghĩa của từng flag hoặc register.
 
 ---
 
 <a id="muc-06-21"></a>
 ## 6.21. Câu hỏi tự kiểm tra
 
-1. USART khác UART ở khả năng nào?
-2. Một frame UART bất đồng bộ gồm những phần nào?
-3. 8N1 nghĩa là gì?
-4. Muốn 8E1 phải cấu hình `M/PCE/PS` thế nào?
-5. Baud Rate của USART được tạo từ clock nào?
-6. Công thức Baud Rate của STM32F1 là gì?
-7. Với USART1, PCLK2=72 MHz, 115200 baud, BRR bằng bao nhiêu?
-8. Vì sao cùng BRR nhưng USART1 và USART2 có thể ra baud khác nhau?
-9. TX GPIO thường dùng mode nào trên STM32F1?
-10. RX GPIO thường dùng mode nào?
-11. `USART_DR` có hai chức năng nào?
-12. TXE khác TC thế nào?
-13. RXNE có nghĩa gì?
-14. ORE xảy ra khi nào?
-15. Trình tự clear ORE/NE/FE là gì?
-16. Tại sao phải disable TXEIE khi TX buffer đã hết dữ liệu?
-17. IDLE Line được dùng để nhận biết điều gì?
-18. DMA Receive kết hợp IDLE hữu ích trong trường hợp nào?
-19. Hãy mô tả toàn bộ quy trình cấu hình USART1 115200 8N1.
-20. Hãy phân biệt Polling, Interrupt và DMA trong USART.
+1. UART và USART khác nhau ở khả năng synchronous/asynchronous như thế nào?
+2. `asynchronous` có nghĩa USART không cần peripheral clock không?
+3. Một asynchronous frame gồm những phần nào?
+4. `M = 0/1` quy định word length như thế nào?
+5. Vì sao `M = 0`, `PCE = 1` không phải cấu hình 8 data bits + parity?
+6. 8N1 nghĩa là gì?
+7. `baud rate` và bit rate có quan hệ thế nào trong UART nhị phân NRZ thông thường?
+8. USART1 dùng `PCLK1` hay `PCLK2` làm `fCK`?
+9. `USARTDIV` và `USART_BRR` liên hệ như thế nào?
+10. Với `PCLK2 = 72 MHz`, USART1 115200 baud dùng `BRR` nào trong ví dụ của chương?
+11. TX và RX thường dùng GPIO mode nào trên STM32F1?
+12. `USART_DR` tham gia transmit path và receive path như thế nào?
+13. `TXE` và `TC` khác nhau ở thời điểm nào?
+14. `RXNE` biểu thị điều gì?
+15. `ORE` xảy ra trong điều kiện nào?
+16. Trình tự clear `ORE/FE/NE/PE` là gì?
+17. Vì sao phải disable `TXEIE` khi TX buffer đã hết?
+18. `IDLE` hữu ích thế nào khi receive bằng DMA?
+19. Polling, Interrupt và DMA khác nhau ở cách data được chuyển giữa USART và software/RAM như thế nào?
+20. Hãy mô tả trình tự cấu hình USART1 115200 8N1 từ clock tới transmit/receive.
 
 ---
 
 ## 6.22. Tóm tắt
 
-Frame:
+Quan hệ tổng quát:
+
+```text
+fCK
+ ↓
+baud-rate generator
+ ↓
+USART / UART
+├── transmitter → TX
+└── receiver    ← RX
+```
+
+Frame bất đồng bộ:
 
 ```text
 Idle
  ↓
 Start
  ↓
-Data LSB first
+Data
  ↓
-Parity nếu có
+Parity nếu enable
  ↓
 Stop
 ```
 
-8N1:
+Data path:
 
 ```text
-8 Data
-No Parity
-1 Stop Bit
-```
-
-Clock:
-
-```text
-USART1
-→ PCLK2
-
-USART2/3
-UART4/5
-→ PCLK1
-```
-
-Baud:
-
-```text
-Baud =
-fCK / (16 × USARTDIV)
-```
-
-```text
-USARTDIV =
-DIV_Mantissa + DIV_Fraction/16
-```
-
 Transmit:
-
-```text
-CPU / DMA
- ↓
-DR / TDR
- ↓
-Shift Register
- ↓
-TX
-```
+CPU / DMA → USART_DR → TDR → Shift Register → TX
 
 Receive:
-
-```text
-RX
- ↓
-Shift Register
- ↓
-RDR / DR
- ↓
-CPU / DMA
+RX → Shift Register → RDR → USART_DR → CPU / DMA
 ```
 
-Flags:
+Flag cốt lõi:
 
 ```text
 TXE
-→ TDR trống
+→ có thể nạp data tiếp
 
 TC
-→ frame cuối truyền xong
+→ frame cuối truyền hoàn tất
 
 RXNE
-→ RDR có data
+→ data nhận sẵn sàng
 
 IDLE
-→ phát hiện Idle Line
+→ receiver phát hiện Idle Line
 
-ORE
-→ Overrun
-
-NE
-→ Noise
-
-FE
-→ Framing
-
-PE
-→ Parity
+ORE / FE / NE / PE
+→ receive error flags
 ```
 
-Interrupt:
+Ba cách xử lý data:
 
 ```text
-USART Event
-   ↓
-Flag
-   ↓
-Interrupt Enable
-   ↓
-USART IRQ
-   ↓
-NVIC
-   ↓
-USARTx_IRQHandler()
-```
+Polling
+→ software chủ động kiểm tra flag
 
-DMA:
+Interrupt
+→ USART event tạo IRQ, ISR xử lý data
 
-```text
-USART
-↔
 DMA
-↔
-SRAM Buffer
+→ DMA chuyển data giữa USART và RAM
 ```
 
-**Điểm cần nhớ:**
-
-> **Muốn cấu hình USART đúng phải xác định peripheral clock trước khi tính `USART_BRR`, cấu hình đúng frame và GPIO, phân biệt `TXE` với `TC`, đọc `DR` kịp thời khi `RXNE` được set, và xử lý đúng trình tự clear các receive error flag.**
+> **Khi cấu hình UART/USART trên STM32F1, trước hết xác định đúng `fCK`, sau đó cấu hình frame và `USART_BRR`, GPIO TX/RX, rồi chọn cơ chế Polling/Interrupt/DMA phù hợp. `TXE`, `TC`, `RXNE`, `IDLE` và các receive error flag có vai trò khác nhau và được giải thích tại đúng mục chuyên biệt thay vì lặp lại trong các mục quy trình/ví dụ.**
 
 [↑ Về mục lục](#muc-luc)
 
