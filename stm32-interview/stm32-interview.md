@@ -10829,6 +10829,65 @@ muốn ghi
 
 Giá trị dummy **không mặc định luôn là tùy ý**. `0x00` hoặc `0xFF` chỉ nên dùng khi protocol của Slave cho phép; nếu datasheet của thiết bị quy định giá trị khác thì phải làm theo thiết bị đó.
 
+
+Một điểm quan trọng khác:
+
+```text
+dummy byte
+≠
+một giá trị đặc biệt của SPI
+```
+
+Peripheral SPI không biết một byte là:
+
+```text
+data thật
+hay
+dummy data
+```
+
+Nó chỉ phát đúng giá trị đã được ghi vào `SPI_DR`. Việc một byte được xem là **dummy** hay **data thật** phụ thuộc vào **pha hiện tại của protocol** và cách Slave xử lý MOSI.
+
+Ví dụ cùng giá trị:
+
+```text
+0xFF
+```
+
+có thể mang hai ý nghĩa khác nhau:
+
+```text
+Read phase
++
+Slave bỏ qua MOSI
+→ 0xFF chỉ là dummy byte
+→ mục đích chính là tạo 8 xung SCK
+
+Write / Command phase
++
+Slave đang đọc MOSI
+→ 0xFF có thể được hiểu là data hoặc command thật
+```
+
+Vì vậy, nếu dummy byte trùng với giá trị dữ liệu thật mà Master có thể gửi thì **không có xung đột ở mức phần cứng SPI**. Điều quan trọng là Slave đang ở trạng thái nào trong protocol.
+
+Có thể nhớ:
+
+```text
+cùng một giá trị byte
+→ ở pha này có thể là dummy
+→ ở pha khác có thể là data thật
+```
+
+Do đó trước khi chọn `0x00`, `0xFF` hoặc một giá trị khác làm dummy, phải kiểm tra datasheet của Slave:
+
+```text
+MOSI trong read phase có bị ignore không?
+có yêu cầu filler / NOP cụ thể không?
+có cần dummy byte hay chỉ cần dummy clock cycles?
+```
+
+
 Nếu `DFF = 1`:
 
 ```text
