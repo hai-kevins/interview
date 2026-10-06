@@ -2801,7 +2801,7 @@ Clock tree mô tả **đường phân phối clock** từ clock source tới pro
 
 **Hình minh họa — Clock tree của STM32F1**
 
-![Clock tree STM32F1](assets/clock-tree.png)
+![Clock tree STM32F1](assets/chapter-2/clock-tree.png)
 
 > **Cách đọc hình:** đọc từ trái sang phải. Bên trái là các clock source `HSI/HSE/LSI/LSE`; vùng giữa là khối chọn nguồn, PLL và SYSCLK; sau `SYSCLK` là AHB prescaler tạo `HCLK`, rồi APB1/APB2 prescaler tạo `PCLK1/PCLK2`; các nhánh phía phải là clock đi tới timer và các peripheral. Không cần học thuộc toàn bộ hình trong một lần — mỗi nhánh được giải thích tại mục tương ứng bên dưới.
 
@@ -6661,6 +6661,8 @@ ARR
 
 Capture/Compare channel bổ sung các `CCRx`. Vai trò cụ thể của `PSC`, `CNT`, `ARR`, `CCRx` được tách lần lượt tại **5.4–5.6** và **5.10**.
 
+![RM0008 Figure 100 — General-purpose timer block diagram](assets/chapter-5/figure-100.png)
+
 ---
 
 <a id="muc-05-02"></a>
@@ -6920,6 +6922,8 @@ Trong Edge-Aligned mode:
 DIR = 0
 ```
 
+![RM0008 Figure 103 — Counter timing diagram, internal clock divided by 1](assets/chapter-5/figure-103.png)
+
 ### Downcounting
 
 ```text
@@ -6931,6 +6935,8 @@ Trong Edge-Aligned mode:
 ```text
 DIR = 1
 ```
+
+![RM0008 Figure 109 — Counter timing diagram, internal clock divided by 1](assets/chapter-5/figure-109.png)
 
 ### Center-Aligned counting
 
@@ -6947,6 +6953,8 @@ CMS != 00
 ```
 
 Timer chạy theo Center-Aligned mode; direction được hardware cập nhật theo pha đếm hiện tại.
+
+![RM0008 Figure 114 — Center-Aligned counter timing diagram](assets/chapter-5/figure-114.png)
 
 Điểm cần phân biệt:
 
@@ -7130,6 +7138,8 @@ CH4
 
 `CCRx` không nên được gọi mặc định là “duty register”, vì trong Input Capture nó chứa captured counter value, còn trong Output Compare/PWM nó giữ compare value.
 
+![RM0008 Figure 126 — Capture/Compare channel 1 main circuit](assets/chapter-5/figure-126.png)
+
 ---
 
 <a id="muc-05-11"></a>
@@ -7176,6 +7186,8 @@ CCR1 = 500
 CNT đạt compare value
 → output có thể toggle
 ```
+
+![RM0008 Figure 129 — Output compare mode, toggle on OC1](assets/chapter-5/figure-129.png)
 
 PWM là một trường hợp Output Compare có mode riêng, được trình bày từ **5.13** trở đi.
 
@@ -7338,6 +7350,8 @@ CCRx > ARR
 → OCxREF được giữ active trong PWM Mode 1 Upcounting
 ```
 
+![RM0008 Figure 130 — Edge-Aligned PWM waveforms (ARR=8)](assets/chapter-5/figure-130.png)
+
 Waveform thực tế tại pin còn phụ thuộc output polarity, được trình bày tại **5.15**.
 
 ---
@@ -7386,6 +7400,8 @@ Output Polarity
 ```
 
 Vì vậy duty theo trạng thái High ở pin không được suy ra chỉ từ `CCRx` nếu polarity đã bị đảo.
+
+![RM0008 Figure 131 — Center-Aligned PWM waveforms (ARR=8)](assets/chapter-5/figure-131.png)
 
 ---
 
@@ -7451,6 +7467,8 @@ Update Event
       ↓
 active/shadow ARR được cập nhật
 ```
+
+![RM0008 Figure 108 — Update event khi ARPE=1](assets/chapter-5/figure-108.png)
 
 ### `OCxPE`
 
