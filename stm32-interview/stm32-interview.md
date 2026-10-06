@@ -12232,91 +12232,109 @@ AF
 <a id="chuong-08"></a>
 # 8. ADC
 
-`ADC` chuyển điện áp analog thành giá trị số để CPU có thể xử lý.
+Chương này dùng một mục chính cho mỗi khái niệm của ADC. Các mục quy trình và ví dụ chỉ áp dụng lại cơ chế đã nêu và dẫn chiếu về mục chính để tránh lặp nội dung.
 
-Luồng cơ bản:
+Luồng tổng quát:
 
 ```text
-Analog Voltage
-     ↓
-GPIO Analog Mode
-     ↓
-ADC Channel
-     ↓
+Analog input
+    ↓
+ADC channel
+    ↓
 Sampling
-     ↓
-12-bit Conversion
-     ↓
-ADC Data Register
-     ↓
+    ↓
+12-bit conversion
+    ↓
+Conversion result
+    ↓
 Polling / Interrupt / DMA
 ```
 
-STM32F10xxx sử dụng ADC kiểu **successive approximation** với độ phân giải 12-bit. ADC có thể thực hiện Single, Continuous, Scan và Discontinuous conversion; hỗ trợ Regular Group, Injected Group, external trigger, Analog Watchdog, self-calibration, interrupt và DMA cho Regular conversion.
+STM32F10xxx dùng ADC kiểu **successive approximation** với độ phân giải 12-bit. Các cơ chế chính gồm Regular Group, Injected Group, Single/Continuous Conversion, Scan Mode, Discontinuous Mode, software/external trigger, Analog Watchdog, calibration, interrupt, DMA và Dual ADC Mode tùy device.
+
+## Quy ước thuật ngữ
+
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **ADC** | Analog-to-Digital Converter; khối chuyển đổi tín hiệu analog thành mã số. |
+| **analog input** | Điện áp analog đưa vào ADC qua external channel hoặc internal channel. |
+| **ADC channel** | Ngõ vào được analog multiplexer chọn để đưa tới ADC core; một channel không phải một ADC độc lập. |
+| **external channel** | ADC channel nối tới pin ngoài, ví dụ `ADCx_IN0...ADCx_IN15` tùy device/ADC instance. |
+| **internal channel** | Nguồn analog bên trong MCU; ADC1 có Temperature Sensor và `VREFINT`. |
+| **ADC code / conversion result** | Giá trị số do ADC tạo ra sau conversion; với ADC 12-bit thông thường nằm trong `0...4095` trước các xử lý đặc biệt như injected offset. |
+| **reference voltage** | Dải tham chiếu `VREF-...VREF+` dùng để ánh xạ analog input sang ADC code. |
+| **`ADCCLK`** | Clock cấp cho ADC sau ADC prescaler từ `PCLK2`. |
+| **ADC prescaler / `ADCPRE`** | Bộ chia từ `PCLK2` để tạo `ADCCLK`. |
+| **sampling time** | Thời gian ADC nối channel vào mạch sample-and-hold trước giai đoạn chuyển đổi. |
+| **conversion time** | Tổng thời gian từ sampling tới khi conversion result hoàn tất; với STM32F1 bằng sampling time cộng 12.5 chu kỳ `ADCCLK`. |
+| **Regular Group** | Nhóm conversion thông thường, tối đa 16 rank. |
+| **Injected Group** | Nhóm conversion có thể chen vào Regular Group theo cơ chế injected conversion, tối đa 4 rank. |
+| **conversion sequence** | Danh sách channel được ADC chuyển đổi theo thứ tự. |
+| **rank** | Vị trí của một channel trong conversion sequence; không phải priority. |
+| **Single Conversion** | Một trigger chạy sequence theo cấu hình rồi dừng. |
+| **Continuous Conversion** | Sau khi bắt đầu, ADC tiếp tục conversion theo cấu hình mà không cần trigger mới cho mỗi lần lặp. |
+| **Scan Mode** | ADC tự lần lượt chuyển đổi nhiều rank trong một group. |
+| **Discontinuous Mode** | Chia một conversion sequence thành các nhóm nhỏ, mỗi trigger chỉ chạy một phần sequence. |
+| **software trigger / software start** | Conversion được bắt đầu bằng bit software như `SWSTART` hoặc `JSWSTART`. |
+| **external trigger** | Conversion được bắt đầu bởi event phần cứng như Timer hoặc EXTI theo lựa chọn trigger của ADC. |
+| **`EOC`** | End Of Conversion; flag cho Regular conversion result. |
+| **`JEOC`** | Injected End Of Conversion; flag báo Injected Group hoàn tất. |
+| **data alignment** | Cách đặt conversion result 12-bit trong data register 16-bit: Right Alignment hoặc Left Alignment. |
+| **calibration** | Self-calibration của ADC để giảm sai số nội bộ; dùng `RSTCAL` và `CAL`. |
+| **Analog Watchdog** | Khối phần cứng so sánh conversion result với ngưỡng thấp/cao. |
+| **DMA request** | Yêu cầu DMA do Regular conversion tạo ra để chuyển `ADC_DR` sang memory. |
+| **Dual ADC Mode** | Cơ chế phối hợp ADC1/ADC2 ở các mode simultaneous, interleaved... tùy device. |
+
+Tên register/bit giữ nguyên ký hiệu STM32F1 như `ADC_CR1.SCAN`, `ADC_CR2.CONT`, `ADC_DR`, `ADC_JDRx`, `ADC_SQRx`, `ADC_JSQR`, `EOC`, `JEOC`.
+
+---
 
 <a id="muc-08-01"></a>
 ## 8.1. ADC là gì?
 
-`ADC`:
+`ADC` là:
 
 ```text
 Analog-to-Digital Converter
 ```
 
-ADC nhận một điện áp analog:
+ADC lấy một analog input, sample giá trị đó và tạo conversion result dạng số:
 
 ```text
-VIN
-```
-
-và tạo một mã số:
-
-```text
-ADC Code
-```
-
-Khái niệm:
-
-```text
-Analog Voltage
-      ↓
+Analog input
+    ↓
 Sample
-      ↓
+    ↓
 Quantize
-      ↓
-Digital Code
+    ↓
+Digital code
 ```
 
-STM32F10xxx ADC có:
+STM32F10xxx ADC có độ phân giải:
 
 ```text
-12-bit resolution
+12 bit
 ```
 
-và tối đa:
-
-```text
-16 external channels
-+
-2 internal sources
-```
-
-Trong đó hai nguồn nội bộ trên ADC1 là:
-
-```text
-Temperature Sensor
-VREFINT
-```
-
-Một ADC channel không phải một ADC độc lập. Các channel được đưa qua analog multiplexer vào cùng bộ chuyển đổi.
+Các ADC channel được chọn qua analog multiplexer rồi đưa vào ADC core:
 
 ```text
 ADC_IN0 ─┐
 ADC_IN1 ─┤
 ADC_IN2 ─┤
-...      ├──→ Analog MUX ──→ ADC Core
+...      ├──→ Analog MUX ──→ ADC core
 ADC_IN15 ┘
 ```
+
+Vì vậy:
+
+```text
+ADC channel
+≠
+một ADC độc lập
+```
+
+External channel và GPIO tương ứng được trình bày tại **8.5**; Temperature Sensor và `VREFINT` được trình bày tại **8.18**.
 
 ---
 
@@ -12329,30 +12347,11 @@ ADC 12-bit có:
 2^12 = 4096 mức
 ```
 
-Regular conversion result có giá trị:
+Với Regular conversion thông thường, ADC code nằm trong:
 
 ```text
-0 → 4095
+0 ... 4095
 ```
-
-Có thể hình dung:
-
-```text
-VREF+
-  │
-  │        4095
-  │       /
-  │      /
-VIN     /
-  │    /
-  │   /
-  │  /
-  │ /
-  │/
-VREF- ───────── 0
-```
-
-### Mô hình lượng tử hóa lý tưởng
 
 Nếu:
 
@@ -12360,7 +12359,7 @@ Nếu:
 VREF- = 0 V
 ```
 
-thì có thể ước lượng:
+có thể ước lượng điện áp theo mô hình lý tưởng:
 
 ```text
 VIN ≈ ADC_Code × VREF+
@@ -12368,7 +12367,7 @@ VIN ≈ ADC_Code × VREF+
              4095
 ```
 
-Tổng quát hơn:
+Tổng quát:
 
 ```text
 VIN
@@ -12380,48 +12379,26 @@ ADC_Code × (VREF+ - VREF-)
            4095
 ```
 
-Đây là mô hình tính lý tưởng; sai số thực tế còn phụ thuộc reference, ADC accuracy, nguồn tín hiệu, sampling time, nhiễu và đặc tính điện của MCU.
-
-### Ví dụ
-
-Giả sử:
+Ví dụ:
 
 ```text
 VREF- = 0 V
 VREF+ = 3.3 V
-ADC   = 2048
+ADC_Code = 2048
+
+→ VIN ≈ 1.65 V
 ```
 
-thì:
+`ADC_DR` chứa **conversion result**, không chứa đơn vị Volt. Muốn đổi ADC code sang điện áp phải biết reference voltage thực tế tại thời điểm đo; các tín hiệu reference và analog supply nằm tại **8.3**.
 
-```text
-VIN
-≈ 2048 × 3.3 / 4095
-≈ 1.65 V
-```
-
-Điểm cần nhớ:
-
-```text
-ADC_DR không chứa đơn vị Volt
-```
-
-Nó chứa:
-
-```text
-Digital Code
-```
-
-và muốn đổi ra Volt phải biết điện áp reference thực tế.
+Sai số thực tế còn phụ thuộc ADC accuracy, reference, nguồn tín hiệu, sampling time và nhiễu; công thức trên chỉ là mô hình lượng tử hóa lý tưởng.
 
 ---
 
 <a id="muc-08-03"></a>
 ## 8.3. VREF+ / VREF- / VDDA / VSSA
 
-ADC sử dụng miền nguồn analog riêng.
-
-Các tín hiệu:
+ADC dùng miền nguồn analog:
 
 ```text
 VDDA
@@ -12437,89 +12414,55 @@ VREF-
 → Negative ADC Reference
 ```
 
-Theo STM32F10xxx:
+Trong phạm vi nội dung chương:
 
 ```text
 2.4 V ≤ VDDA ≤ 3.6 V
 ```
 
-và ADC input phải nằm trong:
+Analog input phải nằm trong:
 
 ```text
 VREF- ≤ VIN ≤ VREF+
 ```
 
-Nếu chân `VREF-` tồn tại trên package:
+Nếu package có chân `VREF-`:
 
 ```text
 VREF- = VSSA
 ```
 
-`VREF+` nằm trong:
+và:
 
 ```text
 2.4 V ≤ VREF+ ≤ VDDA
 ```
 
-Khả năng đưa `VREF+` / `VREF-` ra chân riêng phụ thuộc đúng MCU và package.
+Khả năng đưa `VREF+`/`VREF-` ra chân riêng phụ thuộc MCU và package.
 
-### Vì sao Reference quan trọng?
-
-ADC đo:
+Reference voltage là chuẩn mà ADC dùng để ánh xạ điện áp sang ADC code:
 
 ```text
-VIN
-so với
-VREF
+reference thay đổi
+→ cùng VIN có thể cho ADC code khác
 ```
 
-Nếu reference thay đổi:
-
-```text
-cùng một VIN
-→ ADC Code có thể thay đổi
-```
-
-Do đó độ ổn định của:
-
-```text
-VDDA
-VREF+
-VSSA
-```
-
-ảnh hưởng trực tiếp đến chất lượng phép đo.
+Vì vậy độ ổn định của `VDDA`, `VREF+` và `VSSA` ảnh hưởng trực tiếp tới phép đo.
 
 ---
 
 <a id="muc-08-04"></a>
 ## 8.4. ADC Clock và Prescaler
 
-ADC clock:
-
-```text
-ADCCLK
-```
-
-được tạo từ:
+`ADCCLK` được tạo từ `PCLK2` qua ADC prescaler trong RCC:
 
 ```text
 PCLK2
-```
-
-qua ADC Prescaler trong RCC.
-
-Clock Tree:
-
-```text
-PCLK2
-  ↓
-ADC Prescaler
-  ↓
+  ↓ ADCPRE
 ADCCLK
 ```
 
-Các hệ số chia trên STM32F1:
+Các hệ số chia:
 
 ```text
 /2
@@ -12528,78 +12471,42 @@ Các hệ số chia trên STM32F1:
 /8
 ```
 
-Điều kiện quan trọng:
+Giới hạn cần giữ:
 
 ```text
 ADCCLK ≤ 14 MHz
 ```
 
-### Ví dụ
-
-Cho:
+Ví dụ với:
 
 ```text
 PCLK2 = 72 MHz
 ```
 
-Nếu:
+thì:
 
 ```text
 ADCPRE = /6
+→ ADCCLK = 12 MHz
+→ hợp lệ
 ```
 
-thì:
-
-```text
-ADCCLK
-= 72 MHz / 6
-= 12 MHz
-```
-
-hợp lệ.
-
-Nếu:
+còn:
 
 ```text
 ADCPRE = /4
+→ ADCCLK = 18 MHz
+→ vượt giới hạn
 ```
 
-thì:
-
-```text
-ADCCLK
-= 72 MHz / 4
-= 18 MHz
-```
-
-vượt giới hạn:
-
-```text
-14 MHz
-```
-
-### Tư duy cấu hình
-
-```text
-SYSCLK / Clock Tree
-        ↓
-PCLK2
-        ↓
-ADCPRE
-        ↓
-ADCCLK
-        ↓
-Sampling + Conversion
-```
-
-Không nên cấu hình ADC trước khi biết `PCLK2`.
+Nguồn `PCLK2` và cơ chế `ADCPRE` đã được trình bày ở **Chương 2**; tại đây chỉ cần xác định `ADCCLK` trước khi tính ADC timing.
 
 ---
 
 <a id="muc-08-05"></a>
 ## 8.5. ADC Channel và GPIO Analog Mode
 
-External ADC input được đặt tên:
+External ADC channel có dạng:
 
 ```text
 ADCx_IN0
@@ -12608,23 +12515,12 @@ ADCx_IN1
 ADCx_IN15
 ```
 
-Pin cụ thể của từng channel phải kiểm tra theo pinout MCU.
+Pin tương ứng phụ thuộc device, ADC instance và package, vì vậy phải kiểm tra pinout của MCU đang dùng.
 
-Ví dụ thường gặp:
-
-```text
-PA0
-→ ADC_IN0
-```
-
-nhưng mapping chính xác phụ thuộc ADC instance và device.
-
-### GPIO Configuration
-
-GPIO dùng cho ADC phải cấu hình:
+GPIO nối tới external ADC channel phải cấu hình:
 
 ```text
-Analog Mode
+Analog mode
 ```
 
 Trên STM32F1:
@@ -12634,69 +12530,40 @@ MODE = 00
 CNF  = 00
 ```
 
-Khi ở Analog Mode:
+Cơ chế Analog mode đã được trình bày tại **3.14**. Trong Chương 8 chỉ cần nhớ đường tín hiệu:
 
 ```text
-Output Buffer
-→ OFF
-
-Digital Input / Schmitt Trigger
-→ OFF
-
-Pull-Up / Pull-Down
-→ OFF
-```
-
-Luồng:
-
-```text
-Analog Source
+Analog source
      ↓
-GPIO Analog Pin
+GPIO ở Analog mode
      ↓
-ADC Channel
+ADC channel
+     ↓
+ADC core
 ```
 
-### Vì sao không dùng Digital Input?
-
-Digital input path không cần thiết cho ADC signal.
-
-Analog Mode giúp:
-
-```text
-ngắt digital input path
-giảm tiêu thụ không cần thiết
-tránh ảnh hưởng không cần thiết lên analog signal
-```
+Không dùng digital input mode cho pin ADC chỉ vì tín hiệu đi qua GPIO pin; ADC cần analog path của pin.
 
 ---
 
 <a id="muc-08-06"></a>
 ## 8.6. Sampling Time
 
-Trước khi chuyển đổi, ADC phải sample điện áp input trong một số chu kỳ `ADCCLK`.
+Trước giai đoạn chuyển đổi, ADC sample analog input trong một số chu kỳ `ADCCLK`.
 
-STM32F1 cho phép chọn sampling time riêng cho từng channel.
-
-Registers:
+Sampling time được cấu hình riêng theo channel:
 
 ```text
 ADC_SMPR1
-→ Channels 10 → 17
+→ Channel 10 ... 17
 
 ADC_SMPR2
-→ Channels 0 → 9
+→ Channel 0 ... 9
 ```
 
-Mỗi channel dùng:
+Mỗi channel dùng `SMPx[2:0]`:
 
-```text
-SMPx[2:0]
-```
-
-Các lựa chọn:
-
-| `SMPx` | Sampling Time |
+| `SMPx` | Sampling time |
 |---|---:|
 | `000` | 1.5 cycles |
 | `001` | 7.5 cycles |
@@ -12707,126 +12574,90 @@ Các lựa chọn:
 | `110` | 71.5 cycles |
 | `111` | 239.5 cycles |
 
-### Tư duy
+ADC dùng mạch sample-and-hold:
 
 ```text
-Sampling Time ngắn
-→ tốc độ cao hơn
-
-Sampling Time dài
-→ input có nhiều thời gian ổn định hơn
+Analog source
+     ↓
+source impedance
+     ↓
+sample-and-hold capacitor
+     ↓
+ADC core
 ```
 
-ADC sử dụng mạch sample-and-hold.
-
-Có thể hình dung:
-
-```text
-Analog Source
-     ↓
-Source Resistance
-     ↓
-Sample-and-Hold Capacitor
-     ↓
-ADC Core
-```
-
-Nếu nguồn tín hiệu có trở kháng tương đối cao, capacitor cần đủ thời gian để nạp đến điện áp gần với VIN.
-
-Do đó:
+Nguồn có trở kháng cao cần nhiều thời gian hơn để điện áp trên sample-and-hold capacitor tiến đủ gần `VIN`. Vì vậy:
 
 ```text
 sampling time quá ngắn
-→ code ADC có thể sai
+→ conversion result có thể sai
 ```
 
-Sampling Time phải được chọn theo:
+Sampling time phải được chọn dựa trên:
 
 ```text
-Source impedance
-ADC clock
-Accuracy requirement
-Sampling rate requirement
-Electrical characteristics
+source impedance
+ADCCLK
+accuracy requirement
+sampling-rate requirement
+electrical characteristics
 ```
+
+Mục **8.7** dùng sampling time này để tính tổng conversion time.
 
 ---
 
 <a id="muc-08-07"></a>
 ## 8.7. Conversion Time
 
-Tổng conversion time:
+Với STM32F1:
 
 ```text
-Tconv
+conversion time
 =
-Sampling Time
+sampling time
 +
 12.5 ADCCLK cycles
 ```
 
-### Ví dụ 1
+Ví dụ:
 
 ```text
 ADCCLK = 14 MHz
-Sampling Time = 1.5 cycles
+sampling time = 1.5 cycles
+
+→ total = 14 cycles
+→ Tconv = 1 µs
 ```
 
-Tổng:
-
-```text
-1.5 + 12.5
-= 14 cycles
-```
-
-Do đó:
-
-```text
-Tconv
-= 14 / 14 MHz
-= 1 µs
-```
-
-### Ví dụ 2
+Ví dụ khác:
 
 ```text
 ADCCLK = 12 MHz
-Sampling Time = 55.5 cycles
+sampling time = 55.5 cycles
+
+→ total = 68 cycles
+→ Tconv ≈ 5.67 µs
 ```
 
-Tổng:
+Cần phân biệt:
 
 ```text
-55.5 + 12.5
-= 68 cycles
+sampling time
+→ thời gian lấy mẫu analog input
+
+conversion time
+→ sampling time + 12.5 cycles
 ```
 
-Do đó:
-
-```text
-Tconv
-= 68 / 12 MHz
-≈ 5.67 µs
-```
-
-### Phân biệt
-
-```text
-Sampling Time
-→ thời gian lấy mẫu input
-
-Conversion Time
-→ Sampling Time + 12.5 cycles
-```
-
-Không được coi hai khái niệm là giống nhau.
+Giá trị `ADCCLK` được xác định tại **8.4**; các lựa chọn sampling time nằm tại **8.6**.
 
 ---
 
 <a id="muc-08-08"></a>
 ## 8.8. Regular Group và Injected Group
 
-Các conversion được chia thành:
+ADC chia conversion thành hai group:
 
 ```text
 ADC
@@ -12839,7 +12670,7 @@ ADC
 Regular Group có tối đa:
 
 ```text
-16 conversions
+16 rank
 ```
 
 Sequence được cấu hình bằng:
@@ -12850,16 +12681,10 @@ ADC_SQR2
 ADC_SQR3
 ```
 
-Kết quả được đưa vào:
+Regular Group thường dùng cho:
 
 ```text
-ADC_DR
-```
-
-Regular Group phù hợp cho:
-
-```text
-sensor sampling thông thường
+single-channel sampling
 continuous conversion
 scan nhiều channel
 ADC + DMA
@@ -12870,7 +12695,7 @@ ADC + DMA
 Injected Group có tối đa:
 
 ```text
-4 conversions
+4 rank
 ```
 
 Sequence được cấu hình bằng:
@@ -12879,49 +12704,27 @@ Sequence được cấu hình bằng:
 ADC_JSQR
 ```
 
-Kết quả được lưu riêng:
-
-```text
-ADC_JDR1
-ADC_JDR2
-ADC_JDR3
-ADC_JDR4
-```
-
-### Ý nghĩa "Injected"
-
-Injected conversion có thể được kích hoạt trong lúc Regular Group đang chạy.
+Injected conversion có thể chen vào khi Regular Group đang hoạt động.
 
 Khái niệm:
 
 ```text
-Regular conversion
-      ↓
+Regular conversion đang chạy
+        ↓
 Injected trigger
-      ↓
-conversion hiện tại bị reset
-      ↓
+        ↓
+current Regular conversion bị reset
+        ↓
 Injected sequence chạy
-      ↓
+        ↓
 Regular sequence tiếp tục
 ```
 
-Nếu Regular event xảy ra trong Injected conversion:
-
-```text
-Injected sequence tiếp tục
-→ Regular sequence chờ tới cuối Injected sequence
-```
+Nếu Regular trigger/event xuất hiện trong khi Injected Group đang chạy, Regular operation chờ cho tới khi Injected sequence hoàn tất.
 
 ### Auto-Injected
 
-Bit:
-
-```text
-JAUTO
-```
-
-cho phép:
+`ADC_CR1.JAUTO` cho phép:
 
 ```text
 Regular Group hoàn tất
@@ -12939,14 +12742,16 @@ Regular
 → ...
 ```
 
-Auto-Injected và Discontinuous Mode không được sử dụng đồng thời.
+Auto-Injected không dùng đồng thời với Discontinuous Mode.
+
+Vị trí conversion result và các flag `EOC/JEOC` được tập trung tại **8.14**; thứ tự rank nằm tại **8.9**.
 
 ---
 
 <a id="muc-08-09"></a>
 ## 8.9. Conversion Sequence và Rank
 
-Một group không chỉ chọn channel mà còn quy định **thứ tự conversion**.
+Conversion sequence xác định **channel nào được convert và theo thứ tự nào**.
 
 Ví dụ:
 
@@ -12958,11 +12763,9 @@ Rank 4 → Channel 2
 Rank 5 → Channel 0
 ```
 
-Một channel có thể xuất hiện nhiều lần trong sequence.
+Một channel có thể xuất hiện nhiều lần trong cùng sequence.
 
-### Regular Sequence
-
-Registers:
+### Regular sequence
 
 ```text
 ADC_SQR1
@@ -12970,67 +12773,47 @@ ADC_SQR2
 ADC_SQR3
 ```
 
-`ADC_SQR1.L` xác định:
+`ADC_SQR1.L` xác định độ dài Regular sequence:
 
 ```text
-số conversion của Regular Group
+1 ... 16 conversions
 ```
 
-Tối đa:
-
-```text
-16
-```
-
-### Injected Sequence
-
-Register:
+### Injected sequence
 
 ```text
 ADC_JSQR
 ```
 
-`JL` xác định số conversion:
+`JL` xác định độ dài:
 
 ```text
-1 → 4
+1 ... 4 conversions
 ```
 
 ### Rank
 
-Rank có nghĩa:
+`rank` chỉ là vị trí trong sequence:
 
 ```text
-vị trí trong sequence
+Rank 1
+→ conversion đầu tiên
+
+Rank 2
+→ conversion thứ hai
 ```
 
-Ví dụ:
+Không được hiểu:
 
 ```text
-Rank 1 = Channel 5
-Rank 2 = Channel 1
-Rank 3 = Channel 9
+rank
+=
+priority
 ```
 
-không có nghĩa:
+Nếu thay đổi `ADC_SQRx` hoặc `ADC_JSQR` trong khi conversion đang diễn ra, current conversion bị reset và ADC bắt đầu theo group configuration mới.
 
-```text
-Channel 5 có priority cao hơn Channel 1
-```
-
-Đây chỉ là thứ tự conversion.
-
-### Lưu ý khi sửa Sequence
-
-Nếu:
-
-```text
-ADC_SQRx
-hoặc
-ADC_JSQR
-```
-
-bị thay đổi trong khi conversion đang diễn ra, current conversion bị reset và ADC bắt đầu theo group configuration mới.
+Các mode điều khiển cách sequence chạy được trình bày tại **8.10–8.12**.
 
 ---
 
@@ -13039,96 +12822,52 @@ bị thay đổi trong khi conversion đang diễn ra, current conversion bị r
 
 ### Single Conversion
 
-Bit:
-
 ```text
 CONT = 0
 ```
 
-Luồng:
+Một trigger bắt đầu conversion theo group/sequence đã cấu hình; sau khi sequence tương ứng hoàn tất, ADC không tự lặp lại bằng Continuous Conversion.
 
 ```text
 Trigger
- ↓
-Conversion
- ↓
-Result
- ↓
-ADC dừng
-```
-
-Regular result:
-
-```text
-ADC_DR
-EOC = 1
-```
-
-Injected result:
-
-```text
-ADC_JDRx
-JEOC = 1
+  ↓
+conversion / sequence
+  ↓
+result
+  ↓
+dừng
 ```
 
 ### Continuous Conversion
-
-Bit:
 
 ```text
 CONT = 1
 ```
 
-Luồng:
+Sau khi được start, ADC tiếp tục conversion theo cấu hình:
 
 ```text
 Start
- ↓
-Conversion
- ↓
-Conversion
- ↓
-Conversion
- ↓
+  ↓
+conversion / sequence
+  ↓
+conversion / sequence
+  ↓
 ...
 ```
 
-Sau mỗi Regular conversion:
+Continuous Conversion thường được dùng cho acquisition liên tục và có thể kết hợp Scan Mode/DMA.
 
-```text
-ADC_DR được cập nhật
-EOC được set
-```
-
-Sau mỗi Injected sequence:
-
-```text
-JDRx được cập nhật
-JEOC được set
-```
-
-Continuous mode phù hợp cho:
-
-```text
-continuous sensor sampling
-ADC + DMA
-signal acquisition
-```
+Flag và data register không định nghĩa lại tại đây; xem **8.14**. Scan nhiều rank được trình bày tại **8.11**.
 
 ---
 
 <a id="muc-08-11"></a>
 ## 8.11. Scan Mode
 
-Bit:
+`ADC_CR1.SCAN` cho phép ADC tự lần lượt convert nhiều rank của một group.
 
-```text
-ADC_CR1.SCAN
-```
-
-Scan Mode dùng để tự động convert một group nhiều channel.
-
-Ví dụ:
+Ví dụ Regular sequence đã cấu hình tại **8.9**:
 
 ```text
 Rank 1 → CH0
@@ -13137,188 +12876,103 @@ Rank 3 → CH4
 Rank 4 → CH7
 ```
 
-Luồng:
+Khi Scan Mode chạy:
 
 ```text
 Trigger
- ↓
-CH0
- ↓
-CH1
- ↓
-CH4
- ↓
-CH7
+  ↓
+CH0 → CH1 → CH4 → CH7
 ```
 
-ADC tự chuyển sang channel tiếp theo sau mỗi conversion.
+ADC tự chuyển sang rank tiếp theo; software không cần tự chọn lại channel sau từng conversion.
 
-Nếu:
+Quan hệ với `CONT`:
 
 ```text
 CONT = 0
-```
+→ chạy sequence theo trigger rồi dừng
 
-thì:
-
-```text
-scan hết sequence
-→ dừng
-```
-
-Nếu:
-
-```text
 CONT = 1
+→ sequence được lặp liên tục sau khi đã start
 ```
 
-thì:
+Với Regular Scan nhiều channel, các conversion result lần lượt đi qua cùng `ADC_DR`, vì vậy cơ chế DMA được xử lý tại **8.20** thay vì lặp lại ở đây.
 
-```text
-CH0 → CH1 → CH4 → CH7
- ↑                    ↓
- └────────────────────┘
-```
-
-### Regular Scan và DMA
-
-Regular conversion results đều đi qua một register:
-
-```text
-ADC_DR
-```
-
-Vì vậy khi Scan Mode dùng Regular Group, RM0008 yêu cầu:
-
-```text
-DMA = 1
-```
-
-và DMA chuyển từng result sang SRAM sau mỗi lần `ADC_DR` được cập nhật.
-
-Luồng:
-
-```text
-CH0 → ADC_DR → DMA → buffer[0]
-CH1 → ADC_DR → DMA → buffer[1]
-CH4 → ADC_DR → DMA → buffer[2]
-CH7 → ADC_DR → DMA → buffer[3]
-```
-
-Injected Group không cần cơ chế này vì có các register riêng:
-
-```text
-JDR1
-JDR2
-JDR3
-JDR4
-```
+Injected Group có data register riêng cho từng injected rank; xem **8.14**.
 
 ---
 
 <a id="muc-08-12"></a>
 ## 8.12. Discontinuous Mode
 
-Discontinuous Mode chia một sequence thành các phần nhỏ, mỗi trigger chạy một phần.
+Discontinuous Mode chia một conversion sequence thành các phần nhỏ để mỗi trigger chỉ chạy một phần.
 
 ### Regular Group
-
-Enable:
 
 ```text
 DISCEN = 1
 ```
 
-Số channel mỗi trigger:
+`DISCNUM` chọn số conversion mỗi trigger:
 
 ```text
-DISCNUM
-→ 1 → 8 conversions
+1 ... 8 conversions
 ```
 
 Ví dụ sequence:
 
 ```text
-CH0
-CH1
-CH2
-CH3
-CH6
-CH7
-CH9
-CH10
+CH0 CH1 CH2 CH3 CH6 CH7 CH9 CH10
 ```
 
-và:
+với:
 
 ```text
-n = 3
+DISCNUM tương ứng 3 conversions / trigger
 ```
 
-Luồng:
+thì:
 
 ```text
-Trigger 1
-→ CH0 CH1 CH2
-
-Trigger 2
-→ CH3 CH6 CH7
-
-Trigger 3
-→ CH9 CH10
-
-Trigger 4
-→ CH0 CH1 CH2
+Trigger 1 → CH0 CH1 CH2
+Trigger 2 → CH3 CH6 CH7
+Trigger 3 → CH9 CH10
+Trigger 4 → CH0 CH1 CH2
 ```
 
 ### Injected Group
-
-Enable:
 
 ```text
 JDISCEN = 1
 ```
 
-Injected Discontinuous Mode convert:
+Injected Discontinuous Mode chạy:
 
 ```text
-1 channel / trigger
+1 injected conversion / trigger
 ```
 
 Ví dụ:
 
 ```text
-Injected Sequence:
-CH1 CH2 CH3
-```
+Injected sequence: CH1 CH2 CH3
 
-```text
 Trigger 1 → CH1
 Trigger 2 → CH2
 Trigger 3 → CH3
 Trigger 4 → CH1
 ```
 
-### Hạn chế
-
-Không được dùng đồng thời:
-
-```text
-Auto-Injected
-+
-Discontinuous
-```
-
-và không nên enable Discontinuous Mode cho cả Regular và Injected Group cùng lúc.
+Không dùng Auto-Injected cùng Discontinuous Mode và không cấu hình đồng thời cả Regular Group lẫn Injected Group ở Discontinuous Mode.
 
 ---
 
 <a id="muc-08-13"></a>
 ## 8.13. Software Trigger và External Trigger
 
-ADC conversion có thể được bắt đầu bằng software hoặc hardware event.
+Conversion có thể được bắt đầu bằng software hoặc external trigger.
 
-### Software Trigger
+### Software start
 
 Regular Group:
 
@@ -13332,15 +12986,11 @@ Injected Group:
 JSWSTART
 ```
 
-Các bit nằm trong:
+Các bit nằm trong `ADC_CR2`.
 
-```text
-ADC_CR2
-```
+### External trigger
 
-### External Trigger
-
-Nguồn trigger có thể đến từ:
+Nguồn có thể đến từ:
 
 ```text
 Timer Capture/Compare
@@ -13348,12 +12998,7 @@ Timer TRGO
 EXTI
 ```
 
-Các lựa chọn cụ thể phụ thuộc:
-
-```text
-ADC instance
-device density
-```
+Lựa chọn cụ thể phụ thuộc ADC instance/device.
 
 Regular Group dùng:
 
@@ -13369,47 +13014,26 @@ JEXTSEL
 JEXTTRIG
 ```
 
-### Edge
+Trên STM32F1, external trigger của ADC bắt đầu conversion ở Rising Edge.
 
-Đối với external trigger trong STM32F1 ADC:
-
-```text
-chỉ Rising Edge
-→ bắt đầu conversion
-```
-
-### Timer Trigger
-
-Một kiến trúc quan trọng:
+Một kiến trúc thường dùng cho sampling định kỳ:
 
 ```text
 Timer
-  ↓
-TRGO / Compare Event
-  ↓
+  ↓ trigger
 ADC
-  ↓
-Sampling
   ↓
 DMA
 ```
 
-Ưu điểm:
-
-```text
-sample period do hardware quyết định
-→ đều hơn software delay
-→ CPU không phải tự start từng conversion
-```
+Timer tạo thời điểm lấy mẫu bằng phần cứng, giúp sampling period ổn định hơn việc software tự delay rồi start từng conversion. Chi tiết DMA nằm tại **8.20**.
 
 ---
 
 <a id="muc-08-14"></a>
 ## 8.14. EOC / JEOC và ADC Data Registers
 
-### ADC_SR
-
-Các flag chính:
+Các status flag chính trong `ADC_SR`:
 
 ```text
 AWD
@@ -13428,35 +13052,25 @@ STRT
 → Regular Start
 ```
 
-### EOC
+### Regular conversion
 
-```text
-EOC = 1
-→ conversion result sẵn sàng
-```
-
-Regular result:
+Conversion result được đưa vào:
 
 ```text
 ADC_DR
 ```
 
-`EOC` có thể được clear:
+Khi Regular conversion result sẵn sàng:
 
 ```text
-bằng software
-hoặc
-khi đọc ADC_DR
+EOC = 1
 ```
 
-### JEOC
+`EOC` có thể được clear bằng software hoặc theo cơ chế đọc `ADC_DR`.
 
-```text
-JEOC = 1
-→ toàn bộ Injected Group đã hoàn tất
-```
+### Injected conversion
 
-Injected result:
+Injected result được lưu trong:
 
 ```text
 ADC_JDR1
@@ -13465,55 +13079,44 @@ ADC_JDR3
 ADC_JDR4
 ```
 
-### Luồng Regular
+Khi Injected Group hoàn tất:
 
 ```text
-Trigger
- ↓
-Sampling
- ↓
-Conversion
- ↓
-ADC_DR
- ↓
-EOC = 1
-```
-
-### Luồng Injected
-
-```text
-Injected Trigger
- ↓
-Injected Sequence
- ↓
-JDR1 ... JDR4
- ↓
 JEOC = 1
 ```
+
+Có thể nhớ:
+
+```text
+Regular Group
+→ ADC_DR
+→ EOC
+
+Injected Group
+→ ADC_JDRx
+→ JEOC
+```
+
+Cách đặt 12-bit result trong data register được trình bày tại **8.15**; interrupt dựa trên các flag này nằm tại **8.19**.
 
 ---
 
 <a id="muc-08-15"></a>
 ## 8.15. Data Alignment
 
-ADC result là 12-bit nhưng data register là 16-bit.
+ADC conversion result là 12-bit nhưng data register có trường chứa dữ liệu trong word 16-bit.
 
-Bit:
-
-```text
-ADC_CR2.ALIGN
-```
-
-chọn:
+`ADC_CR2.ALIGN` chọn:
 
 ```text
-0 → Right Alignment
-1 → Left Alignment
+ALIGN = 0
+→ Right Alignment
+
+ALIGN = 1
+→ Left Alignment
 ```
 
 ### Right Alignment
-
-Regular data:
 
 ```text
 Bit 15                         Bit 0
@@ -13522,10 +13125,10 @@ Bit 15                         Bit 0
 +----+----+----+----+------------+
 ```
 
-Dùng thuận tiện khi muốn:
+Phù hợp khi software muốn đọc trực tiếp ADC code:
 
 ```text
-0 → 4095
+0 ... 4095
 ```
 
 ### Left Alignment
@@ -13537,9 +13140,9 @@ Bit 15                         Bit 0
 +--------------------+------------+
 ```
 
-### Injected Offset
+### Injected offset
 
-Injected channel có thể dùng:
+Injected channel có các offset register:
 
 ```text
 ADC_JOFR1
@@ -13548,84 +13151,66 @@ ADC_JOFR3
 ADC_JOFR4
 ```
 
-để trừ một offset khỏi converted value.
+ADC trừ injected offset khỏi converted value; Injected result vì vậy có thể âm và data representation/alignment có sign extension tương ứng.
 
-Do đó Injected result có thể:
-
-```text
-âm
-```
-
-và data alignment có sign extension tương ứng.
-
-Regular Group không áp dụng injected offset.
+Regular Group không dùng injected offset.
 
 ---
 
 <a id="muc-08-16"></a>
 ## 8.16. ADC Calibration
 
-STM32F1 ADC có self-calibration.
+STM32F1 ADC có self-calibration để giảm sai số do sai khác nội bộ của ADC.
 
-Mục đích:
-
-```text
-giảm sai số do sai khác nội bộ của capacitor bank
-```
-
-RM0008 khuyến nghị:
+Khuyến nghị trong nội dung chương:
 
 ```text
-Calibration một lần sau mỗi power-up
+calibration một lần sau mỗi ADC power-up
 ```
 
-### Các bit
+Các bit:
 
 ```text
 RSTCAL
-→ reset / initialize calibration register
+→ reset/initialize calibration register
 
 CAL
 → bắt đầu calibration
 ```
 
-### Điều kiện
-
-ADC phải được power-on:
+Trước calibration:
 
 ```text
 ADON = 1
 ```
 
-ít nhất:
+và ADC phải được power-on đủ thời gian, tối thiểu:
 
 ```text
 2 ADCCLK cycles
 ```
 
-trước khi bắt đầu calibration.
-
-### Quy trình
+Quy trình:
 
 ```text
 ADON = 1
- ↓
-đợi ít nhất 2 ADCCLK cycles
- ↓
+  ↓
+đợi power-on timing
+  ↓
 RSTCAL = 1
- ↓
+  ↓
 chờ RSTCAL = 0
- ↓
+  ↓
 CAL = 1
- ↓
+  ↓
 chờ CAL = 0
- ↓
+  ↓
 ADC sẵn sàng
 ```
 
 `CAL` được hardware tự clear khi calibration hoàn tất.
 
-Ví dụ register-level:
+Ví dụ:
 
 ```c
 ADC1->CR2 |= ADC_CR2_ADON;
@@ -13643,16 +13228,14 @@ while (ADC1->CR2 & ADC_CR2_CAL)
 }
 ```
 
-Trong code thực tế phải bảo đảm delay power-up/stabilization đáp ứng yêu cầu timing của device.
+Mục **8.22** chỉ dẫn chiếu quy trình này khi tổng hợp các bước cấu hình ADC.
 
 ---
 
 <a id="muc-08-17"></a>
 ## 8.17. Analog Watchdog
 
-Analog Watchdog giám sát result của ADC so với hai threshold.
-
-Registers:
+Analog Watchdog so sánh ADC conversion result với hai threshold:
 
 ```text
 ADC_HTR
@@ -13662,21 +13245,15 @@ ADC_LTR
 → Low Threshold
 ```
 
-Cả hai threshold sử dụng:
+Hai threshold dùng giá trị 12-bit.
 
 ```text
-12-bit value
-```
-
-Luồng:
-
-```text
-ADC Result
-    ↓
-Compare
-    ├── Result > HTR → AWD
-    ├── LTR ≤ Result ≤ HTR → trong vùng
-    └── Result < LTR → AWD
+conversion result
+        ↓
+      compare
+        ├── result > HTR → AWD
+        ├── LTR ≤ result ≤ HTR → trong vùng
+        └── result < LTR → AWD
 ```
 
 Khi vượt vùng:
@@ -13691,20 +13268,9 @@ Nếu:
 AWDIE = 1
 ```
 
-thì có thể tạo ADC interrupt.
+thì Analog Watchdog event có thể tạo ADC interrupt.
 
-### Phạm vi giám sát
-
-Analog Watchdog có thể giám sát:
-
-```text
-tất cả Regular channels
-tất cả Injected channels
-Regular + Injected
-một channel cụ thể
-```
-
-Các bit:
+Phạm vi giám sát được điều khiển bởi các bit như:
 
 ```text
 AWDEN
@@ -13713,31 +13279,26 @@ AWDSGL
 AWDCH
 ```
 
-điều khiển phạm vi.
+để chọn Regular Group, Injected Group hoặc một channel cụ thể theo cấu hình.
 
-### Ứng dụng
-
-```text
-Over-voltage
-Under-voltage
-Battery threshold
-Sensor out-of-range
-Protection threshold
-```
-
-Ưu điểm:
+Ứng dụng điển hình:
 
 ```text
-hardware tự so sánh
-→ CPU không phải liên tục kiểm tra từng sample
+over-voltage
+under-voltage
+battery threshold
+sensor out-of-range
+protection threshold
 ```
+
+Điểm chính là việc so sánh threshold được làm bằng hardware, không cần CPU kiểm tra từng conversion result bằng polling.
 
 ---
 
 <a id="muc-08-18"></a>
 ## 8.18. Temperature Sensor và VREFINT
 
-ADC1 có hai internal channels:
+ADC1 có hai internal channel:
 
 ```text
 ADC1_IN16
@@ -13747,41 +13308,32 @@ ADC1_IN17
 → VREFINT
 ```
 
-Hai channel này được enable bằng:
+Cả hai được enable bằng:
 
 ```text
-ADC_CR2.TSVREFE
-```
-
-```text
-TSVREFE = 1
-→ enable Temperature Sensor + VREFINT
+ADC_CR2.TSVREFE = 1
 ```
 
 ### Temperature Sensor
 
-Internal Temperature Sensor đo:
+Temperature Sensor đo junction temperature.
 
-```text
-junction temperature
-```
-
-Recommended sampling time:
+Thời gian sampling khuyến nghị trong nội dung chương:
 
 ```text
 17.1 µs
 ```
 
-Do sampling setting được chọn theo số `ADCCLK cycles`, phải chọn một mức `SMP16` tạo thời gian sample đáp ứng yêu cầu này.
+Do `SMP16` được chọn theo số chu kỳ `ADCCLK`, phải chọn cấu hình đáp ứng thời gian này.
 
-Ví dụ:
+Ví dụ với:
 
 ```text
 ADCCLK = 12 MHz
-239.5 cycles
+sampling time = 239.5 cycles
 ```
 
-cho:
+thì:
 
 ```text
 Tsample
@@ -13789,25 +13341,7 @@ Tsample
 ≈ 19.96 µs
 ```
 
-đáp ứng thời gian sample lớn hơn 17.1 µs.
-
-### Quy trình
-
-```text
-TSVREFE = 1
- ↓
-đợi sensor startup time
- ↓
-select Channel 16
- ↓
-sampling time phù hợp
- ↓
-start ADC
- ↓
-read VSENSE
-```
-
-RM0008 đưa quan hệ:
+Quan hệ nhiệt độ:
 
 ```text
 Temperature
@@ -13815,42 +13349,41 @@ Temperature
 (V25 - VSENSE) / Avg_Slope + 25
 ```
 
-Trong đó:
+`V25` và `Avg_Slope` phải lấy theo electrical characteristics của device.
+
+Quy trình khái niệm:
 
 ```text
-V25
-Avg_Slope
+TSVREFE = 1
+  ↓
+đợi sensor startup time
+  ↓
+chọn Channel 16
+  ↓
+chọn sampling time phù hợp
+  ↓
+start conversion
+  ↓
+đọc VSENSE
 ```
 
-phải lấy theo electrical characteristics của device.
-
-### Giới hạn
-
-Offset Temperature Sensor thay đổi giữa các chip.
-
-Vì vậy internal sensor phù hợp hơn với:
-
-```text
-theo dõi biến thiên junction temperature
-```
-
-hơn là đo nhiệt độ tuyệt đối có độ chính xác cao.
+Do offset của Temperature Sensor thay đổi giữa các chip, internal sensor phù hợp hơn cho theo dõi biến thiên junction temperature hơn là mặc định coi như cảm biến nhiệt độ tuyệt đối chính xác cao.
 
 ### VREFINT
 
 ```text
 ADC1_IN17
-→ Internal Reference Voltage
+→ internal reference voltage
 ```
 
-có thể được conversion giống một internal ADC channel sau khi `TSVREFE` được enable.
+Sau khi `TSVREFE` được enable, `VREFINT` được convert như một internal ADC channel.
 
 ---
 
 <a id="muc-08-19"></a>
 ## 8.19. ADC Interrupt
 
-Ba interrupt event chính:
+Các ADC interrupt event chính:
 
 ```text
 EOC
@@ -13863,7 +13396,7 @@ AWD
 → Analog Watchdog
 ```
 
-Enable bits:
+Enable bit tương ứng:
 
 ```text
 EOCIE
@@ -13871,111 +13404,60 @@ JEOCIE
 AWDIE
 ```
 
-Luồng:
+Luồng tổng quát:
 
 ```text
-ADC Event
+ADC event
    ↓
-ADC_SR Flag
+ADC_SR flag
    ↓
-Interrupt Enable
+interrupt enable
    ↓
 ADC IRQ
    ↓
 NVIC
    ↓
-ADC_IRQHandler()
+handler
 ```
 
-### EOC Interrupt
+Ý nghĩa và nơi phát sinh `EOC/JEOC` đã được trình bày tại **8.14**; `AWD` nằm tại **8.17**. Mục này chỉ tập trung vào đường interrupt.
 
-```text
-Regular conversion complete
-        ↓
-EOC = 1
-        ↓
-EOCIE = 1
-        ↓
-IRQ
-```
+ADC1 và ADC2 dùng chung interrupt vector trên các device tương ứng; nếu handler phục vụ cả hai ADC thì phải kiểm tra status register của từng ADC để xác định nguồn. ADC3 có vector riêng trên device có ADC3.
 
-### JEOC Interrupt
-
-```text
-Injected Group complete
-        ↓
-JEOC = 1
-        ↓
-JEOCIE = 1
-        ↓
-IRQ
-```
-
-### ADC1 / ADC2 IRQ
-
-ADC1 và ADC2:
-
-```text
-share cùng interrupt vector
-```
-
-ADC3:
-
-```text
-có vector riêng
-```
-
-trên các device có ADC3.
-
-Do ADC1/ADC2 share vector, handler phải kiểm tra:
-
-```text
-ADC1->SR
-ADC2->SR
-```
-
-để xác định nguồn.
+Cơ chế NVIC, Pending state và quy ước thiết kế ISR thuộc **Chương 4**.
 
 ---
 
 <a id="muc-08-20"></a>
 ## 8.20. ADC + DMA
 
-DMA rất quan trọng với Regular Group.
-
-Lý do:
+DMA đặc biệt quan trọng với **Regular Group**, vì các Regular conversion result đều đi qua cùng:
 
 ```text
-Regular result
-→ chỉ có một ADC_DR
+ADC_DR
 ```
 
-Ví dụ Scan:
+Với Regular Scan:
 
 ```text
 CH0 → ADC_DR
-CH1 → ADC_DR ghi đè
-CH2 → ADC_DR ghi đè
+CH1 → ADC_DR
+CH2 → ADC_DR
+...
 ```
 
-Nếu software không đọc kịp:
+Nếu result trước chưa được lấy ra trước khi `ADC_DR` được cập nhật bởi conversion tiếp theo, dữ liệu cũ có thể bị mất.
+
+Vì vậy khi Scan Mode chuyển nhiều Regular channels, DMA được dùng để chuyển từng conversion result sang memory:
 
 ```text
-result cũ bị mất
-```
-
-Vì vậy RM0008 yêu cầu dùng DMA khi Scan Mode chuyển nhiều Regular channels.
-
-### Luồng
-
-```text
-ADC Conversion
+ADC conversion
       ↓
 ADC_DR
-      ↓ DMA Request
-DMA Controller
+      ↓ DMA request
+DMA controller
       ↓
-SRAM
+SRAM buffer
 ```
 
 Ví dụ:
@@ -13987,27 +13469,18 @@ Rank 3 CH4 → buffer[2]
 Rank 4 CH7 → buffer[3]
 ```
 
-### DMA Request
+### ADC DMA request
 
-Chỉ:
-
-```text
-End Of Conversion của Regular Channel
-```
-
-tạo ADC DMA request.
-
-Injected conversion:
+Trong cơ chế này:
 
 ```text
-không dùng ADC DMA request theo cơ chế này
+Regular End Of Conversion
+→ ADC DMA request
 ```
 
-vì result có các `JDRx` riêng.
+Injected conversion không dùng ADC DMA request theo cơ chế trên; Injected Group có các `ADC_JDRx` riêng.
 
-### ADC Instance
-
-Trên STM32F10xxx:
+Trong phạm vi STM32F10xxx của nội dung hiện tại:
 
 ```text
 ADC1
@@ -14018,13 +13491,13 @@ ADC2
 → không tự tạo ADC DMA request
 ```
 
-ADC2 result có thể được chuyển qua DMA trong Dual ADC Mode thông qua master ADC1.
+Trong một số Dual ADC Mode, ADC2 result có thể đi cùng ADC1 result qua cơ chế DMA của master ADC1; xem **8.21**.
 
-### Kiến trúc thực tế
+Một kiến trúc thường dùng:
 
 ```text
 Timer
-  ↓ Trigger
+  ↓ trigger
 ADC Regular Scan
   ↓
 DMA
@@ -14034,14 +13507,14 @@ Circular Buffer
 CPU xử lý block data
 ```
 
-Đây là một kiến trúc quan trọng cho acquisition định kỳ.
+Cấu hình chi tiết DMA controller, channel, width, increment và Circular Mode thuộc **Chương 9**; mục này chỉ mô tả mối quan hệ ADC ↔ DMA.
 
 ---
 
 <a id="muc-08-21"></a>
 ## 8.21. Dual ADC Mode
 
-Trên device có từ hai ADC trở lên:
+Trên device có ADC1 và ADC2, hai ADC có thể phối hợp trong Dual ADC Mode:
 
 ```text
 ADC1
@@ -14051,13 +13524,7 @@ ADC2
 → Slave
 ```
 
-có thể phối hợp bằng:
-
-```text
-Dual ADC Mode
-```
-
-Các mode được RM0008 mô tả gồm:
+Các mode được nêu trong nội dung chương gồm:
 
 ```text
 Injected Simultaneous
@@ -14068,27 +13535,20 @@ Alternate Trigger
 Independent
 ```
 
-và một số combined modes.
+và một số combined mode.
 
-### Simultaneous
+### Simultaneous mode
 
 Hai ADC sample gần như đồng thời:
 
 ```text
-ADC1 ── sample CH_A
-ADC2 ── sample CH_B
+ADC1 → sample CH_A
+ADC2 → sample CH_B
 ```
 
-Ứng dụng:
+Ứng dụng điển hình là đo hai tín hiệu tại cùng thời điểm. Trong simultaneous mode, hai channel được sample đồng thời phải có cùng sampling time.
 
-```text
-đo hai tín hiệu tại cùng thời điểm
-motor-control current sensing
-```
-
-Trong simultaneous mode, hai channel được sample đồng thời phải có cùng sampling time.
-
-### Interleaved
+### Interleaved mode
 
 Hai ADC convert luân phiên:
 
@@ -14108,23 +13568,17 @@ Mục tiêu:
 tăng effective sampling rate
 ```
 
-Fast Interleaved sử dụng offset giữa hai ADC bằng:
+Fast Interleaved dùng offset:
 
 ```text
 7 ADCCLK cycles
 ```
 
-và yêu cầu sampling time đủ ngắn để không overlap khi convert cùng channel.
+giữa hai ADC và cần cấu hình sampling time phù hợp để tránh overlap khi convert cùng channel.
 
-### DMA trong Dual Mode
+### DMA trong Dual ADC Mode
 
-Trong một số Dual ADC Mode:
-
-```text
-ADC1_DR 32-bit
-```
-
-có thể chứa:
+Trong một số mode, `ADC1_DR` 32-bit có thể chứa:
 
 ```text
 lower halfword
@@ -14134,16 +13588,25 @@ upper halfword
 → ADC2 result
 ```
 
-và DMA chuyển word 32-bit sang SRAM.
+sau đó DMA chuyển word 32-bit sang SRAM.
 
-Phần Dual ADC nên học sau khi chắc:
+Dual ADC Mode dựa trên các khái niệm đã có:
 
 ```text
-Single ADC
 Regular / Injected
-Trigger
+→ 8.8
+
+sampling time
+→ 8.6
+
+trigger
+→ 8.13
+
 DMA
+→ 8.20
 ```
+
+nên không lặp lại các cơ chế đó tại đây.
 
 ---
 
@@ -14157,109 +13620,89 @@ ADC1
 Single Regular Conversion
 Channel 0
 Right Alignment
-Software Start
+Software start
 ```
 
-Quy trình:
+Quy trình tổng quát:
 
 ```text
-1. Xác định ADC Channel / Pin
+1. Xác định ADC channel / pin
         ↓
-2. Bật GPIO Clock
+2. Enable GPIO clock
         ↓
-3. GPIO → Analog Mode
+3. GPIO → Analog mode
         ↓
-4. Bật ADC Clock
+4. Enable ADC clock
         ↓
-5. Cấu hình ADCPRE
+5. Chọn ADCPRE và xác nhận ADCCLK
         ↓
-6. Bảo đảm ADCCLK ≤ 14 MHz
+6. Cấu hình sampling time
         ↓
-7. Cấu hình Sampling Time
+7. Cấu hình conversion sequence / rank
         ↓
-8. Cấu hình Sequence / Rank
+8. Chọn data alignment
         ↓
-9. Chọn ALIGN
+9. Chọn Single / Continuous / Scan / Discontinuous nếu cần
         ↓
-10. Chọn Single / Continuous / Scan
+10. Chọn software start hoặc external trigger
         ↓
-11. Chọn Trigger
+11. Power-on ADC
         ↓
-12. Power-On ADC
+12. Calibration
         ↓
-13. Calibration
+13. Start conversion
         ↓
-14. Start Conversion
-        ↓
-15. Chờ EOC hoặc dùng Interrupt / DMA
-        ↓
-16. Đọc ADC_DR
+14. Lấy result bằng Polling / Interrupt / DMA
 ```
 
-### Clock
-
-Ví dụ:
+Dẫn chiếu:
 
 ```text
-PCLK2 = 72 MHz
-ADCPRE = /6
+channel + GPIO Analog mode
+→ 8.5
+
+ADCCLK
+→ 8.4
+
+sampling time
+→ 8.6
+
+sequence + rank
+→ 8.9
+
+Single / Continuous
+→ 8.10
+
+Scan / Discontinuous
+→ 8.11 / 8.12
+
+trigger
+→ 8.13
+
+result + EOC/JEOC
+→ 8.14
+
+alignment
+→ 8.15
+
+calibration
+→ 8.16
+
+interrupt
+→ 8.19
+
+DMA
+→ 8.20
 ```
 
-suy ra:
-
-```text
-ADCCLK = 12 MHz
-```
-
-### GPIO
-
-Ví dụ PA0:
-
-```text
-MODE = 00
-CNF  = 00
-```
-
-### Sampling Time
-
-Ví dụ:
-
-```text
-55.5 cycles
-```
-
-### Regular Sequence
-
-Một channel:
-
-```text
-Sequence Length = 1
-Rank 1 = Channel 0
-```
-
-### Alignment
-
-```text
-ALIGN = 0
-→ Right Alignment
-```
-
-### Start
-
-Có thể dùng:
-
-```text
-software start
-```
-
-sau khi ADC đã power-on và calibration hoàn tất.
+Mục này chỉ giữ **thứ tự cấu hình**; các công thức và bit field không được định nghĩa lại.
 
 ---
 
 <a id="muc-08-23"></a>
 ## 8.23. Ví dụ đọc một Analog Channel
 
-Giả sử:
+Mục tiêu:
 
 ```text
 ADC1
@@ -14267,92 +13710,82 @@ PA0 / ADC_IN0
 PCLK2 = 72 MHz
 ADCPRE = /6
 ADCCLK = 12 MHz
-Sampling = 55.5 cycles
-Single Conversion
+sampling time = 55.5 cycles
+Single Regular Conversion
+Right Alignment
+Software start
 ```
 
-### Bước 1 — Clock
+Ví dụ này áp dụng trực tiếp các mục **8.4–8.16**.
+
+### Clock
 
 ```c
 RCC->APB2ENR |= RCC_APB2ENR_IOPAEN
                | RCC_APB2ENR_ADC1EN;
 ```
 
-ADC Prescaler:
+Với:
 
 ```text
-PCLK2 / 6
-→ 12 MHz
+PCLK2 = 72 MHz
+ADCPRE = /6
+
+→ ADCCLK = 12 MHz
 ```
 
-### Bước 2 — PA0 Analog Mode
+### PA0 ở Analog mode
 
 ```c
 GPIOA->CRL &= ~(0xFU << 0);
 ```
 
-Kết quả:
+tương ứng:
 
 ```text
 MODE0 = 00
 CNF0  = 00
 ```
 
-### Bước 3 — Sampling Time Channel 0
+### Sampling time của Channel 0
 
-Channel 0 nằm trong:
-
-```text
-ADC_SMPR2
-```
-
-Chọn:
+Channel 0 nằm trong `ADC_SMPR2`.
 
 ```text
 SMP0 = 101
 → 55.5 cycles
 ```
 
-Ví dụ:
-
 ```c
 ADC1->SMPR2 &= ~(0x7U << 0);
 ADC1->SMPR2 |=  (0x5U << 0);
 ```
 
-### Bước 4 — Regular Sequence
+### Regular sequence
 
-Length:
-
-```text
-1 conversion
-```
-
-Rank 1:
+Một conversion:
 
 ```text
-Channel 0
+Rank 1 → Channel 0
 ```
-
-Khái niệm:
 
 ```c
 ADC1->SQR1 &= ~(0xFU << 20);   /* L = 0 → 1 conversion */
 ADC1->SQR3 &= ~(0x1FU << 0);   /* SQ1 = Channel 0 */
 ```
 
-### Bước 5 — Right Alignment
+### Right Alignment
 
 ```c
 ADC1->CR2 &= ~ADC_CR2_ALIGN;
 ```
 
-### Bước 6 — Power-On và Calibration
+### Power-on và calibration
 
 ```c
 ADC1->CR2 |= ADC_CR2_ADON;
 
-/* Bảo đảm timing power-on */
+/* Bảo đảm ADC đã power-on đủ thời gian */
 
 ADC1->CR2 |= ADC_CR2_RSTCAL;
 while (ADC1->CR2 & ADC_CR2_RSTCAL)
@@ -14365,23 +13798,21 @@ while (ADC1->CR2 & ADC_CR2_CAL)
 }
 ```
 
-### Bước 7 — Start Conversion
+### Start conversion
 
-Một cách theo cơ chế software của STM32F1 là chọn software trigger cho Regular Group rồi phát `SWSTART` theo cấu hình `EXTSEL/EXTTRIG` phù hợp của ADC instance.
-
-Luồng:
+Với software start, chọn software trigger cho Regular Group và phát `SWSTART` theo cấu hình `EXTSEL/EXTTRIG` phù hợp của ADC instance.
 
 ```text
-Software Trigger
-      ↓
-Sampling
-      ↓
-Conversion
-      ↓
+software start
+     ↓
+sampling
+     ↓
+conversion
+     ↓
 EOC
 ```
 
-### Bước 8 — Đọc Result
+### Đọc conversion result
 
 ```c
 while (!(ADC1->SR & ADC_SR_EOC))
@@ -14391,19 +13822,18 @@ while (!(ADC1->SR & ADC_SR_EOC))
 uint16_t adc_code = (uint16_t)ADC1->DR;
 ```
 
-Do Right Alignment:
+Với Right Alignment:
 
 ```text
 adc_code
 → 0 ... 4095
 ```
 
-### Thời gian conversion
+Conversion time của cấu hình này áp dụng công thức tại **8.7**:
 
 ```text
 Tconv
 = (55.5 + 12.5) / 12 MHz
-= 68 / 12 MHz
 ≈ 5.67 µs
 ```
 
@@ -14417,11 +13847,8 @@ Mục tiêu:
 ```text
 ADC1
 Regular Scan
-CH0
-CH1
-CH4
-CH7
-Continuous
+CH0, CH1, CH4, CH7
+Continuous Conversion
 DMA
 ```
 
@@ -14431,7 +13858,7 @@ Buffer:
 volatile uint16_t adc_buffer[4];
 ```
 
-### Sequence
+### Conversion sequence
 
 ```text
 Rank 1 → CH0
@@ -14442,21 +13869,19 @@ Rank 4 → CH7
 
 ### ADC
 
+Áp dụng **8.9–8.11** và **8.20**:
+
 ```text
 SCAN = 1
 CONT = 1
 DMA  = 1
-```
 
-Sequence length:
-
-```text
-4 conversions
+Regular sequence length = 4
 ```
 
 ### DMA
 
-Khái niệm:
+Cấu hình khái niệm:
 
 ```text
 Peripheral Address
@@ -14475,7 +13900,7 @@ Memory Increment
 → ON
 
 Circular Mode
-→ ON nếu muốn sampling liên tục
+→ ON nếu cần acquisition liên tục
 
 Transfer Count
 → 4
@@ -14484,329 +13909,175 @@ Transfer Count
 Luồng:
 
 ```text
-ADC CH0
- ↓
-ADC_DR
- ↓ DMA
-buffer[0]
-
-ADC CH1
- ↓
-ADC_DR
- ↓ DMA
-buffer[1]
-
-ADC CH4
- ↓
-ADC_DR
- ↓ DMA
-buffer[2]
-
-ADC CH7
- ↓
-ADC_DR
- ↓ DMA
-buffer[3]
-
- ↓
-sequence lặp lại
+CH0 → ADC_DR → DMA → buffer[0]
+CH1 → ADC_DR → DMA → buffer[1]
+CH4 → ADC_DR → DMA → buffer[2]
+CH7 → ADC_DR → DMA → buffer[3]
+                     ↓
+               sequence lặp lại
 ```
 
-### Kết hợp Timer Trigger
-
-Nếu cần sample đều theo thời gian:
+Nếu cần sampling theo chu kỳ phần cứng cố định, áp dụng external trigger tại **8.13**:
 
 ```text
 Timer
- ↓ TRGO
-ADC Scan
- ↓
+  ↓ TRGO
+ADC Regular Scan
+  ↓
 DMA
- ↓
+  ↓
 Buffer
 ```
 
-Cách này tách:
+Phân vai:
 
 ```text
-Sampling Rate
+sampling period
 → Timer
 
-Conversion / Channel Sequence
+conversion sequence
 → ADC
 
-Data Movement
+data movement
 → DMA
 
-Signal Processing
+data processing
 → CPU
 ```
 
-Đây là kiến trúc phù hợp khi cần acquisition có chu kỳ ổn định.
+### Checklist lỗi thường gặp
 
----
+| Hiện tượng / lỗi cấu hình | Mục cần kiểm tra |
+|---|---|
+| `ADCCLK` vượt giới hạn | **8.4** |
+| GPIO chưa ở Analog mode | **8.5** |
+| Sampling time quá ngắn so với source impedance | **8.6** |
+| Nhầm sampling time với conversion time | **8.7** |
+| Nhầm Regular Group và Injected Group | **8.8** |
+| Sai sequence/rank hoặc sửa `SQR/JSQR` khi đang conversion | **8.9** |
+| Regular Scan nhiều channel nhưng không thu `ADC_DR` kịp | **8.11**, **8.20** |
+| Calibration chưa thực hiện đúng sau power-up | **8.16** |
+| Temperature Sensor dùng sampling time không đáp ứng yêu cầu | **8.18** |
 
-### Các lỗi thường gặp
-
-#### ADCCLK vượt 14 MHz
-
-Sai:
-
-```text
-PCLK2 = 72 MHz
-ADCPRE = /4
-→ ADCCLK = 18 MHz
-```
-
-Đúng:
-
-```text
-ADCPRE = /6
-→ ADCCLK = 12 MHz
-```
-
-hoặc cấu hình khác bảo đảm giới hạn.
-
-#### GPIO chưa ở Analog Mode
-
-Sai:
-
-```text
-PA0 vẫn Input Floating
-```
-
-Đúng:
-
-```text
-MODE = 00
-CNF = 00
-```
-
-#### Sampling Time quá ngắn
-
-```text
-Source impedance cao
-+
-sampling 1.5 cycles
-```
-
-có thể khiến sample-and-hold chưa ổn định đủ.
-
-#### Nhầm Sample Time với Conversion Time
-
-```text
-Tconv
-=
-Tsample
-+
-12.5 cycles
-```
-
-#### Scan nhiều Regular Channels nhưng không dùng DMA
-
-Regular Group chỉ có:
-
-```text
-ADC_DR
-```
-
-nên result mới sẽ tiếp tục cập nhật cùng register.
-
-#### Không Calibration sau Power-Up
-
-RM0008 khuyến nghị calibration sau mỗi lần ADC power-up.
-
-#### Đọc Temperature Sensor với Sample Time quá ngắn
-
-Recommended:
-
-```text
-17.1 µs
-```
-
-không phải:
-
-```text
-17.1 ADC cycles
-```
-
-#### Sửa SQR / JSQR khi ADC đang Conversion
-
-Điều này reset current conversion và làm sequence mới bắt đầu.
-
-#### Nhầm Regular và Injected
-
-```text
-Regular
-→ tối đa 16 conversions
-→ ADC_DR
-
-Injected
-→ tối đa 4 conversions
-→ ADC_JDR1 ... JDR4
-```
+Chi tiết DMA controller thuộc **Chương 9**, vì vậy ví dụ này không lặp lại định nghĩa `DMA_CCRx`, channel mapping hay interrupt của DMA.
 
 ---
 
 <a id="muc-08-25"></a>
 ## 8.25. Câu hỏi tự kiểm tra
 
-1. ADC có độ phân giải bao nhiêu bit?
-2. Muốn đổi ADC code sang Volt cần biết thông tin gì?
-3. ADC input phải nằm trong khoảng nào?
-4. ADCCLK tối đa bao nhiêu?
-5. GPIO dùng làm ADC Input phải cấu hình mode nào?
-6. Vì sao nguồn trở kháng cao có thể cần Sampling Time dài hơn?
-7. Công thức total conversion time là gì?
-8. Regular Group có tối đa bao nhiêu conversion?
-9. Injected Group có tối đa bao nhiêu conversion?
-10. `Rank` có nghĩa gì?
+1. ADC trên STM32F1 có độ phân giải bao nhiêu bit?
+2. Muốn đổi ADC code sang Volt cần biết các reference voltage nào?
+3. Analog input phải nằm trong khoảng nào so với `VREF-` và `VREF+`?
+4. `ADCCLK` được tạo từ clock nào và giới hạn trong chương là bao nhiêu?
+5. GPIO nối với external ADC channel phải cấu hình mode nào?
+6. Vì sao source impedance cao có thể cần sampling time dài hơn?
+7. Sampling time và conversion time khác nhau như thế nào?
+8. Công thức conversion time của STM32F1 là gì?
+9. Regular Group và Injected Group khác nhau ở số rank tối đa và cơ chế sử dụng như thế nào?
+10. `rank` có nghĩa gì?
 11. Scan Mode dùng để làm gì?
-12. Vì sao Regular Scan cần DMA?
-13. Vì sao Timer Trigger phù hợp với ADC sampling định kỳ?
-14. `EOC` có nghĩa gì?
-15. Regular result nằm ở register nào?
-16. Calibration dùng để làm gì?
-17. Analog Watchdog dùng để làm gì?
-18. Temperature Sensor nằm ở channel nào?
-19. ADC DMA request được tạo từ loại conversion nào?
-20. Hãy mô tả kiến trúc `Timer → ADC Scan → DMA → SRAM`.
+12. Discontinuous Mode thay đổi cách một sequence chạy theo trigger như thế nào?
+13. Software start và external trigger khác nhau ở nguồn bắt đầu conversion nào?
+14. `EOC` và `JEOC` báo hai sự kiện gì?
+15. Regular result và Injected result nằm ở các data register nào?
+16. Right Alignment và Left Alignment khác nhau ở cách đặt 12-bit result như thế nào?
+17. Calibration dùng `RSTCAL` và `CAL` theo trình tự nào?
+18. Analog Watchdog dùng để làm gì?
+19. Temperature Sensor và `VREFINT` là các internal channel nào của ADC1?
+20. Vì sao Regular Scan nhiều channel thường kết hợp DMA?
+21. ADC DMA request trong cơ chế này được tạo bởi loại conversion nào?
+22. Dual ADC Simultaneous và Interleaved khác nhau ở mục tiêu sử dụng như thế nào?
+23. Hãy mô tả kiến trúc `Timer → ADC Regular Scan → DMA → SRAM`.
 
 ---
 
 ## 8.26. Tóm tắt
 
-ADC:
+Luồng ADC:
 
 ```text
-Analog Voltage
-     ↓
-GPIO Analog
-     ↓
-ADC Channel
-     ↓
-Sample
-     ↓
-12-bit Conversion
-     ↓
-Digital Code
+analog input
+    ↓
+ADC channel
+    ↓
+sampling
+    ↓
+12-bit conversion
+    ↓
+conversion result
 ```
 
-Clock:
+Clock và timing:
 
 ```text
 PCLK2
+  ↓ ADCPRE
+ADCCLK
   ↓
-ADCPRE
+sampling time
+  +
+12.5 cycles
   ↓
-ADCCLK ≤ 14 MHz
+conversion time
 ```
 
-Timing:
+Nhóm và sequence:
 
 ```text
-Tconv
-=
-Sampling Time
-+
-12.5 ADCCLK cycles
-```
-
-Groups:
-
-```text
-Regular
-→ tối đa 16 conversions
+Regular Group
+→ tối đa 16 rank
+→ ADC_SQR1/2/3
 → ADC_DR
+→ EOC
 
-Injected
-→ tối đa 4 conversions
-→ ADC_JDR1 ... JDR4
+Injected Group
+→ tối đa 4 rank
+→ ADC_JSQR
+→ ADC_JDR1...4
+→ JEOC
 ```
 
-Sequence:
+Mode và trigger:
 
 ```text
-SQR1 / SQR2 / SQR3
-→ Regular
-
-JSQR
-→ Injected
+Single / Continuous
+Scan / Discontinuous
+Software start / External trigger
 ```
 
-Modes:
+Các khối bổ sung:
 
 ```text
-Single
-Continuous
-Scan
-Discontinuous
-Injected
-```
-
-Trigger:
-
-```text
-Software
-Timer
-EXTI
-```
-
-Flags:
-
-```text
-EOC
-→ End Of Conversion
-
-JEOC
-→ Injected End Of Conversion
-
-AWD
-→ Analog Watchdog
-```
-
-DMA:
-
-```text
-Regular Conversion
-      ↓
-ADC_DR
-      ↓
+Calibration
+Analog Watchdog
+Temperature Sensor / VREFINT
+Interrupt
 DMA
-      ↓
-SRAM Buffer
+Dual ADC Mode
 ```
 
-Calibration:
+Kiến trúc acquisition thường dùng:
 
 ```text
-Power-On
- ↓
-RSTCAL
- ↓
-CAL
- ↓
-Conversion
+Timer
+  ↓ trigger
+ADC Regular Scan
+  ↓
+DMA
+  ↓
+SRAM buffer
+  ↓
+CPU processing
 ```
 
-Internal channels:
-
-```text
-ADC1_IN16
-→ Temperature Sensor
-
-ADC1_IN17
-→ VREFINT
-```
-
-**Điểm cần nhớ:**
-
-> **ADC STM32F1 phải được nhìn như một chuỗi hoàn chỉnh: reference → ADC clock → GPIO analog → channel → sampling time → conversion sequence → trigger → result. Khi Scan nhiều Regular channels, DMA là phần thiết yếu vì các result lần lượt đi qua cùng `ADC_DR`.**
+> **Khi phân tích ADC STM32F1, nên đi theo một chuỗi duy nhất: reference → ADCCLK → channel/GPIO → sampling time → conversion sequence → mode/trigger → conversion result → Polling/Interrupt/DMA. Mỗi khái niệm chỉ được định nghĩa tại mục chính; các mục quy trình và ví dụ chỉ áp dụng lại cơ chế đó.**
 
 [↑ Về mục lục](#muc-luc)
 
 
 ---
+
 
 <a id="chuong-09"></a>
 # 9. DMA
