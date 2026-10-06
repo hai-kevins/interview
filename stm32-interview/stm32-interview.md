@@ -9484,67 +9484,367 @@ xử lý buffer
 <a id="muc-06-17"></a>
 ## 6.17. Hardware Flow Control: CTS / RTS
 
-Một số USART của STM32F1 hỗ trợ hardware flow control bằng:
+`CTS` và `RTS` là hai tín hiệu phần cứng dùng cho **hardware flow control** — kiểm soát luồng truyền dữ liệu giữa hai thiết bị để giảm nguy cơ phía nhận bị quá tải và mất dữ liệu khi phía phát gửi nhanh hơn khả năng xử lý của phía nhận.
 
-```text
-CTS
-RTS
-```
-
-Trong phạm vi các instance được nêu trong chương:
+Trong phạm vi STM32F1:
 
 ```text
 USART1 / USART2 / USART3
-→ có CTS/RTS
+→ hỗ trợ CTS / RTS
 
 UART4 / UART5
-→ không có CTS/RTS tương ứng
+→ không có CTS / RTS tương ứng
+```
+
+Hai chức năng được enable độc lập:
+
+```text
+USART_CR3.CTSE = 1
+→ enable CTS flow control
+
+USART_CR3.RTSE = 1
+→ enable RTS flow control
 ```
 
 ![RM0008 Figure 299 — Hardware flow control between two USARTs](assets/chapter-6/figure-299.png)
 
-### CTS — Clear To Send
+### Kết nối giữa hai thiết bị
 
-Enable bằng:
-
-```text
-USART_CR3.CTSE
-```
-
-Về mặt logic:
+Xét hai thiết bị A và B:
 
 ```text
-CTS asserted
-→ transmitter được phép bắt đầu data tiếp theo
-
-CTS deasserted
-→ transmission mới bị hoãn
++-------------+               +-------------+
+|  Device A   |               |  Device B   |
+|             |               |             |
+|      TX ----|---------------> RX          |
+|      RX <---|---------------| TX          |
+|             |               |             |
+|     RTS ----|---------------> CTS         |
+|     CTS <---|---------------| RTS         |
++-------------+               +-------------+
 ```
 
-Nếu CTS thay đổi khi một frame đang được truyền, frame hiện tại được hoàn tất trước khi transmitter dừng theo flow-control state.
+Quan hệ:
 
-![RM0008 Figure 301 — CTS flow control](assets/chapter-6/figure-301.png)
+```text
+TX của A
+→ RX của B
+
+RX của A
+← TX của B
+
+RTS của A
+→ CTS của B
+
+CTS của A
+← RTS của B
+```
+
+Vì vậy, đối với **một USART**:
+
+```text
+RTS
+→ output
+→ báo trạng thái sẵn sàng nhận của chính receiver
+
+CTS
+→ input
+→ cho transmitter biết phía bên kia có cho phép gửi frame tiếp theo hay không
+```
+
+Trên STM32F1, `RTS` và `CTS` là tín hiệu **active-low**:
+
+```text
+asserted
+→ mức Low
+
+deasserted
+→ mức High
+```
 
 ### RTS — Request To Send
 
-Enable bằng:
+Bit enable:
 
 ```text
 USART_CR3.RTSE
 ```
 
-RTS phản ánh khả năng tiếp nhận data của receiver và được dùng để báo cho phía bên kia khi nào nên tiếp tục/dừng gửi theo hardware flow-control protocol.
+Khi `RTSE = 1`, hardware điều khiển chân `RTS` dựa trên trạng thái receiver.
+
+```text
+receiver sẵn sàng nhận data mới
+→ RTS asserted
+→ RTS = 0
+→ phía bên kia có thể tiếp tục gửi
+```
+
+Khi receive data register đã đầy:
+
+```text
+receive register full
+→ RXNE = 1
+→ RTS deasserted
+→ RTS = 1
+```
+
+Mức High báo cho transmitter phía bên kia rằng luồng truyền cần dừng sau frame đang thực hiện.
+
+```text
+RTS = 1
+→ không có nghĩa frame đang truyền bị cắt giữa chừng
+→ phía phát được kỳ vọng hoàn tất frame hiện tại
+→ sau đó không bắt đầu frame mới
+```
+
+Khi software hoặc DMA đọc `USART_DR` và giải phóng receive data register:
+
+```text
+read USART_DR
+      ↓
+RXNE được clear
+      ↓
+receiver lại sẵn sàng
+      ↓
+RTS asserted trở lại
+      ↓
+RTS = 0
+```
 
 ![RM0008 Figure 300 — RTS flow control](assets/chapter-6/figure-300.png)
 
-### CTS interrupt
+Có thể nhớ:
 
 ```text
-CTSIE
-→ cho phép interrupt liên quan tới thay đổi CTS
+RTS = 0
+→ "Tôi còn khả năng nhận frame tiếp theo"
+
+RTS = 1
+→ "Tạm dừng gửi frame mới cho tôi"
 ```
 
-Hardware flow control hữu ích khi receiver không thể luôn tiêu thụ data với tốc độ mà transmitter muốn gửi.
+Trên STM32F1, không nên mô tả RTS như một ngưỡng tùy ý của một FIFO lớn. Cơ chế trong RM0008 gắn trực tiếp với trạng thái **receive register full / receiver ready**.
+
+### CTS — Clear To Send
+
+Bit enable:
+
+```text
+USART_CR3.CTSE
+```
+
+`CTS` là input mà transmitter kiểm tra trước khi bắt đầu frame tiếp theo.
+
+```text
+CTS asserted
+→ CTS = 0
+→ phía bên kia đang cho phép nhận
+```
+
+Nếu đồng thời có data chờ truyền:
+
+```text
+CTS = 0
++
+TXE = 0
+→ transmitter bắt đầu truyền frame tiếp theo
+```
+
+Ngược lại:
+
+```text
+CTS deasserted
+→ CTS = 1
+→ transmitter không bắt đầu frame mới
+```
+
+Nếu `CTS` chuyển từ asserted sang deasserted khi một frame đã bắt đầu truyền:
+
+```text
+frame hiện tại
+→ vẫn được truyền hoàn tất
+
+sau đó
+→ transmitter dừng trước frame tiếp theo
+```
+
+Do đó không nên hiểu:
+
+```text
+CTS = 1
+→ cắt transmission ngay giữa một frame
+```
+
+![RM0008 Figure 301 — CTS flow control](assets/chapter-6/figure-301.png)
+
+Có thể nhớ:
+
+```text
+CTS = 0
+→ "Tôi được phép gửi frame tiếp"
+
+CTS = 1
+→ "Chưa được bắt đầu frame tiếp"
+```
+
+### `CTSIF` và `CTSIE`
+
+Khi:
+
+```text
+CTSE = 1
+```
+
+mỗi lần input `CTS` thay đổi trạng thái:
+
+```text
+CTS toggle
+→ hardware set USART_SR.CTSIF
+```
+
+Nếu:
+
+```text
+USART_CR3.CTSIE = 1
+```
+
+thì thay đổi `CTS` có thể tạo USART interrupt.
+
+```text
+CTS thay đổi
+      ↓
+CTSIF = 1
+      ↓
+CTSIE = 1
+      ↓
+USARTx IRQ
+```
+
+`CTSIF` cho software biết trạng thái cho phép truyền của phía bên kia vừa thay đổi.
+
+### Ví dụ luồng A truyền sang B
+
+Giả sử:
+
+```text
+Device A
+→ transmitter
+
+Device B
+→ receiver
+```
+
+Kết nối điều khiển:
+
+```text
+RTS_B
+→ CTS_A
+```
+
+Ban đầu B sẵn sàng nhận:
+
+```text
+B receiver ready
+→ RTS_B = 0
+→ CTS_A = 0
+→ A được phép truyền
+```
+
+A gửi một frame:
+
+```text
+A TX
+→ B RX
+→ B Receive Shift Register
+→ B receive data register
+→ RXNE_B = 1
+```
+
+Khi receive register của B đang đầy:
+
+```text
+RXNE_B = 1
+→ RTS_B = 1
+→ CTS_A = 1
+```
+
+A xử lý `CTS_A = 1` như sau:
+
+```text
+nếu đang truyền một frame
+→ hoàn tất frame đó
+
+sau đó
+→ không bắt đầu frame mới
+```
+
+Khi CPU hoặc DMA của B đọc data:
+
+```text
+read USART_DR
+→ RXNE_B được clear
+→ RTS_B = 0
+→ CTS_A = 0
+→ A có thể tiếp tục truyền
+```
+
+Luồng tổng quát:
+
+```text
+Receiver B ready
+      ↓
+RTS_B = 0
+      ↓
+CTS_A = 0
+      ↓
+A truyền frame
+      ↓
+B receive register full
+      ↓
+RXNE_B = 1
+      ↓
+RTS_B = 1
+      ↓
+CTS_A = 1
+      ↓
+A không bắt đầu frame mới
+      ↓
+B đọc USART_DR
+      ↓
+RXNE_B = 0
+      ↓
+RTS_B = 0
+      ↓
+CTS_A = 0
+      ↓
+A tiếp tục truyền
+```
+
+### Vai trò của hardware flow control
+
+Hardware flow control giúp tránh trường hợp:
+
+```text
+transmitter gửi liên tục
+        ↓
+receiver chưa đọc data cũ kịp
+        ↓
+frame mới tới
+        ↓
+Overrun Error
+```
+
+Khi dùng đúng:
+
+```text
+RTS
+→ phía nhận báo khả năng nhận frame tiếp theo
+
+CTS
+→ phía phát tuân theo trạng thái đó trước khi phát frame mới
+```
+
+Cơ chế này **giảm nguy cơ overrun**, nhưng không nên hiểu là bảo đảm tuyệt đối không bao giờ mất dữ liệu; toàn hệ thống vẫn phải có clock/baud phù hợp, kết nối đúng và software/DMA phục vụ dữ liệu đúng thiết kế.
 
 ---
 
