@@ -5235,9 +5235,21 @@ Trong chương này, **interrupt** được dùng cho external interrupt/IRQ khi
 <a id="muc-04-01"></a>
 ## 4.1. Interrupt là gì? Polling và Interrupt
 
+Hai cách phổ biến để firmware phản ứng với một sự kiện phần cứng là:
+
+```text
+Polling
+→ processor chủ động kiểm tra trạng thái
+
+Interrupt
+→ phần cứng tạo interrupt request khi có sự kiện
+```
+
 ### Polling
 
-Polling nghĩa là processor chủ động kiểm tra trạng thái nguồn sự kiện:
+`Polling` là phương pháp processor chủ động đọc trạng thái của peripheral theo chu kỳ hoặc trong một vòng lặp để xác định sự kiện đã xảy ra hay chưa.
+
+Ví dụ:
 
 ```c
 while (1)
@@ -5249,41 +5261,69 @@ while (1)
 }
 ```
 
-Mô hình:
+Luồng:
 
 ```text
 processor
    ↓
-đọc trạng thái
+đọc trạng thái peripheral
    ↓
 có sự kiện?
-   ├── không → kiểm tra lại
+   ├── không → tiếp tục chương trình / kiểm tra lại sau
    └── có    → xử lý
+```
+
+Điểm cốt lõi:
+
+```text
+Polling
+→ processor phải chủ động đi kiểm tra trạng thái
+```
+
+Không nên đồng nhất Polling với `blocking` trong mọi trường hợp.
+
+Có hai cách tổ chức thường gặp:
+
+```text
+Blocking polling
+→ chờ trong vòng lặp cho tới khi điều kiện xảy ra
+
+Periodic / non-blocking polling
+→ kiểm tra nhanh rồi tiếp tục làm việc khác
+→ quay lại kiểm tra ở vòng lặp sau
 ```
 
 Ưu điểm:
 
-- luồng điều khiển đơn giản;
+- đơn giản, dễ triển khai;
+- luồng thực thi tuần tự nên thường dễ theo dõi và debug;
 - phù hợp với hệ thống nhỏ hoặc trạng thái cần kiểm tra định kỳ.
 
 Hạn chế:
 
-- processor phải dành thời gian kiểm tra;
+- processor vẫn phải dành thời gian để đọc và kiểm tra trạng thái;
 - latency phụ thuộc chu kỳ polling;
-- sự kiện ngắn có thể bị bỏ lỡ nếu polling không đủ nhanh.
+- polling quá chậm có thể bỏ lỡ sự kiện ngắn;
+- blocking polling có thể giữ processor chờ không cần thiết và làm giảm hiệu quả sử dụng CPU/điện năng.
 
 ### Interrupt
 
-Với interrupt, nguồn phần cứng tạo interrupt request khi sự kiện xảy ra:
+`Interrupt` là cơ chế trong đó peripheral hoặc khối phần cứng tạo **interrupt request** khi một sự kiện cần được processor xử lý xảy ra.
+
+Luồng khái niệm:
 
 ```text
-processor đang chạy Thread mode
+processor đang chạy công việc hiện tại
         ↓
-interrupt request xuất hiện
+peripheral tạo interrupt request
         ↓
-exception được chấp nhận
+NVIC / exception mechanism
         ↓
-processor chạy ISR
+exception được processor chấp nhận
+        ↓
+ISR bắt đầu chạy
+        ↓
+service interrupt source
         ↓
 exception return
         ↓
@@ -5293,14 +5333,49 @@ tiếp tục context trước đó
 Điểm cốt lõi:
 
 ```text
-Polling
-→ processor đi tìm sự kiện
-
 Interrupt
-→ phần cứng báo cho processor khi sự kiện xảy ra
+→ processor không cần liên tục đọc trạng thái nguồn sự kiện
+→ phần cứng báo khi sự kiện xảy ra
 ```
 
-Chi tiết exception entry/return nằm tại **4.4**; cách thiết kế ISR nằm tại **4.19**.
+Khi interrupt được chấp nhận, Cortex-M3 tự thực hiện exception entry để lưu context tối thiểu cần thiết; sau ISR, exception return khôi phục context trước đó. Cơ chế này được trình bày chi tiết tại **4.4** và phần exception stacking đã được nêu tại **1.9**.
+
+Ưu điểm:
+
+- processor có thể làm công việc khác trong khi chờ sự kiện;
+- phù hợp với sự kiện bất đồng bộ;
+- latency không phụ thuộc chu kỳ polling thông thường;
+- có thể kết hợp với low-power mode để processor ngủ khi không có việc cần xử lý.
+
+Hạn chế:
+
+- luồng điều khiển phức tạp hơn Polling;
+- phải quản lý priority, shared data và interrupt latency;
+- dễ phát sinh race condition hoặc lỗi đồng bộ nếu ISR và Thread mode cùng truy cập dữ liệu mà không có thiết kế phù hợp.
+
+### So sánh
+
+| Đặc điểm | Polling | Interrupt |
+|---|---|---|
+| Bên chủ động | Processor kiểm tra | Phần cứng tạo interrupt request |
+| Thời điểm phát hiện | Theo chu kỳ kiểm tra | Khi request được tạo và đủ điều kiện được phục vụ |
+| CPU khi chưa có sự kiện | Vẫn phải kiểm tra định kỳ | Có thể làm việc khác hoặc vào low-power mode |
+| Độ phức tạp phần mềm | Thường thấp hơn | Cao hơn |
+| Latency | Phụ thuộc chu kỳ polling | Phụ thuộc exception/priority/ISR latency |
+| Nguy cơ bỏ lỡ sự kiện ngắn | Có nếu polling quá chậm | Giảm nếu phần cứng giữ flag/request đúng cơ chế |
+| Dữ liệu dùng chung | Thường đơn giản hơn | Cần chú ý synchronization giữa ISR và Thread mode |
+
+Có thể nhớ:
+
+```text
+Polling
+→ CPU hỏi: "Có sự kiện chưa?"
+
+Interrupt
+→ phần cứng báo: "Sự kiện đã xảy ra"
+```
+
+Chi tiết exception entry/return nằm tại **4.4**; NVIC tại **4.5–4.9**; cách thiết kế ISR tại **4.19**.
 
 ---
 
