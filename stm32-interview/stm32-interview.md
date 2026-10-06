@@ -5532,7 +5532,7 @@ Nếu một exception có priority đủ cao xuất hiện khi handler khác đa
 Nested Vectored Interrupt Controller
 ```
 
-NVIC (Bộ điều khiển vectơ ngắt lồng nhau) là một khối ngoại vi phần cứng được tích hợp trực tiếp vào bên trong lõi xử lý (core), có nhiệm vụ quản lý, phân cấp ưu tiên và điều phối toàn bộ các tín hiệu ngắt và ngoại lệ (Exceptions/Interrupts) từ phần cứng hệ thống hoặc peripheral gửi về processor.
+NVIC (Bộ điều khiển vectơ ngắt lồng nhau) là một khối ngoại vi phần cứng được tích hợp trực tiếp vào bên trong bộ xử lý (processor), có nhiệm vụ quản lý, phân cấp ưu tiên và điều phối toàn bộ các tín hiệu ngắt và ngoại lệ (Exceptions/Interrupts) từ phần cứng hệ thống hoặc peripheral gửi về processor.
 
 Các chức năng cần nhận diện:
 
