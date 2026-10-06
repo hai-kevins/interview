@@ -14082,27 +14082,65 @@ CPU processing
 <a id="chuong-09"></a>
 # 9. DMA
 
-`DMA` cho phép phần cứng di chuyển dữ liệu giữa peripheral và memory, hoặc giữa hai vùng memory, mà CPU không phải tự thực hiện từng phép đọc/ghi.
+Chương này dùng một mục chính cho mỗi khái niệm của DMA. Các mục tích hợp peripheral, quy trình và ví dụ chỉ áp dụng lại cơ chế đã nêu và dẫn chiếu về mục chính để tránh lặp nội dung.
 
 Luồng tổng quát:
 
 ```text
-Peripheral
-    ↕
-DMA Controller
-    ↕
-SRAM
+Peripheral / Memory
+        ↓
+    DMA Channel
+        ↓
+Peripheral / Memory
 ```
 
-CPU thường làm ba việc:
+Vai trò được tách rõ:
 
 ```text
-1. Cấu hình DMA
-2. Khởi động transfer
-3. Xử lý Half Transfer / Transfer Complete / Transfer Error
+DMA
+→ di chuyển dữ liệu
+
+CPU
+→ cấu hình transfer
+→ xử lý event/lỗi
+→ xử lý ý nghĩa của dữ liệu
 ```
 
-Trong lúc transfer đang diễn ra, CPU có thể thực hiện công việc khác.
+## Quy ước thuật ngữ
+
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **DMA** | Direct Memory Access; cơ chế phần cứng di chuyển dữ liệu mà CPU không phải tự thực hiện từng phép đọc/ghi. |
+| **DMA Controller** | Khối DMA phần cứng, ví dụ DMA1 hoặc DMA2. |
+| **DMA Channel** | Kênh transfer của DMA Controller. STM32F1 dùng **Channel**, không dùng kiến trúc DMA Stream. |
+| **DMA Request** | Yêu cầu transfer do peripheral tạo ra khi event tương ứng xảy ra. |
+| **Channel Mapping** | Quan hệ phần cứng giữa peripheral DMA request và DMA Channel; trên STM32F1 mapping không được chọn tùy ý. |
+| **transfer** | Một quá trình DMA di chuyển một hoặc nhiều data item giữa source và destination. |
+| **data item** | Một đơn vị transfer; kích thước do `PSIZE`/`MSIZE` quyết định, không mặc định luôn là 1 byte. |
+| **Peripheral-to-Memory** | Hướng transfer từ peripheral register sang memory; `DIR = 0`. |
+| **Memory-to-Peripheral** | Hướng transfer từ memory sang peripheral register; `DIR = 1`. |
+| **Memory-to-Memory** | Hướng transfer giữa hai vùng memory; dùng `MEM2MEM = 1`. |
+| **`DMA_CCRx`** | Channel Configuration Register; chứa enable, interrupt enable, direction, Circular Mode, increment, data width, priority và `MEM2MEM`. |
+| **`DMA_CNDTRx`** | Channel Number of Data Register; số data item còn phải transfer. |
+| **`DMA_CPARx`** | Peripheral Address Register. |
+| **`DMA_CMARx`** | Memory Address Register. |
+| **data width** | Độ rộng mỗi access của peripheral/memory: 8-bit, 16-bit hoặc 32-bit. |
+| **address increment** | Cơ chế tăng address sau mỗi data item bằng `PINC` hoặc `MINC`. |
+| **Normal Mode** | Transfer kết thúc khi `CNDTR` về 0. |
+| **Circular Mode** | Khi block kết thúc, DMA reload count/address state phù hợp và tiếp tục transfer vòng mới. |
+| **DMA priority** | `PL[1:0]`; priority dùng cho arbitration giữa các DMA Channel, độc lập với NVIC priority. |
+| **Half Transfer / HT** | Event khi khoảng một nửa block đã được transfer. |
+| **Transfer Complete / TC** | Event khi DMA hoàn tất block transfer đã cấu hình. |
+| **Transfer Error / TE** | Event báo lỗi transfer. |
+| **DMA flag** | Flag trong `DMA_ISR`, ví dụ `HTIFx`, `TCIFx`, `TEIFx`. |
+| **W1C clear** | Ghi `1` vào bit clear tương ứng trong `DMA_IFCR` để clear DMA flag. |
+| **peripheral DMA request enable** | Bit trong peripheral cho phép peripheral phát DMA request, ví dụ `ADC_CR2.DMA`, `USART_CR3.DMAR/DMAT`, `SPI_CR2.RXDMAEN/TXDMAEN`. |
+| **DMA Transfer Complete** | Chỉ xác nhận DMA đã di chuyển xong dữ liệu của block; không mặc định đồng nghĩa peripheral đã hoàn tất hoạt động vật lý/protocol. |
+| **circular DMA buffer** | Buffer memory được DMA ghi/đọc lặp lại khi dùng Circular Mode; có thể kết hợp Half Transfer để CPU xử lý theo từng nửa buffer. |
+
+Tên register/bit giữ nguyên ký hiệu STM32F1 như `CNDTR`, `CPAR`, `CMAR`, `PINC`, `MINC`, `PSIZE`, `MSIZE`, `CIRC`, `PL`, `TCIFx`, `HTIFx`, `TEIFx`.
+
+---
 
 <a id="muc-09-01"></a>
 ## 9.1. DMA là gì?
@@ -14120,20 +14158,10 @@ Peripheral
     ↓
    CPU
     ↓
-  Memory
+ Memory
 ```
 
-Ví dụ UART RX:
-
-```c
-while (!(USART1->SR & USART_SR_RXNE))
-{
-}
-
-rx_buffer[index++] = (uint8_t)USART1->DR;
-```
-
-CPU phải tham gia vào từng byte.
+Ví dụ UART RX, CPU phải tự đọc từng byte từ `USART_DR` rồi ghi vào buffer.
 
 Với DMA:
 
@@ -14142,46 +14170,46 @@ USART RX
    ↓
 USART_DR
    ↓
-DMA
+DMA Channel
    ↓
 rx_buffer[]
 ```
 
 CPU không cần copy từng byte.
 
-### DMA làm gì?
-
 DMA chủ yếu thực hiện:
 
 ```text
-đọc dữ liệu từ Source
-        ↓
-ghi dữ liệu vào Destination
-        ↓
-cập nhật địa chỉ nếu Increment được bật
-        ↓
-giảm CNDTR
+đọc source
+   ↓
+ghi destination
+   ↓
+cập nhật address nếu increment được bật
+   ↓
+CNDTR--
 ```
 
-DMA không tự:
+DMA không thay CPU thực hiện:
 
 ```text
 parse packet
-tính toán thuật toán
 giải mã protocol
+tính toán thuật toán
 xử lý nội dung sensor
 ```
-
-Những việc đó vẫn thuộc CPU.
 
 Có thể nhớ:
 
 > **DMA di chuyển dữ liệu; CPU xử lý ý nghĩa của dữ liệu.**
 
+Cách DMA khác CPU Transfer được so sánh tại **9.2**; các hướng transfer được định nghĩa tại **9.5**.
+
 ---
 
 <a id="muc-09-02"></a>
 ## 9.2. CPU Transfer và DMA Transfer
+
+Mục này chỉ so sánh hai cách di chuyển dữ liệu; vai trò DMA đã được định nghĩa tại **9.1**.
 
 ### CPU Transfer
 
@@ -14192,37 +14220,35 @@ Peripheral có data
        ↓
 CPU phát hiện flag / nhận interrupt
        ↓
-CPU đọc Peripheral Register
+CPU đọc peripheral register
        ↓
-CPU ghi Memory
+CPU ghi memory
        ↓
 lặp lại
 ```
 
-Nếu dữ liệu tới thường xuyên:
+Nếu dữ liệu đến thường xuyên:
 
 ```text
 CPU phải phục vụ nhiều lần
-→ tăng CPU load
+→ CPU load tăng
 ```
 
 ### DMA Transfer
 
 ```text
-Peripheral Event
+Peripheral event
        ↓
 DMA Request
        ↓
 DMA Channel
        ↓
-đọc Peripheral
-       ↓
-ghi Memory
+transfer data item
        ↓
 CNDTR--
 ```
 
-CPU chỉ cần xử lý khi:
+CPU thường chỉ cần can thiệp khi cần xử lý:
 
 ```text
 Half Transfer
@@ -14230,15 +14256,15 @@ Transfer Complete
 Transfer Error
 ```
 
-hoặc khi ứng dụng muốn kiểm tra trạng thái.
+hoặc khi application chủ động kiểm tra trạng thái.
 
 ### So sánh
 
 | Đặc điểm | CPU Transfer | DMA Transfer |
 |---|---|---|
-| Copy từng phần tử | CPU | DMA |
+| Di chuyển từng data item | CPU | DMA |
 | CPU load | Cao hơn | Thấp hơn |
-| Phù hợp dữ liệu liên tục | Hạn chế hơn | Tốt |
+| Dữ liệu liên tục | Hạn chế hơn | Phù hợp hơn |
 | Cấu hình | Đơn giản hơn | Nhiều bước hơn |
 | Xử lý protocol/data | CPU | CPU |
 | Di chuyển block dữ liệu | CPU | DMA |
@@ -14248,7 +14274,7 @@ hoặc khi ứng dụng muốn kiểm tra trạng thái.
 <a id="muc-09-03"></a>
 ## 9.3. DMA1 / DMA2 và DMA Channel
 
-STM32F1 sử dụng kiến trúc:
+STM32F1 tổ chức DMA theo:
 
 ```text
 DMA Controller
@@ -14265,13 +14291,7 @@ Channel 2
 Channel 7
 ```
 
-Một số STM32F10xxx còn có:
-
-```text
-DMA2
-```
-
-Số channel và peripheral mapping của DMA2 phụ thuộc đúng device.
+Một số STM32F10xxx còn có DMA2; số channel và mapping của DMA2 phụ thuộc device.
 
 Điểm cần phân biệt với một số STM32 đời khác:
 
@@ -14283,9 +14303,9 @@ không phải
 → DMA Stream
 ```
 
-### Mỗi Channel có Register riêng
+### Register của một DMA Channel
 
-Ví dụ một channel:
+Mỗi channel có bốn register chính:
 
 ```text
 DMA_CCRx
@@ -14298,7 +14318,7 @@ Trong đó:
 
 ```text
 x
-→ Channel number
+→ channel number
 ```
 
 Ví dụ DMA1 Channel 1:
@@ -14310,63 +14330,59 @@ DMA1_Channel1->CPAR
 DMA1_Channel1->CMAR
 ```
 
+Chức năng chi tiết được tách như sau:
+
+```text
+CCR
+→ 9.6
+
+CNDTR
+→ 9.7
+
+CPAR / CMAR
+→ 9.8
+```
+
 ---
 
 <a id="muc-09-04"></a>
 ## 9.4. DMA Request và Channel Mapping
 
-Peripheral tạo:
-
-```text
-DMA Request
-```
-
-khi một event phù hợp xảy ra.
+Peripheral tạo **DMA Request** khi event tương ứng xảy ra.
 
 Ví dụ:
 
 ```text
 ADC conversion complete
-→ DMA Request
-
 USART RX data available
-→ DMA Request
-
 USART TX data register empty
-→ DMA Request
-
 SPI RX / TX
-→ DMA Request
-
 I2C RX / TX
-→ DMA Request
-
 Timer Update / Capture / Compare
-→ DMA Request
 ```
 
 Luồng:
 
 ```text
-Peripheral Event
+Peripheral event
       ↓
 DMA Request
       ↓
 DMA Channel đã được hardware mapping
       ↓
-Transfer
+transfer
 ```
 
 ### Mapping cố định
 
-STM32F1 không có một DMA request multiplexer linh hoạt kiểu các dòng mới hơn.
+STM32F1 không có DMA request multiplexer linh hoạt như một số dòng mới hơn.
 
 ```text
-Peripheral Request
-→ DMA Channel mapping được quy định bởi hardware
+Peripheral DMA Request
+→ DMA Channel mapping do hardware quy định
 ```
 
-Do đó phải kiểm tra bảng mapping của đúng MCU.
+Do đó phải kiểm tra mapping của đúng MCU.
 
 Ví dụ mapping phổ biến trên STM32F10xxx:
 
@@ -14393,92 +14409,82 @@ I2C1_RX
 → DMA1 Channel 7
 ```
 
-Không được chọn tùy ý:
-
-```text
-USART1_RX
-→ DMA1 Channel 2
-```
-
-nếu hardware mapping không hỗ trợ.
+Không được chọn một channel tùy ý nếu hardware mapping không hỗ trợ.
 
 ### Channel Conflict
 
-Một DMA Channel chỉ thực hiện một cấu hình transfer tại một thời điểm.
+Một DMA Channel chỉ giữ một cấu hình transfer tại một thời điểm.
 
-Nếu hai peripheral request cùng được mapping vào cùng một channel và ứng dụng cần dùng đồng thời:
+Nếu hai peripheral request được mapping vào cùng channel và application cần dùng đồng thời:
 
 ```text
-sẽ có xung đột thiết kế
+→ xung đột sử dụng channel
 ```
 
-Cần tổ chức hệ thống để hai request đó không dùng channel cùng lúc hoặc chọn kiến trúc khác nếu device cho phép.
+Application phải tổ chức để chúng không chiếm cùng channel cùng lúc hoặc chọn kiến trúc khác nếu device cho phép.
+
+Các mục **9.16–9.20** chỉ áp dụng mapping tương ứng cho từng peripheral, không định nghĩa lại cơ chế mapping.
 
 ---
 
 <a id="muc-09-05"></a>
 ## 9.5. Peripheral-to-Memory / Memory-to-Peripheral / Memory-to-Memory
 
-DMA hỗ trợ ba hướng chính.
+Ba hướng transfer chính:
 
 ### Peripheral-to-Memory
 
-Ví dụ ADC:
-
 ```text
-ADC_DR
-  ↓
-DMA
-  ↓
-adc_buffer[]
+Peripheral Register
+       ↓
+      DMA
+       ↓
+Memory Buffer
 ```
 
-Ví dụ UART RX:
-
-```text
-USART_DR
-   ↓
-DMA
-   ↓
-rx_buffer[]
-```
-
-Trong mode này:
+Dùng:
 
 ```text
 DIR = 0
 ```
 
-### Memory-to-Peripheral
-
-Ví dụ UART TX:
+Ví dụ:
 
 ```text
-tx_buffer[]
-    ↓
-DMA
-    ↓
-USART_DR
-    ↓
-TX
+ADC_DR → adc_buffer[]
+USART_DR → rx_buffer[]
 ```
 
-Trong mode này:
+### Memory-to-Peripheral
+
+```text
+Memory Buffer
+      ↓
+     DMA
+      ↓
+Peripheral Register
+```
+
+Dùng:
 
 ```text
 DIR = 1
 ```
 
-### Memory-to-Memory
-
 Ví dụ:
 
 ```text
-source_buffer[]
+tx_buffer[] → USART_DR
+```
+
+### Memory-to-Memory
+
+```text
+source memory
       ↓
      DMA
       ↓
-destination_buffer[]
+destination memory
 ```
 
 Enable bằng:
@@ -14487,15 +14493,11 @@ Enable bằng:
 MEM2MEM = 1
 ```
 
-Memory-to-Memory:
+Memory-to-Memory không cần peripheral DMA request; transfer bắt đầu khi channel được enable.
 
-```text
-không cần peripheral DMA request
-```
+Circular Mode không dùng cùng Memory-to-Memory mode.
 
-Transfer bắt đầu khi channel được enable.
-
-Circular Mode không được sử dụng cùng Memory-to-Memory mode.
+`DIR` và `MEM2MEM` là các field của `DMA_CCRx`; register này được tổng hợp tại **9.6**.
 
 ---
 
@@ -14508,61 +14510,20 @@ Circular Mode không được sử dụng cùng Memory-to-Memory mode.
 DMA Channel Configuration Register
 ```
 
-Các bit quan trọng:
+Các bit/field cần nhận diện:
 
-```text
-EN
-→ Channel Enable
+| Field | Vai trò | Mục chính |
+|---|---|---|
+| `EN` | Channel Enable | mục này |
+| `TCIE / HTIE / TEIE` | Interrupt Enable | **9.13**, **9.15** |
+| `DIR` | Transfer Direction | **9.5** |
+| `CIRC` | Circular Mode | **9.11** |
+| `PINC / MINC` | Address Increment | **9.10** |
+| `PSIZE / MSIZE` | Data Width | **9.9** |
+| `PL` | DMA Priority | **9.12** |
+| `MEM2MEM` | Memory-to-Memory Mode | **9.5** |
 
-TCIE
-→ Transfer Complete Interrupt Enable
-
-HTIE
-→ Half Transfer Interrupt Enable
-
-TEIE
-→ Transfer Error Interrupt Enable
-
-DIR
-→ Data Transfer Direction
-
-CIRC
-→ Circular Mode
-
-PINC
-→ Peripheral Increment Mode
-
-MINC
-→ Memory Increment Mode
-
-PSIZE
-→ Peripheral Size
-
-MSIZE
-→ Memory Size
-
-PL
-→ Channel Priority Level
-
-MEM2MEM
-→ Memory-to-Memory Mode
-```
-
-Có thể nhóm:
-
-```text
-DMA_CCRx
-├── Enable
-├── Interrupt
-├── Direction
-├── Circular
-├── Address Increment
-├── Data Width
-├── Priority
-└── Memory-to-Memory
-```
-
-### EN
+### `EN`
 
 ```text
 EN = 0
@@ -14572,13 +14533,9 @@ EN = 1
 → Channel enabled
 ```
 
-Các register cấu hình của channel nên được lập trình khi:
+Các register/field cấu hình channel phải được lập trình khi channel disabled.
 
-```text
-EN = 0
-```
-
-Trước khi thay đổi:
+Trước khi thay đổi các giá trị như:
 
 ```text
 CPAR
@@ -14586,15 +14543,19 @@ CMAR
 CNDTR
 DIR
 CIRC
-PINC
-MINC
-PSIZE
-MSIZE
+PINC / MINC
+PSIZE / MSIZE
 PL
 MEM2MEM
 ```
 
-nên disable channel.
+thực hiện:
+
+```text
+EN = 0
+```
+
+Mục **9.21** áp dụng quy tắc này trong trình tự cấu hình tổng quát.
 
 ---
 
@@ -14607,31 +14568,17 @@ nên disable channel.
 DMA Channel Number of Data Register
 ```
 
-chứa số **data item** còn phải transfer.
+chứa số **data item còn phải transfer**.
 
 Ví dụ:
 
 ```text
 CNDTR = 8
+
+8 → 7 → 6 → ... → 1 → 0
 ```
 
-luồng:
-
-```text
-8
-↓
-7
-↓
-6
-↓
-...
-↓
-1
-↓
-0
-```
-
-Mỗi transfer thành công:
+Mỗi data item transfer thành công:
 
 ```text
 CNDTR--
@@ -14639,92 +14586,71 @@ CNDTR--
 
 ### Giới hạn
 
-`CNDTR` có độ rộng 16-bit.
-
-Giá trị transfer hợp lệ:
+`CNDTR` có độ rộng 16-bit:
 
 ```text
-1 → 65535 data items
+1 ... 65535 data items
 ```
 
-### Data Item không nhất thiết là Byte
+### Data item không mặc định là byte
 
 Ví dụ:
 
 ```text
 MSIZE = 8-bit
 CNDTR = 100
+→ 100 byte
 ```
-
-→ 100 byte.
-
-Nhưng:
 
 ```text
 MSIZE = 16-bit
 CNDTR = 100
+→ 100 halfword
+→ 200 byte
 ```
-
-→ 100 halfword:
-
-```text
-200 byte
-```
-
-Và:
 
 ```text
 MSIZE = 32-bit
 CNDTR = 100
+→ 100 word
+→ 400 byte
 ```
 
-→ 100 word:
+Data width được định nghĩa tại **9.9**.
+
+### Normal và Circular
 
 ```text
-400 byte
-```
-
-### Normal Mode
-
-```text
+Normal Mode
 CNDTR → 0
-    ↓
-Transfer Complete
-    ↓
-Channel không tiếp tục transfer mới
+→ Transfer Complete
+→ block kết thúc
 ```
 
-### Circular Mode
-
 ```text
+Circular Mode
 CNDTR → 0
-    ↓
-Transfer Complete
-    ↓
-CNDTR được reload
-    ↓
-transfer bắt đầu vòng mới
+→ Transfer Complete
+→ CNDTR được reload
+→ vòng transfer tiếp theo
 ```
 
-### Đọc CNDTR khi đang chạy
+Circular Mode được trình bày tại **9.11**.
 
-`CNDTR` có thể được dùng để biết:
+### Đọc `CNDTR` khi DMA đang chạy
 
-```text
-còn bao nhiêu data item chưa transfer
-```
+`CNDTR` có thể được dùng để biết còn bao nhiêu data item chưa transfer.
 
-Một ứng dụng rất thực tế với UART RX DMA:
+Ví dụ UART RX DMA:
 
 ```text
 buffer_size = N
 remaining   = CNDTR
 
-received
-= N - remaining
+received = N - remaining
 ```
 
-Mô hình này thường được dùng cùng USART IDLE detection.
+Mô hình này thường được kết hợp USART IDLE detection; cơ chế IDLE thuộc **Chương 6**.
 
 ---
 
@@ -14741,77 +14667,40 @@ DMA_CMARx
 → Memory Address
 ```
 
-### Peripheral Address
-
-Ví dụ ADC:
+Ví dụ `CPAR`:
 
 ```text
-CPAR
-→ &ADC1->DR
+ADC1->DR
+USART1->DR
+SPI1->DR
+TIMx->CCRy
 ```
 
-UART:
+Ví dụ `CMAR`:
 
 ```text
-CPAR
-→ &USART1->DR
+adc_buffer
+uart_rx_buffer
+tx_buffer
 ```
 
-SPI:
+Quan hệ với direction:
 
 ```text
-CPAR
-→ &SPI1->DR
+Peripheral-to-Memory
+CPAR → source
+CMAR → destination
 ```
-
-Timer:
 
 ```text
-CPAR
-→ &TIMx->CCRy
+Memory-to-Peripheral
+CMAR → source
+CPAR → destination
 ```
 
-### Memory Address
+Direction đã được định nghĩa tại **9.5**.
 
-Ví dụ:
-
-```text
-CMAR
-→ adc_buffer
-```
-
-hoặc:
-
-```text
-CMAR
-→ uart_rx_buffer
-```
-
-### Peripheral-to-Memory
-
-```text
-CPAR
-Source: Peripheral Register
-      ↓
-DMA
-      ↓
-CMAR
-Destination: Memory
-```
-
-### Memory-to-Peripheral
-
-```text
-CMAR
-Source: Memory
-      ↓
-DMA
-      ↓
-CPAR
-Destination: Peripheral Register
-```
-
-### Địa chỉ phải phù hợp
+### Address và alignment
 
 Phải bảo đảm:
 
@@ -14825,19 +14714,16 @@ Alignment
 
 phù hợp với transfer.
 
-Ví dụ:
+Ví dụ transfer 16-bit cần memory address phù hợp cho halfword access.
 
-```text
-16-bit transfer
-→ memory address nên được align phù hợp cho halfword
-```
+Data width được xử lý tại **9.9**; address increment tại **9.10**.
 
 ---
 
 <a id="muc-09-09"></a>
 ## 9.9. Data Width: PSIZE / MSIZE
 
-DMA có thể transfer:
+DMA hỗ trợ data width:
 
 ```text
 8-bit
@@ -14845,13 +14731,7 @@ DMA có thể transfer:
 32-bit
 ```
 
-### PSIZE
-
-```text
-Peripheral Size
-```
-
-Giá trị:
+### `PSIZE`
 
 ```text
 00 → 8-bit
@@ -14860,13 +14740,7 @@ Giá trị:
 11 → Reserved
 ```
 
-### MSIZE
-
-```text
-Memory Size
-```
-
-Giá trị:
+### `MSIZE`
 
 ```text
 00 → 8-bit
@@ -14875,65 +14749,47 @@ Giá trị:
 11 → Reserved
 ```
 
-### ADC
+### Cấu hình điển hình
 
-ADC result nằm trong 16-bit data field.
-
-Cấu hình điển hình:
+ADC:
 
 ```text
 PSIZE = 16-bit
 MSIZE = 16-bit
+
+uint16_t adc_buffer[];
 ```
 
-Buffer:
-
-```c
-uint16_t adc_buffer[16];
-```
-
-### UART
-
-UART byte stream thường dùng:
+UART byte stream:
 
 ```text
 PSIZE = 8-bit
 MSIZE = 8-bit
+
+uint8_t uart_buffer[];
 ```
 
-Buffer:
-
-```c
-uint8_t uart_buffer[64];
-```
-
-### Timer CCR
-
-Nếu Timer register được sử dụng theo 16-bit data:
+Timer register dùng theo 16-bit data:
 
 ```text
 PSIZE = 16-bit
 MSIZE = 16-bit
 ```
 
-thường là lựa chọn trực tiếp.
+### Khi `PSIZE != MSIZE`
 
-### Khi PSIZE và MSIZE khác nhau
+DMA hỗ trợ một số trường hợp width conversion theo cấu hình.
 
-DMA hỗ trợ một số trường hợp width conversion bằng cách ghi/đọc theo width đã cấu hình.
-
-Tuy nhiên phải hiểu rõ:
+Trước khi dùng cần xác định rõ:
 
 ```text
-Peripheral register width
-Memory element type
-Byte ordering
-Truncation / zero extension behavior
+peripheral register width
+memory element type
+byte ordering
+truncation / zero-extension behavior
 ```
 
-trước khi cố tình dùng `PSIZE != MSIZE`.
-
-Trong các driver cơ bản:
+Trong driver cơ bản:
 
 ```text
 PSIZE = MSIZE
@@ -14941,32 +14797,21 @@ PSIZE = MSIZE
 
 thường dễ kiểm soát hơn.
 
+`CNDTR` đếm **data item**, nên số byte thực tế của block phải được hiểu cùng với data width; xem **9.7**.
+
 ---
 
 <a id="muc-09-10"></a>
 ## 9.10. Address Increment: PINC / MINC
 
-### MINC
-
-```text
-MINC
-→ Memory Increment Mode
-```
-
-Nếu:
+### `MINC`
 
 ```text
 MINC = 1
+→ Memory Address tăng sau mỗi data item
 ```
 
-sau mỗi transfer:
-
-```text
-Memory Address
-→ tăng theo MSIZE
-```
-
-Ví dụ:
+Mức tăng phụ thuộc `MSIZE`:
 
 ```text
 MSIZE = 8-bit
@@ -14979,28 +14824,18 @@ MSIZE = 32-bit
 → +4 byte
 ```
 
-### PINC
-
-```text
-PINC
-→ Peripheral Increment Mode
-```
-
-Nếu:
+### `PINC`
 
 ```text
 PINC = 1
+→ Peripheral Address tăng sau mỗi data item
 ```
 
-Peripheral Address tăng theo:
+Mức tăng phụ thuộc `PSIZE`.
 
-```text
-PSIZE
-```
+### Cấu hình thường gặp
 
-### Peripheral Register thông thường
-
-Với:
+Với các peripheral register cố định như:
 
 ```text
 ADC_DR
@@ -15010,54 +14845,41 @@ I2C_DR
 TIMx_CCR1
 ```
 
-địa chỉ peripheral register phải giữ cố định.
-
-Do đó thường:
+thường dùng:
 
 ```text
 PINC = 0
 ```
 
-### Memory Buffer
-
-Ví dụ:
+Với memory buffer:
 
 ```c
 uint16_t adc_buffer[4];
 ```
 
-muốn:
+muốn các sample lần lượt vào:
 
 ```text
-sample 0 → buffer[0]
-sample 1 → buffer[1]
-sample 2 → buffer[2]
-sample 3 → buffer[3]
+buffer[0]
+buffer[1]
+buffer[2]
+buffer[3]
 ```
 
-cần:
+thì:
 
 ```text
 MINC = 1
 ```
 
-### Cấu hình điển hình
-
-Peripheral-to-Memory:
+Do đó cấu hình thường gặp cho cả Peripheral-to-Memory và Memory-to-Peripheral với một peripheral register cố định là:
 
 ```text
 PINC = 0
 MINC = 1
 ```
 
-Memory-to-Peripheral:
-
-```text
-PINC = 0
-MINC = 1
-```
-
-khi một peripheral register được feed từ một memory buffer.
+Data width quyết định bước increment và được định nghĩa tại **9.9**.
 
 ---
 
@@ -15076,16 +14898,14 @@ CIRC
 CIRC = 0
 ```
 
-Luồng:
-
 ```text
-N transfers
-    ↓
+N data items
+     ↓
 CNDTR = 0
-    ↓
+     ↓
 Transfer Complete
-    ↓
-dừng
+     ↓
+block kết thúc
 ```
 
 ### Circular Mode
@@ -15094,20 +14914,16 @@ dừng
 CIRC = 1
 ```
 
-Luồng:
-
 ```text
-N transfers
-    ↓
+N data items
+     ↓
 CNDTR = 0
-    ↓
+     ↓
 Transfer Complete
-    ↓
-CNDTR reload
-    ↓
-Memory/Peripheral address quay về đầu transfer
-    ↓
-N transfers tiếp
+     ↓
+count/address state được reload phù hợp
+     ↓
+vòng transfer tiếp theo
 ```
 
 Ví dụ:
@@ -15122,7 +14938,7 @@ ADC_DR → buffer[1]
 ADC_DR → buffer[2]
 ADC_DR → buffer[3]
                ↓
-             wrap
+              wrap
                ↓
 ADC_DR → buffer[0]
 ...
@@ -15137,11 +14953,13 @@ UART RX continuous block reception
 Audio / waveform acquisition
 ```
 
-Circular Mode không dùng cho:
+Circular Mode không dùng khi:
 
 ```text
 MEM2MEM = 1
 ```
+
+Cơ chế xử lý buffer theo Half Transfer/Transfer Complete được áp dụng tại **9.24**.
 
 ---
 
@@ -15154,23 +14972,21 @@ Mỗi channel có:
 PL[1:0]
 ```
 
-Các mức:
-
-| `PL` | Priority |
+| `PL` | DMA Priority |
 |---|---|
 | `00` | Low |
 | `01` | Medium |
 | `10` | High |
 | `11` | Very High |
 
-Khi nhiều DMA channel cùng request:
+Khi nhiều DMA Channel cùng có request:
 
 ```text
-DMA Arbiter
+DMA arbiter
     ↓
-Software Priority
+DMA priority
     ↓
-Channel được phục vụ
+channel được phục vụ
 ```
 
 Nếu hai channel có cùng `PL`:
@@ -15183,88 +14999,54 @@ channel number nhỏ hơn
 Ví dụ:
 
 ```text
-DMA Channel 2
-DMA Channel 5
+Channel 2
+Channel 5
 
 cùng PL
 → Channel 2 được ưu tiên
 ```
 
-### DMA Priority khác NVIC Priority
+### DMA Priority và NVIC Priority
+
+Hai hệ priority độc lập:
 
 ```text
 DMA PL
-→ quyết định arbitration giữa DMA channels
+→ arbitration giữa DMA Channel
 
-NVIC Priority
-→ quyết định CPU xử lý interrupt nào trước
+NVIC priority
+→ CPU chọn interrupt/exception để phục vụ
 ```
 
-Hai hệ priority độc lập.
-
-Ví dụ:
+Ví dụ một channel có thể đặt:
 
 ```text
-DMA Channel 1
-→ Very High DMA Priority
-
-nhưng
-
-DMA1_Channel1_IRQn
-→ có thể đặt NVIC priority thấp
+DMA Priority = Very High
 ```
+
+nhưng IRQ tương ứng vẫn có thể được đặt NVIC priority thấp.
 
 ---
 
 <a id="muc-09-13"></a>
 ## 9.13. Transfer Complete / Half Transfer / Transfer Error
 
-Ba event quan trọng:
+Ba DMA event chính:
 
 ```text
-TC
-→ Transfer Complete
-
 HT
 → Half Transfer
+
+TC
+→ Transfer Complete
 
 TE
 → Transfer Error
 ```
 
-### Transfer Complete
-
-Khi toàn bộ data item đã transfer:
-
-```text
-CNDTR
-↓
-0
-```
-
-DMA set:
-
-```text
-TCIFx = 1
-```
-
-Nếu:
-
-```text
-TCIE = 1
-```
-
-DMA tạo interrupt.
-
 ### Half Transfer
 
-Giả sử:
-
-```text
-CNDTR ban đầu = 100
-```
-
-khi khoảng một nửa block đã transfer:
+Khi khoảng một nửa block đã transfer:
 
 ```text
 HTIFx = 1
@@ -15276,13 +15058,41 @@ Nếu:
 HTIE = 1
 ```
 
-DMA tạo interrupt.
+DMA có thể tạo interrupt.
 
-Half Transfer đặc biệt hữu ích với:
+Half Transfer đặc biệt hữu ích với Circular Mode; ứng dụng cụ thể nằm tại **9.24**.
+
+### Transfer Complete
+
+Khi toàn bộ block đã transfer:
 
 ```text
-Circular Buffer
+CNDTR → 0
+→ TCIFx = 1
 ```
+
+Nếu:
+
+```text
+TCIE = 1
+```
+
+DMA có thể tạo interrupt.
+
+Điểm quan trọng:
+
+```text
+DMA TC
+→ DMA hoàn tất block transfer
+```
+
+không mặc định có nghĩa:
+
+```text
+peripheral đã hoàn tất hoạt động vật lý/protocol
+```
+
+Các ví dụ USART/SPI/I2C nằm tại **9.17–9.19**.
 
 ### Transfer Error
 
@@ -15298,24 +15108,18 @@ Nếu:
 TEIE = 1
 ```
 
-DMA tạo interrupt.
+DMA có thể tạo interrupt.
 
-Khi Transfer Error xảy ra, channel có thể bị disable bởi hardware.
+Khi Transfer Error xảy ra, channel có thể bị hardware disable; application không nên mặc định buffer hiện tại đã hoàn chỉnh.
 
-Ứng dụng phải xem buffer hiện tại là:
-
-```text
-không chắc hoàn chỉnh
-```
-
-cho tới khi xử lý recovery.
+Các flag trên được đọc/clear qua `DMA_ISR/DMA_IFCR` tại **9.14**.
 
 ---
 
 <a id="muc-09-14"></a>
 ## 9.14. DMA_ISR / DMA_IFCR
 
-DMA Controller có hai register status/clear chính:
+Hai register status/clear chính của DMA Controller:
 
 ```text
 DMA_ISR
@@ -15341,25 +15145,16 @@ TEIFx
 → Transfer Error Flag
 ```
 
-Các bit clear:
+Các bit clear tương ứng:
 
 ```text
 CGIFx
-→ Clear Global Interrupt Flag
-
 CTCIFx
-→ Clear Transfer Complete Flag
-
 CHTIFx
-→ Clear Half Transfer Flag
-
 CTEIFx
-→ Clear Transfer Error Flag
 ```
 
-### Clear Flag
-
-`DMA_IFCR` sử dụng cơ chế:
+`DMA_IFCR` dùng cơ chế:
 
 ```text
 Write 1 to Clear
@@ -15371,34 +15166,30 @@ Ví dụ DMA1 Channel 1:
 DMA1->IFCR = DMA_IFCR_CTCIF1;
 ```
 
-Clear Transfer Complete.
-
-Có thể clear toàn bộ flag channel:
+Clear toàn bộ flag của channel:
 
 ```c
 DMA1->IFCR = DMA_IFCR_CGIF1;
 ```
 
-Điểm này tương tự tư duy đã gặp với:
-
-```text
-EXTI_PR
-```
-
-Không nên dùng read-modify-write kiểu:
+Không dùng read-modify-write kiểu:
 
 ```c
 DMA1->IFCR &= ~DMA_IFCR_CTCIF1;
 ```
 
-vì IFCR là register command để clear flag.
+vì `DMA_IFCR` là register dùng để ra lệnh clear flag.
+
+Cơ chế W1C đã xuất hiện ở EXTI tại **Chương 4**; tại đây chỉ áp dụng đúng semantics của DMA.
 
 ---
 
 <a id="muc-09-15"></a>
 ## 9.15. DMA Interrupt
 
-Mỗi DMA channel có IRQ tương ứng theo device/vector table.
+Mục này chỉ mô tả đường interrupt; ý nghĩa `HT/TC/TE` đã ở **9.13**, cách đọc/clear flag đã ở **9.14**.
+
+Mỗi DMA Channel có IRQ tương ứng theo device/vector table.
 
 Ví dụ:
 
@@ -15408,26 +15199,22 @@ DMA1 Channel 1
 → DMA1_Channel1_IRQHandler()
 ```
 
-### Enable Interrupt trong DMA
-
-Các bit:
+Enable DMA interrupt source:
 
 ```text
-TCIE
 HTIE
+TCIE
 TEIE
 ```
 
-### Enable NVIC
+Enable IRQ tại NVIC:
 
 ```c
 NVIC_SetPriority(DMA1_Channel1_IRQn, 5);
 NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 ```
 
-### ISR
-
-Ví dụ:
+Ví dụ handler:
 
 ```c
 void DMA1_Channel1_IRQHandler(void)
@@ -15435,77 +15222,66 @@ void DMA1_Channel1_IRQHandler(void)
     if (DMA1->ISR & DMA_ISR_HTIF1)
     {
         DMA1->IFCR = DMA_IFCR_CHTIF1;
-
         /* xử lý nửa đầu buffer */
     }
 
     if (DMA1->ISR & DMA_ISR_TCIF1)
     {
         DMA1->IFCR = DMA_IFCR_CTCIF1;
-
         /* xử lý nửa sau / block hoàn tất */
     }
 
     if (DMA1->ISR & DMA_ISR_TEIF1)
     {
         DMA1->IFCR = DMA_IFCR_CTEIF1;
-
         /* xử lý lỗi */
     }
 }
 ```
 
-### Phân biệt hai tầng
-
-```text
-DMA_ISR
-→ flag trong DMA peripheral
-
-NVIC Pending
-→ trạng thái IRQ tại NVIC
-```
-
-Trong ISR, phải xử lý:
+Phân biệt:
 
 ```text
 DMA flag
+→ nằm trong DMA peripheral
+
+NVIC Pending state
+→ trạng thái IRQ ở NVIC
 ```
 
-đúng cách; chỉ clear NVIC pending không thay thế việc clear DMA flag.
+ISR phải service/clear DMA flag tại nguồn. Chỉ clear NVIC Pending không thay thế việc xử lý flag của DMA.
+
+Cơ chế NVIC và quy ước thiết kế ISR thuộc **Chương 4**.
 
 ---
 
 <a id="muc-09-16"></a>
 ## 9.16. DMA + ADC
 
-Đây là một use case quan trọng nhất của DMA trên STM32F1.
+Cơ chế ADC Regular conversion, Scan Mode và ADC DMA request đã được trình bày tại **Chương 8**. Mục này chỉ áp dụng DMA Channel vào data path đó.
 
-Regular ADC conversion:
+Luồng:
 
 ```text
-ADC Channel
-    ↓
-Conversion
-    ↓
-ADC_DR
-    ↓
-DMA Request
-    ↓
-DMA
-    ↓
-SRAM Buffer
+ADC Regular conversion
+        ↓
+      ADC_DR
+        ↓
+   DMA Request
+        ↓
+   DMA Channel
+        ↓
+   SRAM buffer
 ```
 
-### ADC1 Mapping
-
-Trên STM32F10xxx:
+Mapping phổ biến:
 
 ```text
 ADC1
 → DMA1 Channel 1
 ```
 
-### Cấu hình DMA điển hình
+Cấu hình DMA điển hình:
 
 ```text
 Direction
@@ -15518,7 +15294,7 @@ CMAR
 → adc_buffer
 
 CNDTR
-→ số sample / số channel
+→ số data item của block
 
 PINC
 → 0
@@ -15526,84 +15302,64 @@ PINC
 MINC
 → 1
 
-PSIZE
-→ 16-bit
-
-MSIZE
-→ 16-bit
+PSIZE / MSIZE
+→ 16-bit / 16-bit
 
 CIRC
-→ 1 nếu lấy mẫu liên tục
+→ 1 nếu acquisition liên tục
 ```
 
-ADC:
+Các field trên đã được định nghĩa tại **9.5–9.11**.
+
+Ví dụ Regular Scan:
 
 ```text
-DMA = 1
+Rank 1 CH0 → buffer[0]
+Rank 2 CH1 → buffer[1]
+Rank 3 CH4 → buffer[2]
+Rank 4 CH7 → buffer[3]
 ```
 
-### Scan nhiều Channel
-
-Ví dụ:
-
-```text
-Rank 1 → CH0
-Rank 2 → CH1
-Rank 3 → CH4
-Rank 4 → CH7
-```
-
-DMA:
-
-```text
-ADC_DR → buffer[0]
-ADC_DR → buffer[1]
-ADC_DR → buffer[2]
-ADC_DR → buffer[3]
-```
-
-### Timer + ADC + DMA
-
-Kiến trúc:
+Kiến trúc acquisition điển hình:
 
 ```text
 Timer
- ↓ Trigger
+  ↓ trigger
 ADC
- ↓ Conversion
+  ↓ conversion
 DMA
- ↓
+  ↓
 Circular Buffer
- ↓
+  ↓
 CPU
 ```
 
-Phân chia nhiệm vụ:
+Phân vai:
 
 ```text
 Timer
-→ Sampling Rate
+→ sampling rate
 
 ADC
-→ Analog-to-Digital Conversion
+→ analog-to-digital conversion
 
 DMA
-→ Data Movement
+→ data movement
 
 CPU
-→ Signal Processing
+→ data processing
 ```
 
-Đây là kiến trúc tốt cho acquisition định kỳ.
+Chi tiết ADC nằm tại **Chương 8**; mục này không lặp lại Scan Mode, trigger hoặc ADC conversion timing.
 
 ---
 
 <a id="muc-09-17"></a>
 ## 9.17. DMA + UART
 
-### USART RX DMA
+Cơ chế `USART_DR`, RX/TX, `DMAR/DMAT`, `TXE` và `TC` đã được trình bày tại **Chương 6**. Mục này chỉ tập trung vào DMA data path và điểm kết thúc transfer.
 
-Luồng:
+### USART RX DMA
 
 ```text
 RX Pin
@@ -15617,34 +15373,27 @@ DMA
 rx_buffer[]
 ```
 
-USART bật:
-
-```text
-DMAR
-```
-
-DMA:
-
-```text
-Peripheral-to-Memory
-
-CPAR = &USARTx->DR
-CMAR = rx_buffer
-
-PINC = 0
-MINC = 1
-
-PSIZE = 8-bit
-MSIZE = 8-bit
-```
-
-### USART1 RX Mapping
-
 Mapping phổ biến:
 
 ```text
 USART1_RX
 → DMA1 Channel 5
+```
+
+DMA dùng:
+
+```text
+Peripheral-to-Memory
+PINC = 0
+MINC = 1
+PSIZE = 8-bit
+MSIZE = 8-bit
+```
+
+USART bật:
+
+```text
+DMAR
 ```
 
 ### USART TX DMA
@@ -15661,72 +15410,63 @@ USART Shift Register
 TX Pin
 ```
 
+Mapping phổ biến:
+
+```text
+USART1_TX
+→ DMA1 Channel 4
+```
+
+DMA dùng:
+
+```text
+Memory-to-Peripheral
+```
+
 USART bật:
 
 ```text
 DMAT
 ```
 
-DMA:
+### DMA TC và USART TC
 
-```text
-Memory-to-Peripheral
-```
-
-USART1 TX:
-
-```text
-DMA1 Channel 4
-```
-
-### DMA TC không bằng USART TC
-
-Điểm cực kỳ quan trọng:
-
-```text
-DMA Transfer Complete
-→ DMA đã ghi byte cuối vào USART_DR
-```
-
-Nhưng:
-
-```text
-USART Shift Register
-→ vẫn có thể đang truyền byte cuối
-```
-
-Nếu ứng dụng cần biết:
-
-```text
-byte cuối đã ra hết khỏi TX
-```
-
-phải chờ:
-
-```text
-USART_SR.TC = 1
-```
-
-Ví dụ:
+Áp dụng nguyên tắc tại **9.13**:
 
 ```text
 DMA TC
-    ↓
-disable DMA request / channel
-    ↓
-wait USART TC
-    ↓
-có thể disable USART hoặc đổi hướng RS-485
+→ DMA đã ghi data item cuối vào USART data path
 ```
+
+nhưng:
+
+```text
+USART Shift Register
+→ có thể vẫn đang truyền frame cuối
+```
+
+Nếu application cần xác nhận frame cuối đã ra khỏi TX:
+
+```text
+DMA TC
+   ↓
+ngừng DMA request/channel theo thiết kế
+   ↓
+chờ USART_SR.TC = 1
+   ↓
+mới thực hiện thao tác cần "TX thật sự hoàn tất"
+```
+
+Ví dụ thao tác sau đó có thể là disable transmitter hoặc đổi direction RS-485.
 
 ---
 
 <a id="muc-09-18"></a>
 ## 9.18. DMA + SPI
 
-SPI Full-Duplex truyền và nhận đồng thời.
+Cơ chế SPI Full-Duplex, `SPI_DR`, dummy data và `BSY` đã được trình bày tại **Chương 7**. Mục này chỉ áp dụng DMA vào hai data path TX/RX.
 
-### TX
+### TX path
 
 ```text
 TX Buffer
@@ -15738,7 +15478,7 @@ SPI_DR
 MOSI
 ```
 
-### RX
+### RX path
 
 ```text
 MISO
@@ -15750,7 +15490,7 @@ RX DMA
 RX Buffer
 ```
 
-### Mapping SPI1
+Mapping phổ biến:
 
 ```text
 SPI1_RX
@@ -15760,9 +15500,7 @@ SPI1_TX
 → DMA1 Channel 3
 ```
 
-### Full-Duplex DMA
-
-Một transaction block thường cần:
+Với Full-Duplex block transfer thường dùng:
 
 ```text
 RX DMA
@@ -15775,16 +15513,16 @@ Ví dụ Master Read:
 ```text
 dummy_tx_buffer[]
        ↓ TX DMA
-SPI1
+      SPI1
        ↓ RX DMA
 rx_buffer[]
 ```
 
-TX DMA tạo dữ liệu dummy để SPI Master phát SCK, đồng thời RX DMA thu dữ liệu.
+Dummy data tạo clock đã được giải thích ở Chương 7, nên không định nghĩa lại tại đây.
 
 ### Thứ tự khởi động
 
-Một cách an toàn:
+Một cách tổ chức an toàn:
 
 ```text
 1. Cấu hình RX DMA
@@ -15794,48 +15532,31 @@ Một cách an toàn:
 5. Bắt đầu SPI transfer
 ```
 
-mục tiêu là tránh mất frame RX đầu tiên.
+Mục tiêu là tránh bỏ lỡ receive data đầu tiên.
 
-### DMA TC không bằng SPI hoàn tất
+### DMA TC và SPI hoàn tất
 
 ```text
 DMA TC
-→ DMA đã chuyển data cuối giữa memory và SPI_DR
+→ DMA đã transfer data item cuối giữa memory và SPI_DR
 ```
 
 nhưng SPI có thể vẫn đang shift bit.
 
-Trước khi:
+Trước khi kết thúc transaction, ví dụ:
 
 ```text
 CS High
 ```
 
-cần bảo đảm:
-
-```text
-SPI_SR.BSY = 0
-```
-
-theo sequence phù hợp.
+phải áp dụng điều kiện hoàn tất của SPI đã nêu tại **Chương 7**, bao gồm kiểm tra `SPI_SR.BSY` theo sequence phù hợp.
 
 ---
 
 <a id="muc-09-19"></a>
 ## 9.19. DMA + I2C
 
-DMA có thể phục vụ:
-
-```text
-I2C TX
-I2C RX
-```
-
-để di chuyển data qua:
-
-```text
-I2C_DR
-```
+Transaction state, `START/ADDR/ACK/NACK/STOP`, `TxE/RxNE` và các receive sequence đặc biệt đã được trình bày tại **Chương 7**. Mục này chỉ nêu phần DMA đảm nhiệm.
 
 ### TX
 
@@ -15861,9 +15582,13 @@ DMA
 rx_buffer[]
 ```
 
-### DMA không thay thế I2C State Machine
+DMA chủ yếu thay CPU trong:
 
-Software vẫn phải quản lý:
+```text
+TxE / RxNE data movement
+```
+
+DMA **không thay thế I2C state machine**. Software/peripheral vẫn phải quản lý đúng:
 
 ```text
 BUSY
@@ -15880,19 +15605,11 @@ ARLO
 AF
 ```
 
-DMA chủ yếu thay CPU trong phần:
-
-```text
-TxE / RxNE data movement
-```
-
 Có thể nhớ:
 
-> **I2C protocol control vẫn do I2C peripheral + software quản lý; DMA chỉ chuyển payload.**
+> **DMA chuyển payload qua `I2C_DR`; điều khiển transaction vẫn thuộc I2C peripheral + software.**
 
-### Byte cuối
-
-I2C Receive có sequence đặc biệt cho:
+Với I2C Receive, các trường hợp:
 
 ```text
 1 byte
@@ -15900,22 +15617,16 @@ I2C Receive có sequence đặc biệt cho:
 N > 2 byte
 ```
 
-Khi dùng DMA vẫn phải cấu hình:
-
-```text
-ACK
-LAST
-STOP
-```
-
-đúng thời điểm theo mode của peripheral.
+vẫn phải áp dụng sequence `ACK/LAST/STOP` phù hợp như đã trình bày tại **Chương 7**.
 
 ---
 
 <a id="muc-09-20"></a>
 ## 9.20. DMA + Timer
 
-Timer có thể tạo DMA request từ nhiều event:
+Timer event, `CCRx`, PWM và Input Capture đã được trình bày tại **Chương 5**. Mục này chỉ nêu cách dùng các event đó làm DMA Request.
+
+Timer có thể tạo DMA Request từ các event như:
 
 ```text
 Update
@@ -15947,7 +15658,7 @@ TIMx_CCR1
 PWM duty thay đổi
 ```
 
-CPU không cần ghi `CCR1` mỗi chu kỳ.
+CPU không cần ghi `CCR1` sau mỗi chu kỳ.
 
 ### Input Capture Logging
 
@@ -15969,29 +15680,29 @@ timestamp_buffer[]
 ghi timestamp liên tục
 ```
 
-### Timer + DMA Burst
+### Timer DMA Burst
 
 Một số Timer còn hỗ trợ DMA burst để cập nhật nhiều Timer register theo sequence.
 
-Phần này chỉ cần nhận diện sau khi đã chắc DMA transfer cơ bản.
+Phần này chỉ cần nhận diện sau khi đã chắc transfer DMA cơ bản; chi tiết Timer thuộc **Chương 5**.
 
 ---
 
 <a id="muc-09-21"></a>
 ## 9.21. Quy trình cấu hình DMA
 
-Một sequence cấu hình tổng quát:
+Mục này chỉ tổng hợp **thứ tự cấu hình**; ý nghĩa từng field/register đã được định nghĩa tại **9.3–9.15**.
 
 ```text
-1. Bật RCC Clock cho DMA
+1. Enable RCC clock cho DMA Controller
         ↓
 2. Xác định Peripheral DMA Request
         ↓
-3. Xác định đúng DMA Channel Mapping
+3. Xác định đúng Channel Mapping
         ↓
-4. Disable Channel
+4. Disable DMA Channel
         ↓
-5. Clear DMA Flags cũ
+5. Clear DMA flag cũ
         ↓
 6. Cấu hình CPAR
         ↓
@@ -15999,7 +15710,7 @@ Một sequence cấu hình tổng quát:
         ↓
 8. Cấu hình CNDTR
         ↓
-9. Cấu hình DIR
+9. Cấu hình direction
         ↓
 10. Cấu hình PSIZE / MSIZE
         ↓
@@ -16007,123 +15718,97 @@ Một sequence cấu hình tổng quát:
         ↓
 12. CIRC nếu cần
         ↓
-13. Priority
+13. Cấu hình DMA priority
         ↓
 14. TCIE / HTIE / TEIE nếu cần
         ↓
 15. Enable NVIC nếu dùng DMA Interrupt
         ↓
-16. Enable DMA Request trong Peripheral
+16. Enable DMA Request trong peripheral
         ↓
 17. Enable DMA Channel
         ↓
-18. Khởi động Peripheral
+18. Khởi động peripheral
 ```
 
-### Bước 1 — DMA Clock
+Dẫn chiếu:
 
-DMA1 nằm trên AHB.
+```text
+DMA Controller / Channel
+→ 9.3
+
+DMA Request / Mapping
+→ 9.4
+
+Direction
+→ 9.5
+
+CCR / EN
+→ 9.6
+
+CNDTR
+→ 9.7
+
+CPAR / CMAR
+→ 9.8
+
+PSIZE / MSIZE
+→ 9.9
+
+PINC / MINC
+→ 9.10
+
+Circular Mode
+→ 9.11
+
+DMA Priority
+→ 9.12
+
+HT / TC / TE
+→ 9.13
+
+Flags / Clear
+→ 9.14
+
+Interrupt
+→ 9.15
+```
+
+### Khung thao tác register
+
+Ví dụ DMA1:
 
 ```c
 RCC->AHBENR |= RCC_AHBENR_DMA1EN;
-```
 
-Nếu dùng DMA2:
-
-```text
-enable DMA2 clock
-```
-
-trên device có DMA2.
-
-### Bước 2 — Disable
-
-```c
+/* Disable trước khi cấu hình */
 DMA1_Channel1->CCR &= ~DMA_CCR1_EN;
-```
 
-Nên xác nhận channel đã disable trước khi sửa cấu hình.
-
-### Bước 3 — Clear Flags
-
-Ví dụ Channel 1:
-
-```c
+/* Clear flag cũ */
 DMA1->IFCR = DMA_IFCR_CGIF1;
-```
 
-### Bước 4 — Address
+/* Address + count */
+DMA1_Channel1->CPAR  = peripheral_address;
+DMA1_Channel1->CMAR  = memory_address;
+DMA1_Channel1->CNDTR = count;
 
-```c
-DMA1_Channel1->CPAR = (uint32_t)&ADC1->DR;
-DMA1_Channel1->CMAR = (uint32_t)adc_buffer;
-```
+/* CCR fields */
+DMA1_Channel1->CCR = dma_configuration;
 
-### Bước 5 — Count
+/* Enable peripheral DMA request theo peripheral */
 
-```c
-DMA1_Channel1->CNDTR = 4;
-```
-
-### Bước 6 — CCR
-
-Cấu hình:
-
-```text
-DIR
-PINC
-MINC
-PSIZE
-MSIZE
-CIRC
-PL
-Interrupt
-```
-
-### Bước 7 — Peripheral DMA Request
-
-Ví dụ ADC:
-
-```text
-ADC_CR2.DMA = 1
-```
-
-UART:
-
-```text
-USART_CR3.DMAR / DMAT
-```
-
-SPI:
-
-```text
-SPI_CR2.RXDMAEN / TXDMAEN
-```
-
-### Bước 8 — Enable DMA Channel
-
-```c
+/* Enable channel */
 DMA1_Channel1->CCR |= DMA_CCR1_EN;
+
+/* Start peripheral nếu cần */
 ```
 
-### Bước 9 — Start Peripheral
-
-Ví dụ ADC:
+Peripheral DMA request enable khác nhau theo peripheral, ví dụ:
 
 ```text
-Start Conversion
-```
-
-UART TX:
-
-```text
-USART TXE request sẽ drive DMA
-```
-
-SPI:
-
-```text
-enable SPI + TX/RX DMA flow
+ADC_CR2.DMA
+USART_CR3.DMAR / DMAT
+SPI_CR2.RXDMAEN / TXDMAEN
 ```
 
 ---
@@ -16131,12 +15816,12 @@ enable SPI + TX/RX DMA flow
 <a id="muc-09-22"></a>
 ## 9.22. Ví dụ Peripheral → Memory
 
-Ví dụ:
+Ví dụ này áp dụng các mục **9.4–9.11** cho:
 
 ```text
 ADC1
 → DMA1 Channel 1
-→ 4 mẫu
+→ 4 data item
 → Circular Mode
 ```
 
@@ -16146,39 +15831,26 @@ Buffer:
 volatile uint16_t adc_buffer[4];
 ```
 
-### DMA Configuration
+### DMA configuration
 
 ```c
 RCC->AHBENR |= RCC_AHBENR_DMA1EN;
 
-/* Disable trước khi cấu hình */
 DMA1_Channel1->CCR &= ~DMA_CCR1_EN;
 
-/* Clear toàn bộ flag Channel 1 */
 DMA1->IFCR = DMA_IFCR_CGIF1;
 
-/* Address */
 DMA1_Channel1->CPAR = (uint32_t)&ADC1->DR;
 DMA1_Channel1->CMAR = (uint32_t)adc_buffer;
 
-/* 4 halfword */
 DMA1_Channel1->CNDTR = 4;
 
-/*
- * Peripheral-to-Memory: DIR = 0
- * PINC = 0
- * MINC = 1
- * PSIZE = 16-bit
- * MSIZE = 16-bit
- * CIRC = 1
- */
 DMA1_Channel1->CCR =
       DMA_CCR1_MINC
     | DMA_CCR1_PSIZE_0
     | DMA_CCR1_MSIZE_0
     | DMA_CCR1_CIRC;
 
-/* Enable Channel */
 DMA1_Channel1->CCR |= DMA_CCR1_EN;
 ```
 
@@ -16191,22 +15863,19 @@ ADC1->CR2 |= ADC_CR2_DMA;
 Luồng:
 
 ```text
-ADC Conversion
-   ↓
 ADC1->DR
    ↓
 DMA1 Channel 1
    ↓
 adc_buffer[0]
-   ↓
 adc_buffer[1]
-   ↓
 adc_buffer[2]
-   ↓
 adc_buffer[3]
    ↓
 wrap
 ```
+
+Ý nghĩa `PINC/MINC`, `PSIZE/MSIZE`, `CNDTR` và `CIRC` không lặp lại tại đây.
 
 ---
 
@@ -16243,13 +15912,6 @@ DMA1_Channel4->CPAR = (uint32_t)&USART1->DR;
 DMA1_Channel4->CMAR = (uint32_t)message;
 DMA1_Channel4->CNDTR = sizeof(message);
 
-/*
- * Memory-to-Peripheral
- * MINC = 1
- * PINC = 0
- * PSIZE = 8-bit
- * MSIZE = 8-bit
- */
 DMA1_Channel4->CCR =
       DMA_CCR4_DIR
     | DMA_CCR4_MINC
@@ -16268,14 +15930,17 @@ Enable DMA channel:
 DMA1_Channel4->CCR |= DMA_CCR4_EN;
 ```
 
-### Khi DMA Complete
+Khi DMA báo Transfer Complete, áp dụng phân biệt tại **9.13** và **9.17**:
 
 ```text
 DMA TC
-→ tất cả byte đã được đưa vào USART data path
+→ block đã được DMA đưa vào USART data path
+
+USART_SR.TC
+→ frame cuối đã hoàn tất trên TX
 ```
 
-Nếu cần xác nhận frame cuối ra khỏi TX:
+Nếu application cần mức hoàn tất thứ hai:
 
 ```c
 while (!(USART1->SR & USART_SR_TC))
@@ -16283,22 +15948,14 @@ while (!(USART1->SR & USART_SR_TC))
 }
 ```
 
-Sau đó mới thực hiện các thao tác như:
-
-```text
-disable transmitter
-disable USART
-đổi direction RS-485
-```
-
-nếu ứng dụng cần.
+Sau đó mới thực hiện thao tác phụ thuộc việc transmission thật sự đã hoàn tất, ví dụ disable transmitter hoặc đổi direction RS-485.
 
 ---
 
 <a id="muc-09-24"></a>
 ## 9.24. Circular Buffer và Half-Transfer
 
-Circular + Half Transfer là một mô hình rất quan trọng cho stream liên tục.
+Mục này áp dụng **Circular Mode tại 9.11** và **Half Transfer/Transfer Complete tại 9.13** cho stream liên tục.
 
 Giả sử:
 
@@ -16322,17 +15979,16 @@ buffer[0]
 ...
 buffer[49]
     ↓
-HTIF
+HT
     ↓
-DMA tiếp tục ghi:
+DMA tiếp tục:
 buffer[50]
 ...
 buffer[99]
     ↓
-TCIF
+TC
     ↓
-DMA quay lại:
-buffer[0]
+DMA quay lại buffer[0]
 ```
 
 CPU có thể xử lý song song:
@@ -16351,7 +16007,7 @@ TC ───────────────────→ xử lý Half B
 ghi Half A               xử lý Half B
 ```
 
-### Half A / Half B
+Trong ví dụ:
 
 ```text
 Half A
@@ -16361,16 +16017,16 @@ Half B
 → buffer[50 ... 99]
 ```
 
-### Ưu điểm
+Ưu điểm:
 
 ```text
 DMA không phải dừng
 CPU xử lý theo block
-giảm số interrupt
+giảm số lần CPU phải phản ứng với từng data item
 phù hợp data stream liên tục
 ```
 
-Mô hình này thường được gọi theo tư duy:
+Mô hình xử lý hai nửa này thường được gọi theo tư duy:
 
 ```text
 Ping-Pong Processing
@@ -16378,9 +16034,7 @@ Ping-Pong Processing
 
 dù DMA STM32F1 không có hardware double-buffer mode kiểu một số STM32 đời sau.
 
-### Điều kiện thiết kế
-
-CPU phải xử lý mỗi half đủ nhanh:
+Điều kiện thiết kế:
 
 ```text
 Processing Time
@@ -16388,10 +16042,11 @@ Processing Time
 thời gian DMA lấp đầy half còn lại
 ```
 
-Nếu không:
+Nếu CPU xử lý không kịp:
 
 ```text
-DMA có thể overwrite vùng CPU chưa xử lý xong
+DMA có thể overwrite vùng dữ liệu
+mà CPU chưa xử lý xong
 ```
 
 ---
@@ -16399,179 +16054,51 @@ DMA có thể overwrite vùng CPU chưa xử lý xong
 <a id="muc-09-25"></a>
 ## 9.25. Lỗi thường gặp
 
-### Sai DMA Channel Mapping
+Mục này chỉ tổng hợp lỗi và trỏ về nơi giải thích chính.
+
+| Lỗi / hiện tượng | Nguyên nhân cần kiểm tra | Mục |
+|---|---|---|
+| DMA không chạy | Sai Channel Mapping | **9.4** |
+| DMA register không hoạt động như mong đợi | Quên enable DMA clock | **9.21** |
+| Channel đã enable nhưng không có transfer | Chưa enable peripheral DMA request | **9.4**, **9.21** |
+| Dữ liệu chạy sai hướng | Sai `DIR` | **9.5** |
+| Buffer layout sai | Sai `PSIZE/MSIZE` | **9.9** |
+| Mọi sample ghi cùng một địa chỉ | `MINC = 0` khi cần increment | **9.10** |
+| DMA truy cập sang peripheral register kế tiếp | Bật `PINC` không phù hợp | **9.10** |
+| Thiếu data hoặc vượt block dự kiến | Sai `CNDTR` | **9.7** |
+| Cấu hình không cập nhật đúng | Sửa register khi `EN = 1` | **9.6**, **9.21** |
+| ISR/state machine hiểu nhầm transfer mới | Chưa clear flag cũ | **9.14**, **9.21** |
+| CPU dùng dữ liệu chưa hoàn tất ở peripheral | Nhầm DMA TC với Peripheral Complete | **9.13**, **9.17–9.19** |
+| Dữ liệu circular buffer bị overwrite | CPU xử lý chậm hơn tốc độ DMA quay vòng | **9.24** |
+
+Ba ví dụ cần nhớ về **DMA TC khác Peripheral Complete**:
 
 ```text
-Peripheral Request
-→ không nối tới channel đã cấu hình
-```
-
-Kết quả:
-
-```text
-DMA không chạy
-```
-
-### Quên bật DMA Clock
-
-```text
-RCC_AHBENR.DMAxEN = 0
-```
-
-→ register DMA không hoạt động như mong muốn.
-
-### Quên bật Peripheral DMA Request
-
-Ví dụ:
-
-```text
-DMA channel đã enable
-nhưng
-ADC DMA = 0
-```
-
-hoặc:
-
-```text
-USART DMAR/DMAT = 0
-```
-
-→ peripheral không phát request cho DMA.
-
-### Sai DIR
-
-Ví dụ UART RX:
-
-```text
-đáng lẽ Peripheral-to-Memory
-nhưng cấu hình Memory-to-Peripheral
-```
-
-→ transfer sai hướng.
-
-### Sai PSIZE / MSIZE
-
-Ví dụ:
-
-```text
-ADC buffer = uint16_t[]
-nhưng MSIZE = 8-bit
-```
-
-→ memory layout không đúng mong muốn.
-
-### Quên MINC
-
-```text
-MINC = 0
-```
-
-khi nhận block:
-
-```text
-mọi sample ghi lại cùng một địa chỉ
-```
-
-### Bật PINC cho Peripheral Register
-
-```text
-PINC = 1
-```
-
-có thể làm địa chỉ đi từ:
-
-```text
-USART_DR
-→ register kế tiếp
-→ register kế tiếp
-```
-
-thay vì luôn truy cập đúng data register.
-
-### Sai CNDTR
-
-```text
-CNDTR quá nhỏ
-→ thiếu data
-
-CNDTR quá lớn
-→ transfer vượt vùng buffer dự kiến
-```
-
-### Sửa cấu hình khi EN = 1
-
-Không nên sửa trực tiếp:
-
-```text
-CPAR
-CMAR
-CNDTR
-CCR config
-```
-
-trong khi channel đang enable.
-
-Trình tự:
-
-```text
-disable
-→ cấu hình
-→ enable lại
-```
-
-### Quên Clear Flag cũ
-
-Nếu:
-
-```text
-TCIF / HTIF / TEIF
-```
-
-còn từ transfer trước, ISR/state machine có thể hiểu sai trạng thái mới.
-
-### Nhầm DMA TC với Peripheral Complete
-
-Đây là lỗi khái niệm quan trọng.
-
-UART:
-
-```text
+USART
 DMA TC
-→ byte cuối đã được DMA ghi vào USART_DR
+→ byte cuối đã vào USART data path
 
 USART TC
 → frame cuối đã ra khỏi TX
 ```
 
-SPI:
-
 ```text
+SPI
 DMA TC
-→ DMA chuyển xong data
+→ DMA đã transfer data item cuối
 
 SPI BSY = 0
 → SPI không còn shift data
 ```
 
-I2C:
-
 ```text
+I2C
 DMA TC
-→ payload transfer xong
+→ payload data movement đã hoàn tất
 
-STOP / ACK / protocol state
-→ vẫn phải hoàn thành đúng
+ACK / NACK / STOP / protocol state
+→ vẫn phải hoàn tất đúng sequence
 ```
-
-### CPU xử lý Buffer quá chậm
-
-Trong Circular Mode:
-
-```text
-DMA có thể quay lại và overwrite data cũ
-```
-
-nếu CPU không xử lý kịp.
 
 ---
 
@@ -16579,79 +16106,82 @@ nếu CPU không xử lý kịp.
 ## 9.26. Câu hỏi tự kiểm tra
 
 1. STM32F1 dùng DMA Channel hay DMA Stream?
-2. Mỗi DMA Channel có những register chính nào?
-3. Peripheral-to-DMA Channel mapping trên STM32F1 có chọn tùy ý được không?
-4. DMA hỗ trợ ba hướng transfer chính nào?
-5. `EN` trong CCR dùng để làm gì?
-6. `CIRC` dùng để làm gì?
-7. `MINC` dùng để làm gì?
-8. `PSIZE` dùng để làm gì?
-9. `MSIZE` dùng để làm gì?
-10. `CNDTR` chứa gì?
-11. `CPAR` chứa gì?
-12. `CMAR` chứa gì?
-13. Vì sao `PINC` thường bằng 0 với USART/ADC/SPI?
-14. Circular Mode phù hợp với những use case nào?
-15. DMA Priority và NVIC Priority khác nhau thế nào?
-16. Clear DMA flag bằng cơ chế gì?
-17. Vì sao ADC Scan rất phù hợp với DMA?
-18. Vì sao DMA TC của UART TX chưa có nghĩa transmission hoàn tất?
-19. Sau SPI TX DMA complete, vì sao vẫn cần kiểm tra BSY?
-20. Vì sao DMA TC và Peripheral Complete phải được phân biệt?
+2. DMA Controller và DMA Channel khác nhau như thế nào?
+3. Mỗi DMA Channel có bốn register chính nào?
+4. Peripheral DMA Request và Channel Mapping liên hệ với nhau như thế nào?
+5. Peripheral-to-DMA Channel mapping trên STM32F1 có chọn tùy ý được không?
+6. DMA hỗ trợ ba hướng transfer chính nào?
+7. `EN` trong `DMA_CCRx` dùng để làm gì?
+8. `CNDTR` đếm byte hay data item?
+9. `CPAR` và `CMAR` chứa loại address nào?
+10. `PSIZE` và `MSIZE` quyết định gì?
+11. `PINC` và `MINC` quyết định gì?
+12. Vì sao `PINC` thường bằng 0 với USART/ADC/SPI?
+13. Circular Mode khác Normal Mode ở hành vi khi block kết thúc như thế nào?
+14. DMA Priority và NVIC Priority khác nhau như thế nào?
+15. `HT`, `TC`, `TE` biểu diễn ba event nào?
+16. DMA flag được đọc và clear qua hai register nào?
+17. Vì sao clear DMA flag phải dùng `DMA_IFCR` theo W1C?
+18. Vì sao ADC Regular Scan phù hợp với DMA?
+19. Vì sao USART DMA TC chưa có nghĩa transmission đã hoàn tất trên TX?
+20. Sau SPI DMA Transfer Complete, vì sao vẫn phải xét trạng thái `BSY`?
+21. Vì sao DMA không thay thế I2C state machine?
+22. Circular Buffer + Half Transfer cho phép CPU và DMA xử lý song song như thế nào?
+23. Hãy mô tả trình tự cấu hình một DMA transfer từ mapping tới enable peripheral/channel.
 
 ---
 
 ## 9.27. Tóm tắt
 
-DMA:
+Mô hình cần nhớ:
 
 ```text
-Peripheral
-    ↕
-DMA Channel
-    ↕
-Memory
+Peripheral / Memory
+        ↓
+    DMA Channel
+        ↓
+Peripheral / Memory
 ```
 
-Các register chính:
+DMA Channel:
 
 ```text
 DMA_CCRx
-→ Configuration
+→ configuration
 
 DMA_CNDTRx
-→ Number of Data
+→ số data item còn lại
 
 DMA_CPARx
-→ Peripheral Address
+→ peripheral address
 
 DMA_CMARx
-→ Memory Address
+→ memory address
 ```
 
-Cấu hình:
+Các field cốt lõi:
 
 ```text
 DIR
-→ Transfer Direction
-
-PINC / MINC
-→ Address Increment
+→ transfer direction
 
 PSIZE / MSIZE
-→ Data Width
+→ data width
+
+PINC / MINC
+→ address increment
 
 CIRC
 → Circular Mode
 
 PL
-→ DMA Priority
+→ DMA priority
 
 MEM2MEM
 → Memory-to-Memory
 ```
 
-Events:
+Event và flag:
 
 ```text
 HT
@@ -16662,60 +16192,26 @@ TC
 
 TE
 → Transfer Error
-```
 
-Flags:
-
-```text
 DMA_ISR
-→ đọc trạng thái
+→ đọc flag
 
 DMA_IFCR
-→ Write 1 to Clear
+→ W1C để clear flag
 ```
 
-Peripheral-to-Memory:
+Mapping:
 
 ```text
-Peripheral Register
-        ↓
-       DMA
-        ↓
-Memory Buffer
+Peripheral DMA Request
+→ DMA Channel cố định theo hardware
 ```
 
-Memory-to-Peripheral:
-
-```text
-Memory Buffer
-      ↓
-     DMA
-      ↓
-Peripheral Register
-```
-
-Circular acquisition:
-
-```text
-DMA Fill Half A
-      ↓
-HT
-      ↓
-CPU Process Half A
-
-DMA Fill Half B
-      ↓
-TC
-      ↓
-CPU Process Half B
-```
-
-Các liên kết quan trọng:
+Các ứng dụng:
 
 ```text
 ADC
-→ DMA1 Channel 1
-→ Buffer
+→ DMA đưa conversion result vào buffer
 
 USART
 → DMA RX / TX
@@ -16724,20 +16220,37 @@ SPI
 → RX DMA + TX DMA
 
 I2C
-→ DMA chuyển payload
+→ DMA chuyển payload qua I2C_DR
 
 Timer
-→ DMA update CCR / capture data
+→ DMA cập nhật register hoặc ghi capture data
 ```
 
-**Điểm cần nhớ:**
+Circular acquisition:
 
-> **DMA STM32F1 được tổ chức theo Channel và peripheral request mapping cố định. Cấu hình cốt lõi là `CPAR`, `CMAR`, `CNDTR`, `DIR`, `PSIZE/MSIZE`, `PINC/MINC` và `CIRC`. Khi DMA báo Transfer Complete, phải phân biệt việc DMA đã chuyển xong dữ liệu với việc peripheral đã hoàn tất hoạt động vật lý như `USART TC`, `SPI BSY` hoặc sequence `STOP` của I2C.**
+```text
+DMA fill Half A
+      ↓
+HT
+      ↓
+CPU process Half A
+
+DMA fill Half B
+      ↓
+TC
+      ↓
+CPU process Half B
+```
+
+Điểm cần nhớ:
+
+> **DMA STM32F1 được tổ chức theo Channel với peripheral request mapping cố định. Hãy xác định đúng mapping, direction, address, count, data width, increment và mode trước khi enable channel. Khi DMA báo Transfer Complete, luôn phân biệt việc DMA đã hoàn tất block transfer với việc peripheral đã hoàn tất hoạt động vật lý/protocol.**
 
 [↑ Về mục lục](#muc-luc)
 
 
 ---
+
 
 <a id="chuong-10"></a>
 # 10. Debug bằng ST-Link
