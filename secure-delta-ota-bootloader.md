@@ -139,6 +139,18 @@
   - [9.12. Mô hình tư duy cần nhớ](#912-mô-hình-tư-duy-cần-nhớ)
   - [9.13. Trọng tâm cần thuộc](#913-trọng-tâm-cần-thuộc)
 - [10. Firmware Container + Anti-Rollback](#10-firmware-container-+-anti-rollback)
+  - [10.1. Firmware Container chứa những gì?](#101-firmware-container-chứa-những-gì)
+  - [10.2. Full và Delta khác nhau](#102-full-và-delta-khác-nhau)
+  - [10.3. Container được ký phần nào?](#103-container-được-ký-phần-nào)
+  - [10.4. Vì sao `target_version` phải được ký?](#104-vì-sao-target_version-phải-được-ký)
+  - [10.5. Anti-Rollback là gì?](#105-anti-rollback-là-gì)
+  - [10.6. `active_version` và `target_version`](#106-active_version-và-target_version)
+  - [10.7. Vì sao chưa cập nhật `active_version` ngay sau khi cài?](#107-vì-sao-chưa-cập-nhật-active_version-ngay-sau-khi-cài)
+  - [10.8. Bootloader kiểm tra Container theo thứ tự nào?](#108-bootloader-kiểm-tra-container-theo-thứ-tự-nào)
+  - [10.9. Ví dụ cụ thể](#109-ví-dụ-cụ-thể)
+  - [10.10. Signature và Anti-Rollback khác nhau](#1010-signature-và-anti-rollback-khác-nhau)
+  - [10.11. Mô hình tư duy cần nhớ](#1011-mô-hình-tư-duy-cần-nhớ)
+  - [10.12. Trọng tâm cần thuộc](#1012-trọng-tâm-cần-thuộc)
 - [11. Delta Patch / JojoDiff Concept](#11-delta-patch-jojodiff-concept)
 - [12. ESP32 + MQTT + HTTPS + Server / Release Tooling](#12-esp32-+-mqtt-+-https-+-server-release-tooling)
 
@@ -4485,7 +4497,481 @@ Signature
 
 # 10. Firmware Container + Anti-Rollback
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Mục tiêu của phần này là giúp bootloader biết **firmware này dành cho thiết bị nào, là full hay delta, version nào được cài và dữ liệu nào cần được xác minh**.
+
+Firmware không được gửi như một file `.bin` đơn lẻ mà được đóng thành container:
+
+```text
++----------------------+
+| Header               |
++----------------------+
+| Header Extension     |
++----------------------+
+| Payload              |
+| Full hoặc Delta      |
++----------------------+
+| Signature            |
++----------------------+
+```
+
+Container kết hợp với Anti-Rollback để ngăn một firmware cũ nhưng vẫn có chữ ký hợp lệ được cài trở lại thiết bị.
+
+---
+
+## 10.1. Firmware Container chứa những gì?
+
+Các trường quan trọng cần hiểu:
+
+```text
+magic
+format_version
+
+product_id
+hardware_revision
+
+image_type
+
+base_version
+target_version
+
+payload_size
+target_image_size
+target_load_address
+
+base_image_sha256
+target_image_sha256
+
+payload_crc32
+
+hash_algorithm
+signature_algorithm
+signature_size
+```
+
+Các field này giúp bootloader kiểm tra:
+
+```text
+đúng định dạng?
+đúng sản phẩm?
+đúng phần cứng?
+full hay delta?
+version nào?
+payload dài bao nhiêu?
+firmware cuối phải có hash nào?
+```
+
+---
+
+## 10.2. Full và Delta khác nhau
+
+Với full OTA:
+
+```text
+image_type = FULL
+payload = firmware đích hoàn chỉnh
+```
+
+Bootloader có thể dùng payload để tạo firmware đích trực tiếp.
+
+Với delta OTA:
+
+```text
+image_type = DELTA
+payload = delta patch
+```
+
+Container còn cần:
+
+```text
+base_version
+base_image_sha256
+target_image_sha256
+```
+
+để bảo đảm patch được áp dụng lên đúng firmware gốc và tạo ra đúng firmware đích.
+
+---
+
+## 10.3. Container được ký phần nào?
+
+Về nguyên tắc:
+
+```text
+Header + Payload
+      ↓
+SHA-256
+      ↓
+ECDSA P-256
+      ↓
+Signature
+```
+
+Điều quan trọng là các thông tin như:
+
+```text
+product_id
+hardware_revision
+target_version
+hash
+payload
+```
+
+đều phải nằm trong vùng được ký.
+
+Nếu attacker sửa một field trong Header hoặc sửa Payload:
+
+```text
+ECDSA Verify
+→ FAIL
+```
+
+---
+
+## 10.4. Vì sao `target_version` phải được ký?
+
+Giả sử firmware cũ là:
+
+```text
+version = 3
+```
+
+Attacker không được phép chỉ sửa metadata thành:
+
+```text
+target_version = 6
+```
+
+để đánh lừa bootloader.
+
+Vì `target_version` nằm trong Header đã được ký:
+
+```text
+sửa target_version
+      ↓
+hash thay đổi
+      ↓
+ECDSA Verify
+      ↓
+FAIL
+```
+
+Version policy chỉ có ý nghĩa khi version bản thân nó cũng là dữ liệu đáng tin cậy.
+
+---
+
+## 10.5. Anti-Rollback là gì?
+
+Anti-Rollback ngăn thiết bị quay về firmware cũ.
+
+Ví dụ thiết bị đang có:
+
+```text
+active_version = 5
+```
+
+Một container cũ:
+
+```text
+target_version = 3
+```
+
+có thể vẫn có chữ ký ECDSA hợp lệ vì trước đây nhà phát hành thực sự đã ký nó.
+
+```text
+ECDSA Verify
+→ PASS
+```
+
+Nhưng:
+
+```text
+target_version < active_version
+```
+
+nên:
+
+```text
+Anti-Rollback
+→ REJECT
+```
+
+Firmware có chữ ký hợp lệ chưa có nghĩa là firmware được phép cài.
+
+---
+
+## 10.6. `active_version` và `target_version`
+
+Có thể hiểu:
+
+```text
+active_version
+= firmware cuối cùng đã được CONFIRMED
+
+target_version
+= firmware mà container muốn cài
+```
+
+Ví dụ:
+
+```text
+active_version = 5
+target_version = 6
+
+→ hợp lệ về hướng version
+```
+
+Trong khi:
+
+```text
+active_version = 5
+target_version = 3
+
+→ downgrade
+→ reject
+```
+
+Version nên tăng đơn điệu để bootloader có thể so sánh đơn giản.
+
+---
+
+## 10.7. Vì sao chưa cập nhật `active_version` ngay sau khi cài?
+
+Giả sử:
+
+```text
+active_version  = 5
+target_version  = 6
+```
+
+Sau khi cài xong v6, hệ thống chưa nên ghi ngay:
+
+```text
+active_version = 6
+```
+
+Mà giữ:
+
+```text
+active_version  = 5
+pending_version = 6
+state           = TRIAL_BOOT
+```
+
+Chỉ khi v6 chạy tốt:
+
+```text
+TRIAL_BOOT
+    ↓
+CONFIRMED
+    ↓
+active_version = 6
+```
+
+Nếu v6 lỗi và rollback thì v5 vẫn là firmware đã được xác nhận cuối cùng.
+
+---
+
+## 10.8. Bootloader kiểm tra Container theo thứ tự nào?
+
+Bootloader nên kiểm tra trước khi xóa application:
+
+```text
+Magic / Format Version
+        ↓
+Kích thước / giới hạn địa chỉ
+        ↓
+Product ID / Hardware Revision
+        ↓
+Image Type
+        ↓
+Target Address / Target Size
+        ↓
+Anti-Rollback Version Policy
+        ↓
+Payload CRC32
+        ↓
+ECDSA Signature
+        ↓
+Base Version + Base SHA-256   ← nếu delta
+        ↓
+Target SHA-256
+```
+
+Chỉ khi các kiểm tra cần thiết đều thành công và backup đã an toàn thì mới được đi tới:
+
+```text
+INSTALLING
+```
+
+---
+
+## 10.9. Ví dụ cụ thể
+
+Giả sử thiết bị đang chạy:
+
+```text
+active_version = 5
+```
+
+Server gửi delta container:
+
+```text
+base_version   = 5
+target_version = 6
+
+base_sha256    = hash(v5)
+target_sha256  = hash(v6)
+
+payload        = patch v5 → v6
+signature      = ECDSA P-256
+```
+
+Bootloader xử lý:
+
+```text
+Kiểm tra Product / Hardware
+        ↓
+Anti-Rollback PASS
+        ↓
+ECDSA Verify PASS
+        ↓
+base_version = 5
+        ↓
+base_sha256 MATCH
+        ↓
+Apply Delta Patch
+        ↓
+Reconstructed Image v6
+        ↓
+target_sha256 MATCH
+        ↓
+Backup v5
+        ↓
+Install v6
+        ↓
+TRIAL_BOOT
+```
+
+Nếu v6 hoạt động tốt:
+
+```text
+CONFIRMED
+    ↓
+active_version = 6
+```
+
+Nếu v6 lỗi:
+
+```text
+ROLLBACK
+    ↓
+khôi phục v5
+```
+
+---
+
+## 10.10. Signature và Anti-Rollback khác nhau
+
+`ECDSA Signature` trả lời:
+
+```text
+"Firmware này có đến từ bên phát hành hợp lệ không?"
+```
+
+Anti-Rollback trả lời:
+
+```text
+"Firmware hợp lệ này có đủ mới để được phép cài không?"
+```
+
+Do đó một firmware có thể:
+
+```text
+ECDSA PASS
+```
+
+nhưng:
+
+```text
+Anti-Rollback FAIL
+```
+
+Hai cơ chế giải quyết hai vấn đề khác nhau.
+
+---
+
+## 10.11. Mô hình tư duy cần nhớ
+
+```text
+Firmware Container
+      ↓
+Header + Payload + Signature
+      ↓
+Compatibility Check
+      ↓
+Version Policy
+      ↓
+CRC32
+      ↓
+ECDSA Verify
+      ↓
+Base SHA-256      ← nếu delta
+      ↓
+Target SHA-256
+      ↓
+Backup
+      ↓
+Install
+      ↓
+TRIAL_BOOT
+      ↓
+CONFIRMED
+```
+
+Có thể nhớ ba lớp kiểm tra:
+
+```text
+Compatibility
+= đúng thiết bị không?
+
+Authenticity
+= có được ký bởi bên đáng tin cậy không?
+
+Anti-Rollback
+= version này có được phép cài không?
+```
+
+---
+
+## 10.12. Trọng tâm cần thuộc
+
+```text
+Firmware Container
+= Header + Payload + Signature
+
+Header
+= mô tả thiết bị, loại image, version, size, hash
+
+ECDSA
+= xác thực container
+
+target_version
+= version muốn cài
+
+active_version
+= version cuối đã CONFIRMED
+
+Anti-Rollback
+= chặn firmware cũ dù chữ ký vẫn hợp lệ
+```
+
+Điểm quan trọng nhất:
+
+> **Firmware Container gom metadata quan trọng và payload vào cùng một cấu trúc được ký.**
+
+> **Anti-Rollback dùng version đáng tin cậy trong container để ngăn firmware cũ được cài trở lại.**
+
+> **`active_version` chỉ được cập nhật sau `CONFIRMED`, không phải ngay sau khi cài xong.**
 
 ---
 
