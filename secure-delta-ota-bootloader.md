@@ -99,6 +99,18 @@
   - [6.17. Ví dụ đầy đủ: gửi một DATA packet từ ESP32 xuống W25Q](#617-ví-dụ-đầy-đủ-gửi-một-data-packet-từ-esp32-xuống-w25q)
   - [6.18. Trọng tâm cần thuộc](#618-trọng-tâm-cần-thuộc)
 - [7. OTA State Machine + Persistent Metadata A/B](#7-ota-state-machine-+-persistent-metadata-ab)
+  - [7.1. OTA State Machine là gì?](#71-ota-state-machine-là-gì)
+  - [7.2. Vì sao state phải được lưu bền vững?](#72-vì-sao-state-phải-được-lưu-bền-vững)
+  - [7.3. Persistent Metadata lưu những gì?](#73-persistent-metadata-lưu-những-gì)
+  - [7.4. Persistent Metadata A/B](#74-persistent-metadata-ab)
+  - [7.5. `generation`, CRC32 và xác minh metadata](#75-generation-crc32-và-xác-minh-metadata)
+  - [7.6. `state` và checkpoint khác nhau](#76-state-và-checkpoint-khác-nhau)
+  - [7.7. State phải được lưu trước thao tác nguy hiểm](#77-state-phải-được-lưu-trước-thao-tác-nguy-hiểm)
+  - [7.8. Bootloader làm gì sau reset?](#78-bootloader-làm-gì-sau-reset)
+  - [7.9. `TRIAL_BOOT`, `CONFIRMED` và `ROLLBACK`](#79-trial_boot-confirmed-và-rollback)
+  - [7.10. Ví dụ mất điện khi đang `INSTALLING`](#710-ví-dụ-mất-điện-khi-đang-installing)
+  - [7.11. Mô hình tư duy cần nhớ](#711-mô-hình-tư-duy-cần-nhớ)
+  - [7.12. Trọng tâm cần thuộc](#712-trọng-tâm-cần-thuộc)
 - [8. Power-Loss Recovery + Checkpoint + Rollback](#8-power-loss-recovery-+-checkpoint-+-rollback)
 - [9. SHA-256 + ECDSA P-256 + Public / Private Key](#9-sha-256-+-ecdsa-p-256-+-public-private-key)
 - [10. Firmware Container + Anti-Rollback](#10-firmware-container-+-anti-rollback)
@@ -3110,7 +3122,412 @@ Nếu giải thích được ba ý này cùng với `sequence`, `offset` và lu�
 
 # 7. OTA State Machine + Persistent Metadata A/B
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Phần này giải thích cách hệ thống OTA luôn biết **đang ở bước nào và phải làm gì tiếp theo**, kể cả khi STM32 bị reset hoặc mất điện giữa quá trình cập nhật.
+
+Máy trạng thái (State Machine) quản lý luồng OTA, còn Persistent Metadata A/B lưu trạng thái đó vào Flash để thông tin vẫn còn sau reset.
+
+---
+
+## 7.1. OTA State Machine là gì?
+
+OTA được chia thành các state rõ ràng thay vì xử lý như một chuỗi thao tác dài:
+
+```text
+IDLE
+ ↓
+RECEIVING
+ ↓
+ARTIFACT_READY
+ ↓
+VERIFYING_CONTAINER
+ ↓
+VERIFYING_BASE       ← nếu là delta
+ ↓
+PATCHING
+ ↓
+IMAGE_READY
+ ↓
+BACKING_UP
+ ↓
+INSTALLING
+ ↓
+VERIFYING_INSTALL
+ ↓
+TRIAL_BOOT
+ ↓
+CONFIRMED
+ ↓
+IDLE
+```
+
+Nếu firmware mới không hoạt động:
+
+```text
+TRIAL_BOOT
+    ↓
+ROLLBACK
+    ↓
+IDLE
+```
+
+Mỗi state cho bootloader biết **hành động hợp lệ tiếp theo là gì**.
+
+---
+
+## 7.2. Vì sao state phải được lưu bền vững?
+
+Nếu chỉ lưu `state` trong RAM thì sau reset thông tin sẽ mất. Điều đó nguy hiểm vì application có thể đang được ghi dở nhưng bootloader lại tưởng hệ thống đang bình thường.
+
+Vì vậy state được lưu trong Flash:
+
+```text
+state = INSTALLING
+        ↓
+Internal Metadata A/B
+        ↓
+mất điện / reset
+        ↓
+Bootloader đọc lại metadata
+        ↓
+biết phải tiếp tục cài đặt
+```
+
+---
+
+## 7.3. Persistent Metadata lưu những gì?
+
+Metadata không chứa firmware. Nó chỉ lưu thông tin cần thiết để bootloader biết trạng thái OTA và cách tiếp tục.
+
+Các trường quan trọng có thể gồm:
+
+```text
+generation
+state
+active_version
+pending_version
+active_update_id
+received_size
+expected_size
+copy_offset
+boot_attempts
+last_error
+crc32
+```
+
+Ví dụ:
+
+```text
+state       = INSTALLING
+copy_offset = 12 KiB
+```
+
+nghĩa là hệ thống đang cài firmware và đã hoàn thành an toàn tới mốc 12 KiB.
+
+---
+
+## 7.4. Persistent Metadata A/B
+
+Đây chính là hai vùng Internal Metadata đã học ở phần Flash nội:
+
+```text
+0x0800F800  Metadata A  1 KiB
+0x0800FC00  Metadata B  1 KiB
+```
+
+Khi cần đổi state, bootloader không ghi đè trực tiếp lên bản đang hợp lệ.
+
+```text
+A:
+generation = 20
+state = BACKING_UP
+VALID
+```
+
+Khi backup hoàn tất:
+
+```text
+Giữ nguyên A
+    ↓
+Erase B
+    ↓
+Ghi B:
+generation = 21
+state = INSTALLING
+    ↓
+Verify B
+```
+
+Nếu mất điện khi đang erase/ghi B thì A vẫn hợp lệ. Nếu B đã ghi và xác minh thành công, B trở thành bản metadata mới nhất.
+
+---
+
+## 7.5. `generation`, CRC32 và xác minh metadata
+
+`generation` dùng để biết bản metadata hợp lệ nào mới hơn:
+
+```text
+A: generation = 20
+B: generation = 21
+
+→ chọn B
+```
+
+CRC32 giúp phát hiện metadata bị ghi dở hoặc bị hỏng.
+
+```text
+Ghi metadata mới
+    ↓
+CRC hợp lệ
+    ↓
+Đọc lại để xác minh
+    ↓
+bản mới mới được chấp nhận
+```
+
+A/B + `generation` + CRC32 giúp hệ thống vẫn tìm được một bản metadata hợp lệ sau mất điện.
+
+---
+
+## 7.6. `state` và checkpoint khác nhau
+
+`state` trả lời:
+
+```text
+"Hệ thống đang làm gì?"
+```
+
+Ví dụ:
+
+```text
+state = INSTALLING
+```
+
+Checkpoint trả lời:
+
+```text
+"Công việc đó đã làm tới đâu?"
+```
+
+Ví dụ:
+
+```text
+copy_offset = 12 KiB
+```
+
+Ghép lại:
+
+```text
+state       = INSTALLING
+copy_offset = 12 KiB
+```
+
+nghĩa là đang cài firmware và đã hoàn thành an toàn tới mốc 12 KiB.
+
+---
+
+## 7.7. State phải được lưu trước thao tác nguy hiểm
+
+Không nên xóa application trước rồi mới ghi:
+
+```text
+state = INSTALLING
+```
+
+vì nếu mất điện giữa hai bước, bootloader sẽ không biết application đã bị thay đổi.
+
+Cách an toàn hơn:
+
+```text
+Ghi metadata:
+state = INSTALLING
+        ↓
+Verify metadata
+        ↓
+mới bắt đầu xóa/lập trình Application
+```
+
+Nếu mất điện giữa lúc cài, bootloader đọc `INSTALLING` sau reset và biết phải tiếp tục cài đặt thay vì chạy application đang ghi dở.
+
+---
+
+## 7.8. Bootloader làm gì sau reset?
+
+Sau reset, bootloader không chuyển ngay sang application.
+
+```text
+Reset
+  ↓
+Đọc Metadata A/B
+  ↓
+Kiểm tra CRC
+  ↓
+Chọn generation mới nhất
+  ↓
+Đọc state
+  ↓
+Quyết định hành động
+```
+
+Ví dụ:
+
+```text
+IDLE
+→ kiểm tra và chạy application
+
+INSTALLING
+→ tiếp tục cài từ checkpoint cuối
+
+ROLLBACK
+→ tiếp tục khôi phục Backup Image
+
+TRIAL_BOOT
+→ chạy thử firmware mới
+```
+
+---
+
+## 7.9. `TRIAL_BOOT`, `CONFIRMED` và `ROLLBACK`
+
+Firmware mới không được coi là thành công ngay sau khi ghi xong.
+
+```text
+INSTALLING
+    ↓
+VERIFYING_INSTALL
+    ↓
+TRIAL_BOOT
+```
+
+Nếu application hoạt động tốt:
+
+```text
+TRIAL_BOOT
+    ↓
+CONFIRMED
+```
+
+Nếu firmware mới lỗi hoặc không được xác nhận:
+
+```text
+TRIAL_BOOT
+    ↓
+ROLLBACK
+    ↓
+khôi phục Backup Image
+```
+
+Cơ chế này giúp tránh việc firmware lỗi trở thành firmware chính thức.
+
+---
+
+## 7.10. Ví dụ mất điện khi đang `INSTALLING`
+
+Giả sử:
+
+```text
+state       = INSTALLING
+copy_offset = 12 KiB
+```
+
+Bootloader đang ghi trang tiếp theo thì mất điện.
+
+Sau reset:
+
+```text
+Bootloader
+   ↓
+đọc Metadata A/B
+   ↓
+state = INSTALLING
+copy_offset = 12 KiB
+   ↓
+biết 12 KiB đầu đã hoàn thành an toàn
+   ↓
+xóa + ghi lại trang tiếp theo
+   ↓
+tiếp tục cài đặt
+```
+
+Checkpoint chỉ được cập nhật sau khi trang Flash đã được ghi và xác minh thành công, nên phần đang ghi dở có thể được làm lại an toàn.
+
+---
+
+## 7.11. Mô hình tư duy cần nhớ
+
+```text
+STATE
+= "Đang làm gì?"
+
+CHECKPOINT
+= "Đã làm tới đâu?"
+
+METADATA A/B
+= "Làm sao nhớ các thông tin này qua mất điện?"
+```
+
+Luồng tổng quát:
+
+```text
+Persist State
+    ↓
+Metadata A/B
+    ↓
+Thực hiện công việc
+    ↓
+Persist Checkpoint
+    ↓
+Mất điện?
+   /     \
+ NO      YES
+ ↓        ↓
+tiếp tục  Reset
+           ↓
+      đọc Metadata
+           ↓
+      State + Checkpoint
+           ↓
+        Recovery
+```
+
+---
+
+## 7.12. Trọng tâm cần thuộc
+
+```text
+OTA State Machine
+= chia OTA thành các state rõ ràng
+
+Persistent Metadata
+= lưu state/progress qua reset
+
+Metadata A/B
+= đang ghi bản mới mà mất điện vẫn còn bản cũ
+
+generation
+= biết metadata nào mới hơn
+
+state
+= đang làm gì
+
+checkpoint
+= đã làm tới đâu
+```
+
+Luồng quan trọng nhất:
+
+```text
+Reset
+  ↓
+đọc Metadata A/B
+  ↓
+chọn bản hợp lệ mới nhất
+  ↓
+đọc state + checkpoint
+  ↓
+resume / rollback / chạy application
+```
+
+Nếu giải thích được chuỗi trên, bạn đã nắm phần cốt lõi của OTA State Machine + Persistent Metadata A/B trong dự án.
 
 ---
 
