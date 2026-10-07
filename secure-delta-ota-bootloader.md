@@ -152,6 +152,18 @@
   - [10.11. Mô hình tư duy cần nhớ](#1011-mô-hình-tư-duy-cần-nhớ)
   - [10.12. Trọng tâm cần thuộc](#1012-trọng-tâm-cần-thuộc)
 - [11. Delta Patch / JojoDiff Concept](#11-delta-patch-jojodiff-concept)
+  - [11.1. Delta Patch là gì?](#111-delta-patch-là-gì)
+  - [11.2. Vì sao phải kiểm tra Base Image?](#112-vì-sao-phải-kiểm-tra-base-image)
+  - [11.3. JojoDiff làm gì?](#113-jojodiff-làm-gì)
+  - [11.4. Patch được tạo ở đâu?](#114-patch-được-tạo-ở-đâu)
+  - [11.5. STM32 áp dụng Patch như thế nào?](#115-stm32-áp-dụng-patch-như-thế-nào)
+  - [11.6. Không Patch trực tiếp Active Application](#116-không-patch-trực-tiếp-active-application)
+  - [11.7. Xác minh Target Image](#117-xác-minh-target-image)
+  - [11.8. Mất điện khi đang `PATCHING`](#118-mất-điện-khi-đang-patching)
+  - [11.9. Khi nào dùng Full thay vì Delta?](#119-khi-nào-dùng-full-thay-vì-delta)
+  - [11.10. Ví dụ đầy đủ](#1110-ví-dụ-đầy-đủ)
+  - [11.11. Mô hình tư duy cần nhớ](#1111-mô-hình-tư-duy-cần-nhớ)
+  - [11.12. Trọng tâm cần thuộc](#1112-trọng-tâm-cần-thuộc)
 - [12. ESP32 + MQTT + HTTPS + Server / Release Tooling](#12-esp32-+-mqtt-+-https-+-server-release-tooling)
 
 ---
@@ -4977,7 +4989,439 @@ Anti-Rollback
 
 # 11. Delta Patch / JojoDiff Concept
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Delta OTA có mục tiêu **chỉ truyền phần khác biệt giữa firmware cũ và firmware mới**, thay vì gửi lại toàn bộ firmware.
+
+Có thể hiểu đơn giản:
+
+```text
+Base Image
+   +
+Delta Patch
+   ↓
+Tái tạo
+   ↓
+Target Image
+```
+
+Delta giúp giảm dung lượng OTA, thời gian tải và thời gian truyền khi hai version không khác nhau quá nhiều.
+
+---
+
+## 11.1. Delta Patch là gì?
+
+Delta Patch không phải firmware hoàn chỉnh. Nó chỉ chứa thông tin cần thiết để biến firmware cũ thành firmware mới.
+
+Ví dụ:
+
+```text
+Firmware v5
+    +
+Patch v5 → v6
+    ↓
+Firmware v6
+```
+
+Vì vậy patch chỉ sử dụng được khi thiết bị đang có đúng Base Image mà patch yêu cầu.
+
+---
+
+## 11.2. Vì sao phải kiểm tra Base Image?
+
+Một patch được tạo cho:
+
+```text
+v5 → v6
+```
+
+không được áp dụng lên:
+
+```text
+v4
+```
+
+Do đó delta container cần có:
+
+```text
+base_version
+base_image_sha256
+```
+
+Bootloader kiểm tra:
+
+```text
+active_version == base_version
+        ↓
+SHA-256(Active Application)
+        ==
+base_image_sha256
+```
+
+Chỉ khi đúng version và đúng SHA-256 của Base Image thì mới được chuyển sang `PATCHING`.
+
+---
+
+## 11.3. JojoDiff làm gì?
+
+JojoDiff tạo ra một chuỗi lệnh mô tả cách biến Base Image thành Target Image.
+
+Các operation chính có thể hiểu như:
+
+```text
+EQL
+= phần giống nhau → sao chép từ Base
+
+MOD
+= thay dữ liệu cũ bằng dữ liệu mới
+
+INS
+= chèn dữ liệu mới
+
+DEL
+= bỏ một phần dữ liệu của Base
+
+BKT
+= di chuyển vị trí đọc Base về phía trước đó
+```
+
+Ví dụ ý tưởng:
+
+```text
+Base:
+AAAA BBBB CCCC
+
+Target:
+AAAA XXXX CCCC
+```
+
+Patch có thể mô tả:
+
+```text
+EQL AAAA
+MOD BBBB → XXXX
+EQL CCCC
+```
+
+Bootloader không cần tự tìm khác biệt; việc tạo patch được thực hiện ở phía công cụ phát hành.
+
+---
+
+## 11.4. Patch được tạo ở đâu?
+
+Patch được tạo phía máy phát hành:
+
+```text
+application-v5.bin
+       +
+application-v6.bin
+       ↓
+JojoDiff
+       ↓
+Delta Patch
+       ↓
+đóng vào Firmware Container
+       ↓
+ECDSA Sign
+```
+
+STM32 chỉ nhận và áp dụng patch, không tự chạy thuật toán diff để tìm phần khác nhau.
+
+---
+
+## 11.5. STM32 áp dụng Patch như thế nào?
+
+Khi container delta đã được xác minh:
+
+```text
+Internal Flash
+Base Image
+      +
+W25Q
+Delta Patch
+      ↓
+PATCHING
+      ↓
+W25Q Reconstructed Image
+```
+
+Quá trình có thể thực hiện theo kiểu streaming: đọc từng phần Base Image và Delta Patch, rồi ghi dần Target Image vào vùng `Reconstructed Image`.
+
+Nhờ đó không cần giữ toàn bộ firmware trong SRAM.
+
+---
+
+## 11.6. Không Patch trực tiếp Active Application
+
+Bootloader không nên sửa trực tiếp firmware đang chạy trong Internal Flash.
+
+Cách an toàn:
+
+```text
+Active Application
+      ↓ đọc làm Base
+
+Delta Patch
+      ↓
+
+Tái tạo
+      ↓
+W25Q Reconstructed Image
+```
+
+Chỉ sau khi Reconstructed Image hoàn chỉnh và được xác minh thì mới:
+
+```text
+Backup Active Application
+        ↓
+INSTALLING
+```
+
+Nhờ vậy lỗi trong lúc patch chưa phá firmware hiện tại.
+
+---
+
+## 11.7. Xác minh Target Image
+
+Sau khi tái tạo xong, bootloader không được cài ngay.
+
+Nó phải kiểm tra:
+
+```text
+Reconstructed Image
+       ↓
+SHA-256
+       ↓
+so sánh với target_image_sha256
+```
+
+Ngoài ra có thể kiểm tra:
+
+```text
+CRC32
+Vector Table
+kích thước / địa chỉ
+```
+
+Chỉ khi Target Image hợp lệ:
+
+```text
+PATCHING
+   ↓
+IMAGE_READY
+   ↓
+BACKING_UP
+   ↓
+INSTALLING
+```
+
+---
+
+## 11.8. Mất điện khi đang `PATCHING`
+
+Trong lúc patch, dữ liệu chỉ đang được tạo trong vùng:
+
+```text
+W25Q Reconstructed Image
+```
+
+Active Application trong Internal Flash vẫn chưa bị thay đổi.
+
+Nếu mất điện:
+
+```text
+PATCHING
+   ↓
+mất điện
+   ↓
+Reset
+   ↓
+đọc metadata
+   ↓
+chạy lại / tiếp tục quá trình tái tạo
+```
+
+Reconstructed Image chưa được xác minh không được coi là firmware hợp lệ.
+
+Điểm quan trọng là quá trình patch phải có khả năng thực hiện lại an toàn.
+
+---
+
+## 11.9. Khi nào dùng Full thay vì Delta?
+
+Delta không phải lúc nào cũng nhỏ hơn.
+
+Nếu firmware thay đổi quá nhiều:
+
+```text
+Delta Patch
+≈
+Full Firmware
+```
+
+thì gửi Full OTA có thể đơn giản và hiệu quả hơn.
+
+Có thể hiểu:
+
+```text
+Delta tiết kiệm đáng kể?
+   /             \
+ YES             NO
+ ↓                ↓
+Delta            Full
+```
+
+Vì vậy hệ thống phát hành nên luôn có Full Firmware làm phương án dự phòng.
+
+---
+
+## 11.10. Ví dụ đầy đủ
+
+Giả sử thiết bị đang chạy:
+
+```text
+v5
+```
+
+Server muốn nâng lên:
+
+```text
+v6
+```
+
+Phía phát hành:
+
+```text
+v5.bin + v6.bin
+      ↓
+JojoDiff
+      ↓
+Patch v5 → v6
+      ↓
+Delta Container
+      ↓
+ECDSA Signature
+```
+
+Bootloader:
+
+```text
+Verify Container
+      ↓
+Anti-Rollback
+      ↓
+base_version == 5
+      ↓
+SHA-256(v5) == base_image_sha256
+      ↓
+PATCHING
+      ↓
+v5 + Delta Patch
+      ↓
+Reconstructed v6 trong W25Q
+      ↓
+SHA-256 == target_image_sha256
+      ↓
+IMAGE_READY
+      ↓
+Backup v5
+      ↓
+Install v6
+      ↓
+TRIAL_BOOT
+```
+
+Nếu v6 hoạt động tốt:
+
+```text
+CONFIRMED
+```
+
+Nếu không:
+
+```text
+ROLLBACK
+→ khôi phục v5
+```
+
+---
+
+## 11.11. Mô hình tư duy cần nhớ
+
+```text
+Base Image
+   +
+Delta Patch
+   ↓
+JojoDiff / Patch Interpreter
+   ↓
+Reconstructed Target Image
+   ↓
+SHA-256 Verify
+   ↓
+Backup
+   ↓
+Install
+```
+
+Ba nguyên tắc quan trọng nhất:
+
+```text
+1. Patch chỉ dùng với đúng Base Image.
+
+2. Không patch trực tiếp Active Application.
+
+3. Target Image phải được xác minh hoàn chỉnh
+   trước khi cài vào Internal Flash.
+```
+
+---
+
+## 11.12. Trọng tâm cần thuộc
+
+```text
+Delta OTA
+= chỉ truyền phần khác biệt
+
+JojoDiff
+= tạo các lệnh mô tả khác biệt
+
+Base Image
+= firmware hiện tại dùng làm nguồn
+
+Delta Patch
+= dữ liệu hướng dẫn tái tạo
+
+Reconstructed Image
+= firmware đích được tạo trong W25Q
+
+target_image_sha256
+= xác minh firmware đích cuối cùng
+```
+
+Luồng cần nhớ:
+
+```text
+Base Image
++
+Delta Patch
+↓
+PATCHING
+↓
+Reconstructed Image
+↓
+SHA-256 Verify
+↓
+IMAGE_READY
+↓
+Backup
+↓
+Install
+```
+
+Điểm quan trọng nhất:
+
+> **Delta Patch không phải firmware mới hoàn chỉnh; nó chỉ là hướng dẫn để biến đúng Base Image thành Target Image.**
+
+> **Bootloader phải xác minh Base Image trước khi patch và xác minh Target Image sau khi tái tạo, trước khi thay đổi Internal Flash.**
 
 ---
 
