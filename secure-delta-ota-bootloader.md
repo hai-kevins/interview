@@ -571,12 +571,6 @@ main()
 
 ---
 
-## 20. Cách trả lời ngắn khi phỏng vấn
-
-> STM32 boots into the bootloader because the bootloader owns the vector table at the beginning of internal Flash. The application is linked at a separate Flash address. Before transferring control, the bootloader validates the application's initial stack pointer and reset vector, stops SysTick, disables and clears pending interrupts, restores a reset-like CPU and clock state, relocates `SCB->VTOR` to the application's vector table, loads the application's MSP, and branches to its `Reset_Handler`. The application's startup code then initializes the C runtime and eventually enters `main()`.
-
----
-
 ## Trọng tâm cần thuộc
 
 ```text
@@ -1042,12 +1036,6 @@ ROLLBACK
 - Dùng mass erase cho OTA.
 - Không xử lý power loss giữa page.
 - Không phân biệt page erase và half-word program.
-
----
-
-## 17. Cách trả lời ngắn khi phỏng vấn
-
-> STM32F103 internal Flash is erased in 1 KiB pages and programmed in 16-bit half-words. For a safe firmware update, the bootloader unlocks Flash, clears status flags, erases the target page, programs the new data half-word by half-word, reads the page back to verify it, and only then commits installation progress. OTA progress is checkpointed per page, so after a power failure the bootloader can safely re-erase and rewrite the first uncommitted page. The active firmware is backed up before installation, and A/B metadata is used so boot state survives interrupted writes.
 
 ---
 
