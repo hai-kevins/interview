@@ -2124,6 +2124,18 @@ Vai trò chính:
 
 ### Hiểu nhanh External Metadata A/B
 
+`External Metadata A/B` dùng **cùng cơ chế A/B như Internal Metadata A/B** đã học ở phần Flash nội: giữ một bản metadata hợp lệ trong khi cập nhật bản còn lại, để nếu mất điện giữa lúc erase/ghi thì hệ thống vẫn còn bản cũ để phục hồi.
+
+Điểm khác là **nội dung mà metadata quản lý**:
+
+```text
+Internal Metadata A/B
+= trạng thái boot/update của STM32
+
+External Metadata A/B
+= trạng thái/checkpoint của quá trình OTA trên W25Q
+```
+
 `Incoming Artifact` chứa **dữ liệu firmware thật**. `External Metadata A/B` chỉ là hai bản **ghi chú trạng thái** để hệ thống biết quá trình OTA đã tiến tới đâu và có thể tiếp tục từ đâu sau khi reset/mất điện.
 
 Ví dụ:
@@ -2132,16 +2144,18 @@ Ví dụ:
 Incoming Artifact:
 đã ghi dữ liệu tới 36 KiB
 
-Metadata hiện tại:
+External Metadata hiện tại:
 checkpoint = 32 KiB
 ```
 
 Điều này có nghĩa dữ liệu vật lý có thể đã tới 36 KiB, nhưng hệ thống mới chỉ **tin chắc** mốc 32 KiB. Nếu mất điện trước khi checkpoint mới được ghi hợp lệ, sau reboot hệ thống sẽ tiếp tục từ mốc 32 KiB.
 
-Hai bản A/B giúp cập nhật metadata an toàn:
+Cơ chế cập nhật giống Internal Metadata A/B:
 
 ```text
 A: generation = 10, checkpoint = 32 KiB, VALID
+        ↓
+Giữ nguyên A
         ↓
 Erase + ghi B
         ↓
@@ -2155,10 +2169,10 @@ Nếu mất điện khi đang erase/ghi B thì A vẫn còn hợp lệ. Chỉ kh
 Cần nhớ:
 
 ```text
-Incoming Artifact = dữ liệu firmware thật
-Metadata A/B      = bookmark trạng thái OTA
-generation        = số thứ tự để biết metadata nào mới hơn
-checkpoint        = mốc an toàn cuối cùng có thể tiếp tục
+Incoming Artifact      = dữ liệu firmware thật
+External Metadata A/B  = bookmark trạng thái OTA trên W25Q
+generation             = số thứ tự để biết metadata nào mới hơn
+checkpoint             = mốc an toàn cuối cùng có thể tiếp tục
 ```
 
 Mental model:
