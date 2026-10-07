@@ -165,6 +165,19 @@
   - [11.11. Mô hình tư duy cần nhớ](#1111-mô-hình-tư-duy-cần-nhớ)
   - [11.12. Trọng tâm cần thuộc](#1112-trọng-tâm-cần-thuộc)
 - [12. ESP32 + MQTT + HTTPS + Server / Release Tooling](#12-esp32-+-mqtt-+-https-+-server-release-tooling)
+  - [12.1. Vai trò của ESP32](#121-vai-trò-của-esp32)
+  - [12.2. MQTT dùng để làm gì?](#122-mqtt-dùng-để-làm-gì)
+  - [12.3. HTTPS dùng để làm gì?](#123-https-dùng-để-làm-gì)
+  - [12.4. ESP32 cache Artifact trước khi gửi xuống STM32](#124-esp32-cache-artifact-trước-khi-gửi-xuống-stm32)
+  - [12.5. ESP32 chuyển Artifact sang STM32](#125-esp32-chuyển-artifact-sang-stm32)
+  - [12.6. Vai trò của Server](#126-vai-trò-của-server)
+  - [12.7. Release Tooling làm gì?](#127-release-tooling-làm-gì)
+  - [12.8. Release có thể chứa những gì?](#128-release-có-thể-chứa-những-gì)
+  - [12.9. Trách nhiệm bảo mật của từng thành phần](#129-trách-nhiệm-bảo-mật-của-từng-thành-phần)
+  - [12.10. Luồng OTA End-to-End](#1210-luồng-ota-end-to-end)
+  - [12.11. MQTT, HTTPS, UART và SPI khác nhau thế nào?](#1211-mqtt-https-uart-và-spi-khác-nhau-thế-nào)
+  - [12.12. Mô hình tư duy cần nhớ](#1212-mô-hình-tư-duy-cần-nhớ)
+  - [12.13. Trọng tâm cần thuộc](#1213-trọng-tâm-cần-thuộc)
 
 ---
 
@@ -5427,4 +5440,445 @@ Install
 
 # 12. ESP32 + MQTT + HTTPS + Server / Release Tooling
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Phần này nối toàn bộ hệ thống thành một luồng OTA hoàn chỉnh từ phía phát hành firmware đến STM32.
+
+```text
+Developer / CI
+      ↓
+Release Tooling
+      ↓
+Release Server
+   ↙        ↘
+MQTT       HTTPS
+   ↓         ↓
+      ESP32
+        ↓
+       UART
+        ↓
+      STM32
+        ↓
+       W25Q
+        ↓
+    Bootloader
+        ↓
+Verify / Install / Trial / Rollback
+```
+
+Điểm quan trọng nhất là ESP32 chịu trách nhiệm kết nối mạng và vận chuyển dữ liệu, còn STM32 Bootloader mới là nơi quyết định firmware có hợp lệ và được phép cài hay không.
+
+---
+
+## 12.1. Vai trò của ESP32
+
+ESP32 đóng vai trò gateway mạng.
+
+Nó chịu trách nhiệm:
+
+```text
+Wi-Fi
+MQTT
+HTTPS
+tải OTA artifact
+lưu cache
+gửi dữ liệu qua UART
+báo trạng thái OTA
+```
+
+Có thể nhớ:
+
+```text
+ESP32
+= tải + vận chuyển
+
+STM32
+= xác minh + cài đặt
+```
+
+ESP32 không thay thế cơ chế bảo mật của STM32 Bootloader.
+
+---
+
+## 12.2. MQTT dùng để làm gì?
+
+MQTT chủ yếu dùng cho:
+
+```text
+lệnh OTA
++
+trạng thái OTA
+```
+
+Ví dụ server có thể gửi thông tin như:
+
+```text
+có firmware mới
+version mới
+URL tải artifact
+kích thước
+CRC mong đợi
+```
+
+ESP32 nhận lệnh rồi phản hồi tiến độ hoặc kết quả OTA.
+
+Có thể hiểu:
+
+```text
+MQTT
+= điều phối OTA
+```
+
+không phải kênh chính để truyền toàn bộ firmware.
+
+---
+
+## 12.3. HTTPS dùng để làm gì?
+
+Sau khi nhận lệnh OTA, ESP32 dùng HTTPS để tải firmware container từ server.
+
+```text
+MQTT command
+    ↓
+ESP32
+    ↓
+HTTPS GET
+    ↓
+SDOT Artifact
+```
+
+Vai trò được tách rõ:
+
+```text
+MQTT
+= lệnh và trạng thái
+
+HTTPS
+= truyền file firmware
+```
+
+---
+
+## 12.4. ESP32 cache Artifact trước khi gửi xuống STM32
+
+ESP32 không nên vừa tải mạng vừa chuyển trực tiếp từng byte xuống STM32 mà không có lớp lưu trữ trung gian.
+
+Luồng hợp lý:
+
+```text
+HTTPS
+  ↓
+ESP32 Cache
+  ↓
+kiểm tra size / CRC32
+  ↓
+Artifact hợp lệ
+  ↓
+UART → STM32
+```
+
+Nếu UART phải gửi lại, ESP32 có thể dùng dữ liệu trong cache mà không cần tải lại từ server.
+
+---
+
+## 12.5. ESP32 chuyển Artifact sang STM32
+
+Sau khi có artifact hợp lệ:
+
+```text
+ESP32
+  ↓
+START
+  ↓
+DATA
+  ↓
+DATA
+  ↓
+...
+  ↓
+FINISH
+```
+
+STM32 nhận qua UART, kiểm tra COBS/CRC32/sequence/offset rồi ghi vào:
+
+```text
+W25Q Incoming Artifact
+```
+
+Sau khi nhận xong, STM32 có thể chuyển sang trạng thái cài đặt để Bootloader xử lý tiếp.
+
+Đây chính là luồng đã học ở Chương 6.
+
+---
+
+## 12.6. Vai trò của Server
+
+Release Server chịu trách nhiệm phân phối release.
+
+Nó có thể:
+
+```text
+lưu Full Artifact
+lưu Delta Artifact
+phục vụ file qua HTTPS
+gửi lệnh OTA qua MQTT
+chọn artifact phù hợp
+```
+
+Nếu thiết bị có đúng Base Image thì có thể dùng Delta.
+
+Nếu không:
+
+```text
+→ dùng Full
+```
+
+Server không phải nơi quyết định cuối cùng firmware có đáng tin cậy hay không. Quyết định đó vẫn thuộc Bootloader.
+
+---
+
+## 12.7. Release Tooling làm gì?
+
+Release Tooling chạy ở phía Developer / CI.
+
+Luồng chính:
+
+```text
+Build Firmware
+      ↓
+tạo Full Image
+      ↓
+nếu phù hợp:
+tạo Delta Patch
+      ↓
+đóng Firmware Container
+      ↓
+SHA-256
+      ↓
+ECDSA Sign
+      ↓
+tạo Manifest / Release
+```
+
+Private Key phải được giữ ở phía phát hành và không đưa vào firmware hay thiết bị.
+
+---
+
+## 12.8. Release có thể chứa những gì?
+
+Một release thường có:
+
+```text
+application-vN.bin
+application-vN.full.sdot
+application-vBASE-to-vN.delta.sdot
+manifest.json
+manifest signature
+checksum
+release notes
+```
+
+Có thể hiểu:
+
+```text
+.full.sdot
+= Full OTA
+
+.delta.sdot
+= Delta OTA
+
+manifest
+= mô tả release
+```
+
+Release Tooling chịu trách nhiệm tạo và ký các artifact trước khi đưa lên server.
+
+---
+
+## 12.9. Trách nhiệm bảo mật của từng thành phần
+
+Có thể phân chia như sau:
+
+```text
+Release Tooling
+= tạo + ký firmware
+
+Release Server
+= phân phối firmware
+
+ESP32
+= gateway mạng + transport
+
+STM32 Application
+= nhận UART + ghi W25Q
+
+STM32 Bootloader
+= kiểm tra tin cậy cuối cùng
+```
+
+Bootloader kiểm tra các yếu tố như:
+
+```text
+Product ID
+Hardware Revision
+Anti-Rollback
+ECDSA Signature
+SHA-256
+Base Image
+Vector Table
+```
+
+Điều này giúp STM32 không phụ thuộc hoàn toàn vào ESP32 hoặc server để quyết định firmware có được cài hay không.
+
+---
+
+## 12.10. Luồng OTA End-to-End
+
+Toàn bộ hệ thống:
+
+```text
+Developer / CI
+      ↓
+Build Firmware
+      ↓
+Full / Delta
+      ↓
+SHA-256 + ECDSA Sign
+      ↓
+Release Server
+      ↓
+MQTT command
+      ↓
+ESP32
+      ↓
+HTTPS download
+      ↓
+ESP32 Cache
+      ↓
+UART + COBS + CRC32
+      ↓
+STM32 Application
+      ↓
+W25Q Incoming Artifact
+      ↓
+Bootloader
+      ↓
+Verify Container
+      ↓
+Anti-Rollback
+      ↓
+ECDSA Verify
+      ↓
+Full Copy / Delta Reconstruction
+      ↓
+Target SHA-256 Verify
+      ↓
+Backup
+      ↓
+Install
+      ↓
+TRIAL_BOOT
+      ↓
+CONFIRMED / ROLLBACK
+```
+
+Đây là chuỗi tổng hợp toàn bộ kiến thức của các chương trước.
+
+---
+
+## 12.11. MQTT, HTTPS, UART và SPI khác nhau thế nào?
+
+Mỗi giao thức có một vai trò:
+
+```text
+MQTT
+= lệnh + trạng thái OTA
+
+HTTPS
+= Server → ESP32
+
+UART
+= ESP32 → STM32
+
+SPI
+= STM32 → W25Q
+```
+
+Có thể nhớ đường đi của firmware:
+
+```text
+Server
+  ↓ HTTPS
+ESP32
+  ↓ UART
+STM32
+  ↓ SPI
+W25Q
+```
+
+Còn MQTT chạy song song để điều phối quá trình OTA.
+
+---
+
+## 12.12. Mô hình tư duy cần nhớ
+
+```text
+Release Tooling
+= tạo + ký
+
+Server
+= phân phối
+
+MQTT
+= điều phối
+
+HTTPS
+= tải artifact
+
+ESP32
+= gateway mạng
+
+UART
+= ESP32 → STM32
+
+W25Q
+= vùng staging
+
+Bootloader
+= verify + install + recovery
+```
+
+---
+
+## 12.13. Trọng tâm cần thuộc
+
+Các ý quan trọng nhất:
+
+```text
+ESP32
+= xử lý mạng và chuyển dữ liệu
+
+MQTT
+= lệnh / trạng thái
+
+HTTPS
+= tải firmware
+
+UART
+= chuyển artifact từ ESP32 xuống STM32
+
+W25Q
+= lưu artifact tạm thời
+
+Release Tooling
+= tạo Full / Delta + ký
+
+Bootloader
+= nơi quyết định firmware có được tin cậy và cài đặt hay không
+```
+
+Điểm cần nhớ:
+
+> **ESP32 chỉ là gateway vận chuyển; STM32 Bootloader mới là trust authority cuối cùng.**
+
+> **MQTT dùng để điều phối, HTTPS dùng để tải firmware, UART dùng để chuyển dữ liệu xuống STM32, còn SPI dùng để ghi vào W25Q.**
+
+> **Release Tooling tạo và ký artifact, còn Bootloader xác minh lại trước khi cài.**
