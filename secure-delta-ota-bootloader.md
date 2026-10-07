@@ -972,6 +972,74 @@ Khác RAM, Flash không thể ghi đè tùy ý. Quy trình cơ bản luôn là:
 Xóa -> Lập trình -> Xác minh
 ```
 
+### Hiểu nhanh Internal Metadata A/B
+
+Hai vùng `Metadata A` và `Metadata B` trong Flash nội dùng cùng nguyên lý A/B như External Metadata trên W25Q, nhưng mục đích khác nhau.
+
+```text
+Internal Metadata A/B
+= lưu trạng thái boot/update quan trọng của STM32
+
+External Metadata A/B
+= lưu checkpoint/handoff cho quá trình OTA trên W25Q
+```
+
+Ví dụ Internal Metadata hiện tại:
+
+```text
+A:
+generation = 10
+state = INSTALLING
+VALID
+```
+
+Khi cần cập nhật trạng thái mới, bootloader không ghi đè trực tiếp lên A mà dùng B:
+
+```text
+Giữ nguyên A
+    ↓
+Erase B
+    ↓
+Ghi metadata mới vào B
+generation = 11
+state = TRIAL_BOOT
+    ↓
+Verify B
+```
+
+Nếu mất điện khi đang erase hoặc ghi B:
+
+```text
+A vẫn VALID
+B có thể INVALID
+→ bootloader dùng A
+```
+
+Nếu B đã ghi và verify thành công:
+
+```text
+A: generation = 10
+B: generation = 11
+
+→ B là bản mới nhất
+```
+
+Cần nhớ:
+
+```text
+generation
+= số thứ tự để biết metadata hợp lệ nào mới hơn
+
+state
+= trạng thái boot/update hiện tại
+  ví dụ INSTALLING, TRIAL_BOOT, ROLLBACK
+
+A/B
+= giữ ít nhất một bản metadata hợp lệ khi mất điện
+```
+
+Vì vậy **Internal Metadata A/B và External Metadata A/B dùng cùng cơ chế chống mất điện**, nhưng chúng quản lý hai loại trạng thái khác nhau.
+
 ---
 
 ## 3.2. Đơn vị xóa (Erase) và lập trình (Program)
