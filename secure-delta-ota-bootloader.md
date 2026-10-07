@@ -1,54 +1,54 @@
 # Mục lục
 
-- [1. STM32 Bootloader – từ Reset đến Application](#1-stm32-bootloader-từ-reset-đến-application)
+- [1. STM32 Bootloader – từ Reset đến ứng dụng](#1-stm32-bootloader-từ-reset-đến-ứng-dụng)
   - [1.1. Bootloader là gì?](#11-bootloader-là-gì)
   - [1.2. Cortex-M3 khởi động như thế nào?](#12-cortex-m3-khởi-động-như-thế-nào)
-  - [1.3. Vector Table](#13-vector-table)
-  - [1.4. MSP – Main Stack Pointer](#14-msp-main-stack-pointer)
+  - [1.3. Bảng vector (Vector Table)](#13-bảng-vector-vector-table)
+  - [1.4. MSP – Con trỏ ngăn xếp chính (Main Stack Pointer)](#14-msp-con-trỏ-ngăn-xếp-chính-main-stack-pointer)
   - [1.5. Reset_Handler](#15-resethandler)
   - [1.6. `.data` và `.bss`](#16-data-và-bss)
   - [1.7. Linker Script](#17-linker-script)
-  - [1.8. VTOR – Vector Table Offset Register](#18-vtor-vector-table-offset-register)
-  - [1.9. Thumb Bit](#19-thumb-bit)
-  - [1.10. Application Validation](#110-application-validation)
-  - [1.11. Tại sao phải dọn trạng thái trước khi jump?](#111-tại-sao-phải-dọn-trạng-thái-trước-khi-jump)
-  - [1.12. SysTick và Interrupt](#112-systick-và-interrupt)
-  - [1.13. Clock State](#113-clock-state)
+  - [1.8. VTOR – Thanh ghi độ lệch bảng vector (Vector Table Offset Register)](#18-vtor-thanh-ghi-độ-lệch-bảng-vector-vector-table-offset-register)
+  - [1.9. Bit Thumb](#19-bit-thumb)
+  - [1.10. Kiểm tra tính hợp lệ của ứng dụng](#110-kiểm-tra-tính-hợp-lệ-của-ứng-dụng)
+  - [1.11. Tại sao phải dọn trạng thái trước khi chuyển sang ứng dụng?](#111-tại-sao-phải-dọn-trạng-thái-trước-khi-chuyển-sang-ứng-dụng)
+  - [1.12. SysTick và ngắt](#112-systick-và-ngắt)
+  - [1.13. Trạng thái xung nhịp](#113-trạng-thái-xung-nhịp)
   - [1.14. Vì sao không nên đổi MSP rồi tiếp tục chạy C?](#114-vì-sao-không-nên-đổi-msp-rồi-tiếp-tục-chạy-c)
   - [1.15. CONTROL, PRIMASK, BASEPRI, FAULTMASK](#115-control-primask-basepri-faultmask)
-  - [1.16. Full Handoff Sequence](#116-full-handoff-sequence)
-  - [1.17. Boot Decision](#117-boot-decision)
+  - [1.16. Trình tự chuyển giao đầy đủ](#116-trình-tự-chuyển-giao-đầy-đủ)
+  - [1.17. Quyết định khởi động](#117-quyết-định-khởi-động)
   - [1.18. Các lỗi Bootloader thường gặp](#118-các-lỗi-bootloader-thường-gặp)
-  - [1.19. Mental Model cần nhớ](#119-mental-model-cần-nhớ)
+  - [1.19. Mô hình tư duy cần nhớ](#119-mô-hình-tư-duy-cần-nhớ)
   - [1.20. Trọng tâm cần thuộc](#120-trọng-tâm-cần-thuộc)
-- [2. STM32 Internal Flash](#2-stm32-internal-flash)
-  - [2.1. Internal Flash và Memory Map](#21-internal-flash-và-memory-map)
-  - [2.2. Erase và Program Granularity](#22-erase-và-program-granularity)
+- [2. Flash nội STM32](#2-flash-nội-stm32)
+  - [2.1. Flash nội và bản đồ bộ nhớ](#21-flash-nội-và-bản-đồ-bộ-nhớ)
+  - [2.2. Đơn vị xóa (Erase) và lập trình (Program)](#22-đơn-vị-xóa-erase-và-lập-trình-program)
   - [2.3. Các thanh ghi Flash quan trọng](#23-các-thanh-ghi-flash-quan-trọng)
-  - [2.4. Quy trình Erase/Program](#24-quy-trình-eraseprogram)
-  - [2.5. Readback Verification](#25-readback-verification)
-  - [2.6. Page Buffer trong SRAM](#26-page-buffer-trong-sram)
-  - [2.7. Page-Level Checkpoint](#27-page-level-checkpoint)
-  - [2.8. Power-Loss Recovery](#28-power-loss-recovery)
-  - [2.9. Idempotency](#29-idempotency)
-  - [2.10. Backup trước khi Install](#210-backup-trước-khi-install)
+  - [2.4. Quy trình xóa/lập trình Flash](#24-quy-trình-xóalập-trình-flash)
+  - [2.5. Xác minh bằng cách đọc lại](#25-xác-minh-bằng-cách-đọc-lại)
+  - [2.6. Bộ đệm theo trang trong SRAM](#26-bộ-đệm-theo-trang-trong-sram)
+  - [2.7. Điểm kiểm tra theo trang](#27-điểm-kiểm-tra-theo-trang)
+  - [2.8. Khôi phục sau mất nguồn](#28-khôi-phục-sau-mất-nguồn)
+  - [2.9. Tính lặp an toàn (Idempotency)](#29-tính-lặp-an-toàn-idempotency)
+  - [2.10. Sao lưu trước khi cài đặt](#210-sao-lưu-trước-khi-cài-đặt)
   - [2.11. Metadata A/B](#211-metadata-ab)
   - [2.12. CRC ghi cuối Metadata](#212-crc-ghi-cuối-metadata)
-  - [2.13. Flash Endurance](#213-flash-endurance)
-  - [2.14. Internal Flash và External W25Q](#214-internal-flash-và-external-w25q)
-  - [2.15. Full Firmware Installation Flow](#215-full-firmware-installation-flow)
+  - [2.13. Độ bền Flash](#213-độ-bền-flash)
+  - [2.14. Flash nội và W25Q ngoài](#214-flash-nội-và-w25q-ngoài)
+  - [2.15. Luồng cài đặt firmware đầy đủ](#215-luồng-cài-đặt-firmware-đầy-đủ)
   - [2.16. Các lỗi thường gặp](#216-các-lỗi-thường-gặp)
   - [2.17. Trọng tâm cần thuộc](#217-trọng-tâm-cần-thuộc)
 
 ---
 
-# 1. STM32 Bootloader – từ Reset đến Application
+# 1. STM32 Bootloader – từ Reset đến ứng dụng
 
 ## 1.1. Bootloader là gì?
 
-Bootloader là firmware chạy đầu tiên sau khi STM32 reset khi MCU boot từ Main Flash. Trong project này, bootloader nằm tại `0x08000000`, còn application được đặt tại `0x08006000`.
+Bootloader là firmware chạy đầu tiên sau khi STM32 reset khi MCU boot từ Main Flash. Trong dự án này, bootloader nằm tại `0x08000000`, còn application được đặt tại `0x08006000`.
 
-Bootloader có nhiệm vụ đọc trạng thái hệ thống, kiểm tra firmware, xử lý OTA/recovery/rollback và chỉ chuyển quyền điều khiển sang application khi application hợp lệ.
+Bootloader có nhiệm vụ đọc trạng thái hệ thống, kiểm tra firmware, xử lý OTA/khôi phục/rollback và chỉ chuyển quyền điều khiển sang ứng dụng khi ứng dụng hợp lệ.
 
 ```text
 Reset
@@ -88,7 +88,7 @@ Với bootloader:
 
 ---
 
-## 1.3. Vector Table
+## 1.3. Bảng vector (Vector Table)
 
 Vector table chứa địa chỉ các exception và interrupt handler.
 
@@ -105,7 +105,7 @@ Vector table chứa địa chỉ các exception và interrupt handler.
 
 Phần tử đầu tiên không phải function pointer mà là giá trị stack pointer ban đầu.
 
-Application trong project có vector table riêng tại:
+Ứng dụng trong dự án có bảng vector riêng tại:
 
 ```text
 0x08006000
@@ -114,13 +114,13 @@ Application trong project có vector table riêng tại:
 Do đó bootloader biết:
 
 ```text
-[0x08006000] -> Application MSP
-[0x08006004] -> Application Reset_Handler
+[0x08006000] -> MSP của ứng dụng
+[0x08006004] -> Reset_Handler của ứng dụng
 ```
 
 ---
 
-## 1.4. MSP – Main Stack Pointer
+## 1.4. MSP – Con trỏ ngăn xếp chính (Main Stack Pointer)
 
 STM32F103C8T6 có SRAM:
 
@@ -144,7 +144,7 @@ push dữ liệu
 MSP = 0x20004FFC
 ```
 
-Trước khi jump, bootloader phải kiểm tra MSP của application:
+Trước khi chuyển sang ứng dụng, bootloader phải kiểm tra MSP của application:
 
 - nằm trong vùng SRAM;
 - có alignment hợp lệ.
@@ -175,7 +175,7 @@ C runtime
 main()
 ```
 
-Vì vậy bootloader phải jump tới `Reset_Handler`, không nên jump thẳng tới `main()`.
+Vì vậy bootloader phải chuyển quyền điều khiển tới `Reset_Handler`, không nên chuyển thẳng tới `main()`.
 
 ---
 
@@ -189,7 +189,7 @@ Là các biến global/static có giá trị khởi tạo.
 uint32_t counter = 123;
 ```
 
-Giá trị ban đầu được lưu trong Flash, sau đó startup code copy vào RAM.
+Giá trị ban đầu được lưu trong Flash, sau đó mã khởi động sao chép vào RAM.
 
 ```text
 Flash -> RAM
@@ -203,7 +203,7 @@ Là các biến global/static không có giá trị khởi tạo rõ ràng.
 uint32_t errors;
 ```
 
-Startup code zero hóa vùng `.bss` trước khi vào `main()`.
+Mã khởi động đưa vùng `.bss` về 0 trước khi vào `main()`.
 
 ---
 
@@ -244,7 +244,7 @@ Memory map chính:
 
 ---
 
-## 1.8. VTOR – Vector Table Offset Register
+## 1.8. VTOR – Thanh ghi độ lệch bảng vector (Vector Table Offset Register)
 
 `SCB->VTOR` cho CPU biết vector table hiện tại nằm ở đâu.
 
@@ -262,7 +262,7 @@ VTOR = 0x08006000
 
 Nếu quên đổi VTOR, application có thể chạy được cho đến khi interrupt xảy ra. Khi đó CPU có thể lấy handler từ vector table của bootloader thay vì application.
 
-Do đó trước khi jump:
+Do đó trước khi chuyển sang ứng dụng:
 
 ```c
 SCB->VTOR = APPLICATION_ADDRESS;
@@ -279,7 +279,7 @@ __ISB();
 
 ---
 
-## 1.9. Thumb Bit
+## 1.9. Bit Thumb
 
 Cortex-M3 chỉ chạy Thumb/Thumb-2.
 
@@ -308,12 +308,12 @@ Nếu không, reset vector không hợp lệ cho Cortex-M.
 
 ---
 
-## 1.10. Application Validation
+## 1.10. Kiểm tra tính hợp lệ của ứng dụng
 
-Trước khi jump, bootloader nên kiểm tra tối thiểu:
+Trước khi chuyển sang ứng dụng, bootloader nên kiểm tra tối thiểu:
 
 ```text
-Application MSP
+MSP của ứng dụng
     ↓
 Có nằm trong SRAM?
     ↓
@@ -336,9 +336,9 @@ anti-rollback
 
 ---
 
-## 1.11. Tại sao phải dọn trạng thái trước khi jump?
+## 1.11. Tại sao phải dọn trạng thái trước khi chuyển sang ứng dụng?
 
-Application không nhận một hardware reset thật sự.
+Ứng dụng không nhận một lần reset phần cứng thật sự.
 
 Nó kế thừa trạng thái CPU và peripheral từ bootloader.
 
@@ -349,14 +349,14 @@ Bootloader có thể đã sử dụng:
 - SPI;
 - Timer;
 - NVIC;
-- PLL/clock tree;
+- PLL/cây xung nhịp;
 - interrupt masks.
 
 Do đó phải tạo một trạng thái gần giống reset trước khi chuyển quyền điều khiển.
 
 ---
 
-## 1.12. SysTick và Interrupt
+## 1.12. SysTick và ngắt
 
 Bootloader nên stop SysTick:
 
@@ -380,15 +380,15 @@ Disable IRQ
 Clear pending IRQ
 ```
 
-Nếu chỉ disable interrupt mà không clear pending state, một IRQ cũ của bootloader có thể chạy ngay sau khi application bật interrupt trở lại.
+Nếu chỉ tắt ngắt mà không xóa trạng thái chờ, một IRQ cũ của bootloader có thể chạy ngay sau khi ứng dụng bật ngắt trở lại.
 
 PendSV và SysTick pending cũng nên được clear.
 
 ---
 
-## 1.13. Clock State
+## 1.13. Trạng thái xung nhịp
 
-Bootloader có thể đã thay đổi clock tree.
+Bootloader có thể đã thay đổi cây xung nhịp.
 
 Ví dụ:
 
@@ -400,17 +400,17 @@ AHB prescaler
 APB prescaler
 ```
 
-Trước khi jump có thể đưa clock về trạng thái gần reset, ví dụ:
+Trước khi chuyển sang ứng dụng có thể đưa xung nhịp về trạng thái gần reset, ví dụ:
 
 ```c
 RCC_DeInit();
 ```
 
-Application sau đó tự cấu hình clock trong `SystemInit()`.
+Ứng dụng sau đó tự cấu hình xung nhịp trong `SystemInit()`.
 
 Nguyên tắc:
 
-> Application không nên phụ thuộc vào clock state do bootloader để lại.
+> Ứng dụng không nên phụ thuộc vào trạng thái xung nhịp do bootloader để lại.
 
 ---
 
@@ -434,7 +434,7 @@ msr msp, r0
 bx  r1
 ```
 
-Trong project, helper còn reset thêm:
+Trong dự án, hàm hỗ trợ còn đặt lại:
 
 ```text
 PSP
@@ -444,7 +444,7 @@ FAULTMASK
 PRIMASK
 ```
 
-để application bắt đầu trong context gần giống sau hardware reset.
+để ứng dụng bắt đầu trong ngữ cảnh gần giống sau reset phần cứng.
 
 ---
 
@@ -473,39 +473,39 @@ bx application_reset_handler
 
 ---
 
-## 1.16. Full Handoff Sequence
+## 1.16. Trình tự chuyển giao đầy đủ
 
 Luồng chuyển từ bootloader sang application:
 
 ```text
 Bootloader đang chạy
         ↓
-Đọc Application MSP
-Đọc Application Reset_Handler
+Đọc MSP của ứng dụng
+Đọc Reset_Handler của ứng dụng
         ↓
 Validate MSP / Reset_Handler
         ↓
-Stop SysTick
+Dừng SysTick
         ↓
-Mask interrupt
+Che ngắt
         ↓
-Disable + clear NVIC IRQ
+Tắt + xóa IRQ đang chờ trong NVIC
         ↓
-Clear pending SysTick / PendSV
+Xóa trạng thái chờ của SysTick / PendSV
         ↓
-Reset clock về trạng thái phù hợp
+Đưa xung nhịp về trạng thái phù hợp
         ↓
-VTOR = Application Vector Table
+VTOR = bảng vector của ứng dụng
         ↓
 DSB / ISB
         ↓
-MSP = Application MSP
+MSP = MSP của ứng dụng
         ↓
-Reset PSP / CONTROL / interrupt masks
+Đặt lại PSP / CONTROL / các mặt nạ ngắt
         ↓
-BX Application Reset_Handler
+BX Reset_Handler của ứng dụng
         ↓
-Application startup
+quá trình khởi động ứng dụng
         ↓
 .data initialization
 .bss initialization
@@ -516,11 +516,11 @@ main()
 
 ---
 
-## 1.17. Boot Decision
+## 1.17. Quyết định khởi động
 
-Bootloader không phải lúc nào cũng jump application ngay sau reset.
+Bootloader không phải lúc nào cũng chuyển sang ứng dụng ngay sau reset.
 
-Trong secure OTA system, nó phải đọc persistent state trước.
+Trong hệ thống OTA bảo mật, nó phải đọc trạng thái lưu bền vững trước.
 
 Ví dụ:
 
@@ -553,16 +553,16 @@ và application hợp lệ, bootloader có thể thực hiện handoff.
 
 Vì vậy bootloader thực chất là:
 
-> Boot decision engine + firmware recovery/update authority.
+> Bộ xử lý quyết định khởi động + thành phần có quyền xử lý khôi phục/cập nhật firmware.
 
 ---
 
 ## 1.18. Các lỗi Bootloader thường gặp
 
-- Application link ở sai địa chỉ.
+- Ứng dụng được liên kết (link) ở sai địa chỉ.
 - Vector table không nằm tại application base.
 - Quên đổi `SCB->VTOR`.
-- Jump thẳng tới `main()`.
+- Chuyển thẳng tới `main()`.
 - Không kiểm tra MSP.
 - Không kiểm tra Reset_Handler range.
 - Không kiểm tra Thumb bit.
@@ -570,12 +570,12 @@ Vì vậy bootloader thực chất là:
 - Không stop SysTick.
 - Không clear pending NVIC interrupt.
 - Để `PRIMASK` hoặc `BASEPRI` ở trạng thái sai.
-- Application vượt quá partition Flash.
-- Jump application dù OTA state đang ở giữa quá trình install.
+- Ứng dụng vượt quá phân vùng Flash.
+- Chuyển sang ứng dụng dù trạng thái OTA đang ở giữa quá trình cài đặt.
 
 ---
 
-## 1.19. Mental Model cần nhớ
+## 1.19. Mô hình tư duy cần nhớ
 
 ```text
 RESET
@@ -588,27 +588,27 @@ Bootloader Reset_Handler
   ↓
 Bootloader main()
   ↓
-Read boot metadata
+Đọc metadata khởi động
   ↓
-Boot decision
+Quyết định khởi động
   ↓
-Validate Application
+kiểm tra tính hợp lệ của ứng dụng
   ↓
 Read:
-[0x08006000] -> Application MSP
-[0x08006004] -> Application Reset_Handler
+[0x08006000] -> MSP của ứng dụng
+[0x08006004] -> Reset_Handler của ứng dụng
   ↓
-Stop SysTick
-Disable/Clear Interrupt
-Reset clock state
+Dừng SysTick
+Tắt/xóa trạng thái ngắt
+Đặt lại trạng thái xung nhịp
   ↓
 VTOR = 0x08006000
   ↓
-MSP = Application MSP
+MSP = MSP của ứng dụng
   ↓
-BX Application Reset_Handler
+BX Reset_Handler của ứng dụng
   ↓
-Application startup
+quá trình khởi động ứng dụng
   ↓
 main()
 ```
@@ -628,15 +628,15 @@ Reset_Handler
 ↓
 Linker Script
 ↓
-Application Address
+địa chỉ ứng dụng
 ↓
 VTOR
 ↓
 Thumb Bit
 ↓
-Validate Application
+kiểm tra tính hợp lệ của ứng dụng
 ↓
-Stop SysTick / Clear Interrupt
+Dừng SysTick / Clear Interrupt
 ↓
 Reset CPU Context
 ↓
@@ -644,16 +644,16 @@ Set MSP
 ↓
 BX Reset_Handler
 ↓
-Application main()
+main() của ứng dụng
 ```
 
 Nếu giải thích được toàn bộ chuỗi trên mà không nhìn tài liệu, bạn đã nắm phần cốt lõi của STM32 bootloader handoff.
 
-# 2. STM32 Internal Flash
+# 2. Flash nội STM32
 
-## 2.1. Internal Flash và Memory Map
+## 2.1. Flash nội và bản đồ bộ nhớ
 
-Internal Flash là bộ nhớ không mất dữ liệu khi mất nguồn. Trong project này, nó chứa bootloader, application và hai page metadata.
+Flash nội là bộ nhớ không mất dữ liệu khi mất nguồn. Trong dự án này, nó chứa bootloader, ứng dụng và hai trang metadata.
 
 ```text
 0x08000000
@@ -671,23 +671,23 @@ Internal Flash là bộ nhớ không mất dữ liệu khi mất nguồn. Trong 
 Khác RAM, Flash không thể ghi đè tùy ý. Quy trình cơ bản luôn là:
 
 ```text
-Erase -> Program -> Verify
+Xóa -> Lập trình -> Xác minh
 ```
 
 ---
 
-## 2.2. Erase và Program Granularity
+## 2.2. Đơn vị xóa (Erase) và lập trình (Program)
 
 Với STM32F103C8:
 
 ```text
-Flash page size = 1 KiB
-Program unit    = 16 bit = 2 bytes
+Kích thước trang Flash = 1 KiB
+Đơn vị lập trình       = 16 bit = 2 byte
 ```
 
-Nghĩa là erase theo cả page 1024 byte nhưng program từng half-word 2 byte.
+Nghĩa là xóa theo cả trang 1024 byte nhưng lập trình từng half-word 2 byte.
 
-Sau erase, Flash trở về trạng thái:
+Sau khi xóa, Flash trở về trạng thái:
 
 ```text
 0xFF 0xFF 0xFF ...
@@ -696,11 +696,11 @@ Sau erase, Flash trở về trạng thái:
 Ở mức bit:
 
 ```text
-Erase:   0 -> 1
-Program: 1 -> 0
+Xóa:     0 -> 1
+Lập trình: 1 -> 0
 ```
 
-Muốn một bit đã là `0` quay lại `1`, phải erase lại cả page. Vì vậy firmware mới không thể đơn giản ghi đè trực tiếp lên firmware cũ.
+Muốn một bit đã là `0` quay lại `1`, phải xóa lại cả trang. Vì vậy firmware mới không thể đơn giản ghi đè trực tiếp lên firmware cũ.
 
 ---
 
@@ -708,30 +708,30 @@ Muốn một bit đã là `0` quay lại `1`, phải erase lại cả page. Vì 
 
 ### `FLASH_KEYR`
 
-Dùng để unlock Flash controller trước khi erase/program.
+Dùng để mở khóa bộ điều khiển Flash trước khi xóa/lập trình.
 
 ```text
 KEY1 = 0x45670123
 KEY2 = 0xCDEF89AB
 ```
 
-Sau khi thao tác xong nên lock Flash lại.
+Sau khi thao tác xong nên khóa Flash lại.
 
 ### `FLASH_CR`
 
 Các bit cần nhớ:
 
 ```text
-PG     Program
-PER    Page Erase
-MER    Mass Erase
-STRT   Start erase
-LOCK   Lock Flash
+PG     Lập trình (Program)
+PER    Xóa trang (Page Erase)
+MER    Xóa toàn bộ (Mass Erase)
+STRT   Bắt đầu xóa
+LOCK   Khóa Flash
 ```
 
 ### `FLASH_AR`
 
-Chứa địa chỉ page cần erase.
+Chứa địa chỉ trang cần xóa.
 
 ### `FLASH_SR`
 
@@ -739,16 +739,16 @@ Các status flag quan trọng:
 
 ```text
 BSY       Flash đang bận
-EOP       Operation hoàn tất
-PGERR     Programming error
-WRPRTERR  Write-protection error
+EOP       Thao tác hoàn tất
+PGERR     Lỗi lập trình
+WRPRTERR  Lỗi bảo vệ ghi
 ```
 
 ---
 
-## 2.4. Quy trình Erase/Program
+## 2.4. Quy trình xóa/lập trình Flash
 
-Mental model:
+Mô hình tư duy:
 
 ```text
 Wait Flash idle
@@ -759,9 +759,9 @@ Clear status flags
       ↓
 FLASH_ErasePage(page_address)
       ↓
-Program từng 16 bit
+Lập trình từng 16 bit
       ↓
-Readback Verify
+Đọc lại để xác minh
       ↓
 FLASH_Lock()
 ```
@@ -776,7 +776,7 @@ FLASH_ProgramHalfWord(address, value);
 FLASH_Lock();
 ```
 
-Program address tăng theo 2 byte:
+Địa chỉ lập trình tăng theo 2 byte:
 
 ```text
 0x08006000
@@ -785,126 +785,126 @@ Program address tăng theo 2 byte:
 ...
 ```
 
-Nếu image có số byte lẻ, byte còn thiếu của half-word cuối thường được pad bằng `0xFF`.
+Nếu image có số byte lẻ, byte còn thiếu của half-word cuối thường được đệm bằng `0xFF`.
 
 ---
 
-## 2.5. Readback Verification
+## 2.5. Xác minh bằng cách đọc lại
 
 Không nên coi việc API trả về thành công là bằng chứng cuối cùng rằng dữ liệu đã đúng.
 
 Sau program nên:
 
 ```text
-Program
+Lập trình
    ↓
-Read lại Flash
+Đọc lại Flash
    ↓
-Compare với expected data
+So sánh với dữ liệu mong đợi
 ```
 
 Nguyên tắc cần nhớ:
 
-> Write success không đồng nghĩa data integrity đã được chứng minh.
+> Ghi thành công không đồng nghĩa tính toàn vẹn dữ liệu đã được chứng minh.
 
-Repo verify lại từng page sau khi ghi.
+Repo xác minh lại từng trang sau khi ghi.
 
 ---
 
-## 2.6. Page Buffer trong SRAM
+## 2.6. Bộ đệm theo trang trong SRAM
 
-Trước khi erase một application page, repo đọc candidate firmware từ W25Q vào buffer SRAM 1 KiB.
+Trước khi xóa một trang ứng dụng, repo đọc firmware ứng viên từ W25Q vào bộ đệm SRAM 1 KiB.
 
 ```text
-W25Q Candidate
+Firmware ứng viên trong W25Q
       ↓
-1 KiB SRAM Buffer
+Bộ đệm SRAM 1 KiB
       ↓
-Erase Internal Flash Page
+Xóa trang Flash nội
       ↓
-Program Page
+Lập trình trang
       ↓
-Verify với SRAM Buffer
+Xác minh với bộ đệm SRAM
 ```
 
-Một Flash page trở thành đơn vị update tự nhiên.
+Một trang Flash trở thành đơn vị cập nhật tự nhiên.
 
 ---
 
-## 2.7. Page-Level Checkpoint
+## 2.7. Điểm kiểm tra theo trang
 
-Application 38 KiB tương ứng khoảng 38 page, mỗi page 1 KiB.
+Ứng dụng 38 KiB tương ứng khoảng 38 trang, mỗi trang 1 KiB.
 
-Installer xử lý lần lượt:
+Trình cài đặt xử lý lần lượt:
 
 ```text
-Page N
+Trang N
   ↓
-Erase
+Xóa
   ↓
-Program
+Lập trình
   ↓
-Verify
+Xác minh
   ↓
-Commit checkpoint
+Ghi nhận điểm kiểm tra
   ↓
-Page N+1
+Trang N+1
 ```
 
-Checkpoint chỉ được cập nhật sau khi cả page đã verify thành công.
+Điểm kiểm tra chỉ được cập nhật sau khi cả trang đã được xác minh thành công.
 
 ---
 
-## 2.8. Power-Loss Recovery
+## 2.8. Khôi phục sau mất nguồn
 
-Nếu mất điện giữa khi program một page, page đó có thể bị ghi dở.
+Nếu mất điện giữa khi lập trình một trang, trang đó có thể bị ghi dở.
 
 Ví dụ:
 
 ```text
-Page N đang ghi
+Trang N đang được ghi
       ↓
-Power loss
+Mất nguồn
 ```
 
-Checkpoint vẫn chỉ trỏ tới page cuối cùng đã verify. Sau reboot, bootloader:
+Điểm kiểm tra vẫn chỉ trỏ tới trang cuối cùng đã được xác minh. Sau khi khởi động lại, bootloader:
 
 ```text
-Erase lại Page N
+Xóa lại Trang N
       ↓
-Program lại từ đầu
+Lập trình lại từ đầu
       ↓
-Verify
+Xác minh
       ↓
-Continue
+Tiếp tục
 ```
 
-Đây là recovery theo page boundary.
+Đây là cơ chế khôi phục theo ranh giới trang.
 
 ---
 
-## 2.9. Idempotency
+## 2.9. Tính lặp an toàn (Idempotency)
 
-Một recovery operation tốt phải có thể chạy lại mà không làm hệ thống xấu đi.
+Một thao tác khôi phục tốt phải có thể chạy lại mà không làm hệ thống xấu đi.
 
 ```text
-Erase Page N
-Program Page N
-Verify Page N
+Xóa Trang N
+Lập trình trang N
+Xác minh Trang N
 ```
 
-Nếu reboot rồi chạy lại đúng chuỗi này với cùng dữ liệu, kết quả vẫn giống nhau. Đó là **idempotent recovery**.
+Nếu khởi động lại rồi chạy lại đúng chuỗi này với cùng dữ liệu, kết quả vẫn giống nhau. Đó là **khôi phục có tính lặp an toàn (idempotent recovery)**.
 
 ---
 
-## 2.10. Backup trước khi Install
+## 2.10. Sao lưu trước khi cài đặt
 
 Không nên:
 
 ```text
-Erase Active Application
+Xóa ứng dụng đang hoạt động
         ↓
-Program Firmware Mới
+Lập trình firmware mới
 ```
 
 vì nếu lỗi giữa chừng thì firmware cũ đã mất.
@@ -912,13 +912,13 @@ vì nếu lỗi giữa chừng thì firmware cũ đã mất.
 Repo làm:
 
 ```text
-Active Application
+Ứng dụng đang hoạt động
         ↓
-Backup sang W25Q
+Sao lưu sang W25Q
         ↓
-Verify Backup
+Xác minh bản sao lưu
         ↓
-Install Firmware Mới
+Cài đặt firmware mới
 ```
 
 Nếu firmware mới không hoạt động, bootloader còn dữ liệu để rollback.
@@ -927,7 +927,7 @@ Nếu firmware mới không hoạt động, bootloader còn dữ liệu để ro
 
 ## 2.11. Metadata A/B
 
-Metadata không được update in-place trên một page duy nhất. Repo dùng hai page độc lập:
+Metadata không được cập nhật tại chỗ trên một trang duy nhất. Repo dùng hai trang độc lập:
 
 ```text
 Metadata A
@@ -939,11 +939,11 @@ Ví dụ:
 ```text
 A generation 10, valid
         ↓
-Erase B
+Xóa B
         ↓
-Program B generation 11
+Lập trình B, generation 11
         ↓
-Verify B
+Xác minh B
         ↓
 B trở thành newest valid metadata
 ```
@@ -953,7 +953,7 @@ Nếu mất điện khi ghi B, A vẫn còn hợp lệ.
 Đây là một dạng:
 
 ```text
-copy-on-write transaction
+giao dịch sao chép-khi-ghi (copy-on-write)
 ```
 
 ---
@@ -963,20 +963,20 @@ copy-on-write transaction
 CRC được đặt ở cuối metadata record.
 
 ```text
-Program các field
+Lập trình các trường
       ↓
-Program CRC cuối cùng
+Lập trình CRC cuối cùng
 ```
 
 Nếu reset xảy ra giữa lúc ghi, CRC chưa hoàn chỉnh và record mới sẽ bị coi là invalid. Record cũ vẫn tồn tại.
 
 ---
 
-## 2.13. Flash Endurance
+## 2.13. Độ bền Flash
 
-Internal Flash có số chu kỳ erase/program hữu hạn, vì vậy không nên dùng như RAM hoặc log storage ghi liên tục.
+Flash nội có số chu kỳ xóa/lập trình hữu hạn, vì vậy không nên dùng như RAM hoặc vùng lưu log ghi liên tục.
 
-Metadata chỉ nên được cập nhật tại các state transition hoặc checkpoint quan trọng như:
+Metadata chỉ nên được cập nhật tại các lần chuyển trạng thái hoặc điểm kiểm tra quan trọng như:
 
 ```text
 VERIFYING
@@ -988,73 +988,73 @@ ROLLBACK
 
 ---
 
-## 2.14. Internal Flash và External W25Q
+## 2.14. Flash nội và W25Q ngoài
 
-Trong project:
+Trong dự án:
 
 ```text
-Internal Flash
+Flash nội
   -> Bootloader
-  -> Application
+  -> Ứng dụng
   -> Metadata
 ```
 
-External W25Q:
+W25Q ngoài:
 
 ```text
-  -> Incoming OTA
-  -> Reconstructed image
-  -> Backup image
-  -> Staging / logs
+  -> Gói OTA nhận vào
+  -> Image đã tái tạo
+  -> Image sao lưu
+  -> Vùng tạm / log
 ```
 
-Erase granularity khác nhau:
+Đơn vị xóa khác nhau:
 
 ```text
-STM32 Internal Flash : 1 KiB page
-W25Q External Flash  : 4 KiB sector
+Flash nội STM32      : trang 1 KiB
+Flash W25Q ngoài      : sector 4 KiB
 ```
 
-Checkpoint nên bám theo erase geometry của từng loại Flash.
+Điểm kiểm tra nên bám theo đơn vị xóa vật lý của từng loại Flash.
 
 ---
 
-## 2.15. Full Firmware Installation Flow
+## 2.15. Luồng cài đặt firmware đầy đủ
 
 Mental model quan trọng nhất:
 
 ```text
-Verified Candidate in W25Q
+Firmware ứng viên đã xác minh trong W25Q
           ↓
-Backup Active Application
+Sao lưu ứng dụng đang hoạt động
           ↓
-Verify Backup
+Xác minh bản sao lưu
           ↓
-Read 1 KiB Candidate Page vào SRAM
+Đọc trang ứng viên 1 KiB vào SRAM
           ↓
-Disable Interrupt
+Tắt ngắt
           ↓
 FLASH Unlock
           ↓
-Clear Flags
+Xóa các cờ trạng thái
           ↓
-Erase Internal Page
+Xóa trang Flash nội
           ↓
-Program 16 bit/lần
+Lập trình 16 bit/lần
           ↓
 FLASH Lock
           ↓
-Readback Verify
+Đọc lại để xác minh
           ↓
-Commit Checkpoint
+Ghi nhận điểm kiểm tra
           ↓
-Next Page
+Trang tiếp theo
 ```
 
 Sau khi cài toàn bộ image:
 
 ```text
-Whole-image Verify
+Whole-image Xác minh
       ↓
 TRIAL_BOOT
       ↓
@@ -1067,48 +1067,48 @@ ROLLBACK
 
 ## 2.16. Các lỗi thường gặp
 
-- Không erase trước khi program.
-- Nhầm Flash page size.
-- Program sai alignment.
-- Không kiểm tra `BSY` hoặc error flags.
-- Không lock Flash sau khi ghi.
-- Không readback verify.
-- Erase active application trước khi có backup.
-- Commit checkpoint trước khi page được verify.
-- Dùng một metadata page duy nhất.
+- Không xóa trước khi lập trình.
+- Nhầm kích thước trang Flash.
+- Lập trình sai căn chỉnh địa chỉ.
+- Không kiểm tra `BSY` hoặc các cờ lỗi.
+- Không khóa Flash sau khi ghi.
+- Không đọc lại để xác minh.
+- Xóa ứng dụng đang hoạt động trước khi có bản sao lưu.
+- Ghi nhận điểm kiểm tra trước khi trang được xác minh.
+- Dùng một trang metadata duy nhất.
 - Ghi metadata quá thường xuyên.
-- Dùng mass erase cho OTA.
-- Không xử lý power loss giữa page.
-- Không phân biệt page erase và half-word program.
+- Dùng xóa toàn bộ (mass erase) cho OTA.
+- Không xử lý mất nguồn giữa lúc ghi một trang.
+- Không phân biệt xóa theo trang và lập trình theo half-word.
 
 ---
 
 ## 2.17. Trọng tâm cần thuộc
 
 ```text
-Flash Page = 1 KiB
+Trang Flash = 1 KiB
         ↓
-Erase -> 0xFF
+Xóa -> 0xFF
         ↓
-Program 16 bit/lần
+Lập trình 16 bit/lần
         ↓
-Unlock / Lock
+Mở khóa / Khóa
         ↓
 BSY / EOP / PGERR / WRPRTERR
         ↓
-Readback Verify
+Đọc lại để xác minh
         ↓
-1 KiB SRAM Buffer
+Bộ đệm SRAM 1 KiB
         ↓
-Page-Level Checkpoint
+Điểm kiểm tra theo trang
         ↓
-Power-Loss Recovery
+Khôi phục sau mất nguồn
         ↓
-Backup trước Install
+Sao lưu trước khi cài đặt
         ↓
 Metadata A/B
         ↓
-Trial Boot / Rollback
+Khởi động thử / Rollback
 ```
 
-Nếu giải thích được vì sao phải erase, vì sao erase theo 1 KiB nhưng program chỉ 2 byte, vì sao phải verify và làm sao recovery khi mất điện giữa lúc ghi, bạn đã nắm phần cốt lõi của STM32 Internal Flash trong project này.
+Nếu giải thích được vì sao phải xóa, vì sao xóa theo 1 KiB nhưng lập trình chỉ 2 byte, vì sao phải xác minh và làm sao khôi phục khi mất điện giữa lúc ghi, bạn đã nắm phần cốt lõi của Flash nội STM32 trong dự án này.
