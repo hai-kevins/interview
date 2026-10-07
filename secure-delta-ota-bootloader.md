@@ -73,11 +73,12 @@
   - [5.10. Page Boundary](#510-page-boundary)
   - [5.11. Sector Erase](#511-sector-erase)
   - [5.12. Đọc lại để xác minh](#512-đọc-lại-để-xác-minh)
-  - [5.13. Vai trò của W25Q trong OTA](#513-vai-trò-của-w25q-trong-ota)
-  - [5.14. Flash nội và W25Q khác nhau](#514-flash-nội-và-w25q-khác-nhau)
-  - [5.15. Các lỗi thường gặp](#515-các-lỗi-thường-gặp)
-  - [5.16. Mô hình tư duy cần nhớ](#516-mô-hình-tư-duy-cần-nhớ)
-  - [5.17. Trọng tâm cần thuộc](#517-trọng-tâm-cần-thuộc)
+  - [5.13. Bản đồ phân vùng W25Q và vai trò từng vùng](#513-bản-đồ-phân-vùng-w25q-và-vai-trò-từng-vùng)
+  - [5.14. Vai trò của W25Q trong OTA](#514-vai-trò-của-w25q-trong-ota)
+  - [5.15. Flash nội và W25Q khác nhau](#515-flash-nội-và-w25q-khác-nhau)
+  - [5.16. Các lỗi thường gặp](#516-các-lỗi-thường-gặp)
+  - [5.17. Mô hình tư duy cần nhớ](#517-mô-hình-tư-duy-cần-nhớ)
+  - [5.18. Trọng tâm cần thuộc](#518-trọng-tâm-cần-thuộc)
 - [6. CRC32 + UART Framing + COBS](#6-crc32-+-uart-framing-+-cobs)
 - [7. OTA State Machine + Persistent Metadata A/B](#7-ota-state-machine-+-persistent-metadata-ab)
 - [8. Power-Loss Recovery + Checkpoint + Rollback](#8-power-loss-recovery-+-checkpoint-+-rollback)
@@ -2023,7 +2024,57 @@ Nguyên tắc giống Flash nội:
 
 ---
 
-## 5.13. Vai trò của W25Q trong OTA
+## 5.13. Bản đồ phân vùng W25Q và vai trò từng vùng
+
+W25Q không được dùng như một vùng lưu trữ chung duy nhất. Dự án chia Flash ngoài thành các phân vùng cố định để mỗi loại dữ liệu OTA có vị trí riêng.
+
+```text
+0x000000  External Metadata A   4 KiB
+0x001000  External Metadata B   4 KiB
+
+0x002000  Incoming Artifact   128 KiB
+0x022000  Reconstructed Image 128 KiB
+0x042000  Backup Image        128 KiB
+
+0x062000  Update Logs          64 KiB
+
+0x072000  Reserved
+   ...
+0x3FF000  Flash Self-Test       4 KiB
+0x400000  End
+```
+
+Vai trò chính:
+
+- **External Metadata A/B**: lưu metadata/checkpoint ngoài theo cơ chế A/B để vẫn có một bản hợp lệ nếu mất nguồn khi đang cập nhật bản còn lại.
+- **Incoming Artifact**: lưu nguyên gói OTA vừa nhận, có thể là full firmware hoặc delta package.
+- **Reconstructed Image**: lưu firmware đích hoàn chỉnh sau khi copy full image hoặc áp dụng delta patch.
+- **Backup Image**: lưu bản sao application đang chạy trước khi cài firmware mới, dùng cho rollback nếu trial boot thất bại.
+- **Update Logs**: lưu thông tin chẩn đoán liên quan quá trình cập nhật.
+- **Reserved**: dành cho mở rộng sau này.
+- **Flash Self-Test**: sector riêng để kiểm tra driver W25Q mà không phá dữ liệu OTA.
+
+Mental model:
+
+```text
+Incoming Artifact
+      ↓
+Verify / Reconstruct
+      ↓
+Reconstructed Image
+      ↓
+Backup Active Application
+      ↓
+Backup Image
+      ↓
+Install vào Flash nội
+```
+
+Phân vùng giúp bootloader biết rõ dữ liệu nào đang là **gói nhận vào**, **firmware đích**, **bản sao lưu** và **metadata phục hồi**, đồng thời giảm nguy cơ các module OTA ghi đè nhầm lên nhau.
+
+---
+
+## 5.14. Vai trò của W25Q trong OTA
 
 Có thể xem W25Q như vùng làm việc bền vững giữa quá trình nhận firmware và quá trình cài vào Flash nội.
 
@@ -2047,7 +2098,7 @@ W25Q cho phép giữ cả candidate firmware và backup mà không phải phá n
 
 ---
 
-## 5.14. Flash nội và W25Q khác nhau
+## 5.15. Flash nội và W25Q khác nhau
 
 Trong dự án:
 
@@ -2078,7 +2129,7 @@ W25Q
 
 ---
 
-## 5.15. Các lỗi thường gặp
+## 5.16. Các lỗi thường gặp
 
 - Quên `Write Enable` trước Program/Erase.
 - Không kiểm tra `WEL`.
@@ -2093,7 +2144,7 @@ W25Q
 
 ---
 
-## 5.16. Mô hình tư duy cần nhớ
+## 5.17. Mô hình tư duy cần nhớ
 
 ```text
 READ
@@ -2138,7 +2189,7 @@ Wait BUSY = 0
 
 ---
 
-## 5.17. Trọng tâm cần thuộc
+## 5.18. Trọng tâm cần thuộc
 
 ```text
 SPI
