@@ -1,6 +1,50 @@
+# Mục lục
+
+- [1. STM32 Bootloader – từ Reset đến Application](#1-stm32-bootloader-từ-reset-đến-application)
+  - [1.1. Bootloader là gì?](#11-bootloader-là-gì)
+  - [1.2. Cortex-M3 khởi động như thế nào?](#12-cortex-m3-khởi-động-như-thế-nào)
+  - [1.3. Vector Table](#13-vector-table)
+  - [1.4. MSP – Main Stack Pointer](#14-msp-main-stack-pointer)
+  - [1.5. Reset_Handler](#15-resethandler)
+  - [1.6. `.data` và `.bss`](#16-data-và-bss)
+  - [1.7. Linker Script](#17-linker-script)
+  - [1.8. VTOR – Vector Table Offset Register](#18-vtor-vector-table-offset-register)
+  - [1.9. Thumb Bit](#19-thumb-bit)
+  - [1.10. Application Validation](#110-application-validation)
+  - [1.11. Tại sao phải dọn trạng thái trước khi jump?](#111-tại-sao-phải-dọn-trạng-thái-trước-khi-jump)
+  - [1.12. SysTick và Interrupt](#112-systick-và-interrupt)
+  - [1.13. Clock State](#113-clock-state)
+  - [1.14. Vì sao không nên đổi MSP rồi tiếp tục chạy C?](#114-vì-sao-không-nên-đổi-msp-rồi-tiếp-tục-chạy-c)
+  - [1.15. CONTROL, PRIMASK, BASEPRI, FAULTMASK](#115-control-primask-basepri-faultmask)
+  - [1.16. Full Handoff Sequence](#116-full-handoff-sequence)
+  - [1.17. Boot Decision](#117-boot-decision)
+  - [1.18. Các lỗi Bootloader thường gặp](#118-các-lỗi-bootloader-thường-gặp)
+  - [1.19. Mental Model cần nhớ](#119-mental-model-cần-nhớ)
+  - [1.20. Trọng tâm cần thuộc](#120-trọng-tâm-cần-thuộc)
+- [2. STM32 Internal Flash](#2-stm32-internal-flash)
+  - [2.1. Internal Flash và Memory Map](#21-internal-flash-và-memory-map)
+  - [2.2. Erase và Program Granularity](#22-erase-và-program-granularity)
+  - [2.3. Các thanh ghi Flash quan trọng](#23-các-thanh-ghi-flash-quan-trọng)
+  - [2.4. Quy trình Erase/Program](#24-quy-trình-eraseprogram)
+  - [2.5. Readback Verification](#25-readback-verification)
+  - [2.6. Page Buffer trong SRAM](#26-page-buffer-trong-sram)
+  - [2.7. Page-Level Checkpoint](#27-page-level-checkpoint)
+  - [2.8. Power-Loss Recovery](#28-power-loss-recovery)
+  - [2.9. Idempotency](#29-idempotency)
+  - [2.10. Backup trước khi Install](#210-backup-trước-khi-install)
+  - [2.11. Metadata A/B](#211-metadata-ab)
+  - [2.12. CRC ghi cuối Metadata](#212-crc-ghi-cuối-metadata)
+  - [2.13. Flash Endurance](#213-flash-endurance)
+  - [2.14. Internal Flash và External W25Q](#214-internal-flash-và-external-w25q)
+  - [2.15. Full Firmware Installation Flow](#215-full-firmware-installation-flow)
+  - [2.16. Các lỗi thường gặp](#216-các-lỗi-thường-gặp)
+  - [2.17. Trọng tâm cần thuộc](#217-trọng-tâm-cần-thuộc)
+
+---
+
 # 1. STM32 Bootloader – từ Reset đến Application
 
-## 1. Bootloader là gì?
+## 1.1. Bootloader là gì?
 
 Bootloader là firmware chạy đầu tiên sau khi STM32 reset khi MCU boot từ Main Flash. Trong project này, bootloader nằm tại `0x08000000`, còn application được đặt tại `0x08006000`.
 
@@ -18,7 +62,7 @@ Application
 
 ---
 
-## 2. Cortex-M3 khởi động như thế nào?
+## 1.2. Cortex-M3 khởi động như thế nào?
 
 Sau reset, Cortex-M3 không chạy trực tiếp vào `main()`.
 
@@ -44,7 +88,7 @@ Với bootloader:
 
 ---
 
-## 3. Vector Table
+## 1.3. Vector Table
 
 Vector table chứa địa chỉ các exception và interrupt handler.
 
@@ -76,7 +120,7 @@ Do đó bootloader biết:
 
 ---
 
-## 4. MSP – Main Stack Pointer
+## 1.4. MSP – Main Stack Pointer
 
 STM32F103C8T6 có SRAM:
 
@@ -109,7 +153,7 @@ Nếu MSP sai, application có thể fault ngay khi sử dụng stack.
 
 ---
 
-## 5. Reset_Handler
+## 1.5. Reset_Handler
 
 `Reset_Handler` là entry point thật sự của firmware.
 
@@ -135,7 +179,7 @@ Vì vậy bootloader phải jump tới `Reset_Handler`, không nên jump thẳng
 
 ---
 
-## 6. `.data` và `.bss`
+## 1.6. `.data` và `.bss`
 
 ### `.data`
 
@@ -163,7 +207,7 @@ Startup code zero hóa vùng `.bss` trước khi vào `main()`.
 
 ---
 
-## 7. Linker Script
+## 1.7. Linker Script
 
 Linker script quyết định firmware được đặt ở đâu trong bộ nhớ.
 
@@ -200,7 +244,7 @@ Memory map chính:
 
 ---
 
-## 8. VTOR – Vector Table Offset Register
+## 1.8. VTOR – Vector Table Offset Register
 
 `SCB->VTOR` cho CPU biết vector table hiện tại nằm ở đâu.
 
@@ -235,7 +279,7 @@ __ISB();
 
 ---
 
-## 9. Thumb Bit
+## 1.9. Thumb Bit
 
 Cortex-M3 chỉ chạy Thumb/Thumb-2.
 
@@ -264,7 +308,7 @@ Nếu không, reset vector không hợp lệ cho Cortex-M.
 
 ---
 
-## 10. Application Validation
+## 1.10. Application Validation
 
 Trước khi jump, bootloader nên kiểm tra tối thiểu:
 
@@ -292,7 +336,7 @@ anti-rollback
 
 ---
 
-## 11. Tại sao phải dọn trạng thái trước khi jump?
+## 1.11. Tại sao phải dọn trạng thái trước khi jump?
 
 Application không nhận một hardware reset thật sự.
 
@@ -312,7 +356,7 @@ Do đó phải tạo một trạng thái gần giống reset trước khi chuy�
 
 ---
 
-## 12. SysTick và Interrupt
+## 1.12. SysTick và Interrupt
 
 Bootloader nên stop SysTick:
 
@@ -342,7 +386,7 @@ PendSV và SysTick pending cũng nên được clear.
 
 ---
 
-## 13. Clock State
+## 1.13. Clock State
 
 Bootloader có thể đã thay đổi clock tree.
 
@@ -370,7 +414,7 @@ Nguyên tắc:
 
 ---
 
-## 14. Vì sao không nên đổi MSP rồi tiếp tục chạy C?
+## 1.14. Vì sao không nên đổi MSP rồi tiếp tục chạy C?
 
 Ví dụ nguy hiểm:
 
@@ -404,7 +448,7 @@ PRIMASK
 
 ---
 
-## 15. CONTROL, PRIMASK, BASEPRI, FAULTMASK
+## 1.15. CONTROL, PRIMASK, BASEPRI, FAULTMASK
 
 Các register này ảnh hưởng tới privilege, stack selection và interrupt masking.
 
@@ -429,7 +473,7 @@ bx application_reset_handler
 
 ---
 
-## 16. Full Handoff Sequence
+## 1.16. Full Handoff Sequence
 
 Luồng chuyển từ bootloader sang application:
 
@@ -472,7 +516,7 @@ main()
 
 ---
 
-## 17. Boot Decision
+## 1.17. Boot Decision
 
 Bootloader không phải lúc nào cũng jump application ngay sau reset.
 
@@ -513,7 +557,7 @@ Vì vậy bootloader thực chất là:
 
 ---
 
-## 18. Các lỗi Bootloader thường gặp
+## 1.18. Các lỗi Bootloader thường gặp
 
 - Application link ở sai địa chỉ.
 - Vector table không nằm tại application base.
@@ -531,7 +575,7 @@ Vì vậy bootloader thực chất là:
 
 ---
 
-## 19. Mental Model cần nhớ
+## 1.19. Mental Model cần nhớ
 
 ```text
 RESET
@@ -571,7 +615,7 @@ main()
 
 ---
 
-## Trọng tâm cần thuộc
+## 1.20. Trọng tâm cần thuộc
 
 ```text
 Reset
@@ -607,7 +651,7 @@ Nếu giải thích được toàn bộ chuỗi trên mà không nhìn tài li�
 
 # 2. STM32 Internal Flash
 
-## 1. Internal Flash và Memory Map
+## 2.1. Internal Flash và Memory Map
 
 Internal Flash là bộ nhớ không mất dữ liệu khi mất nguồn. Trong project này, nó chứa bootloader, application và hai page metadata.
 
@@ -632,7 +676,7 @@ Erase -> Program -> Verify
 
 ---
 
-## 2. Erase và Program Granularity
+## 2.2. Erase và Program Granularity
 
 Với STM32F103C8:
 
@@ -660,7 +704,7 @@ Muốn một bit đã là `0` quay lại `1`, phải erase lại cả page. Vì 
 
 ---
 
-## 3. Các thanh ghi Flash quan trọng
+## 2.3. Các thanh ghi Flash quan trọng
 
 ### `FLASH_KEYR`
 
@@ -702,7 +746,7 @@ WRPRTERR  Write-protection error
 
 ---
 
-## 4. Quy trình Erase/Program
+## 2.4. Quy trình Erase/Program
 
 Mental model:
 
@@ -745,7 +789,7 @@ Nếu image có số byte lẻ, byte còn thiếu của half-word cuối thườ
 
 ---
 
-## 5. Readback Verification
+## 2.5. Readback Verification
 
 Không nên coi việc API trả về thành công là bằng chứng cuối cùng rằng dữ liệu đã đúng.
 
@@ -767,7 +811,7 @@ Repo verify lại từng page sau khi ghi.
 
 ---
 
-## 6. Page Buffer trong SRAM
+## 2.6. Page Buffer trong SRAM
 
 Trước khi erase một application page, repo đọc candidate firmware từ W25Q vào buffer SRAM 1 KiB.
 
@@ -787,7 +831,7 @@ Một Flash page trở thành đơn vị update tự nhiên.
 
 ---
 
-## 7. Page-Level Checkpoint
+## 2.7. Page-Level Checkpoint
 
 Application 38 KiB tương ứng khoảng 38 page, mỗi page 1 KiB.
 
@@ -811,7 +855,7 @@ Checkpoint chỉ được cập nhật sau khi cả page đã verify thành côn
 
 ---
 
-## 8. Power-Loss Recovery
+## 2.8. Power-Loss Recovery
 
 Nếu mất điện giữa khi program một page, page đó có thể bị ghi dở.
 
@@ -839,7 +883,7 @@ Continue
 
 ---
 
-## 9. Idempotency
+## 2.9. Idempotency
 
 Một recovery operation tốt phải có thể chạy lại mà không làm hệ thống xấu đi.
 
@@ -853,7 +897,7 @@ Nếu reboot rồi chạy lại đúng chuỗi này với cùng dữ liệu, k�
 
 ---
 
-## 10. Backup trước khi Install
+## 2.10. Backup trước khi Install
 
 Không nên:
 
@@ -881,7 +925,7 @@ Nếu firmware mới không hoạt động, bootloader còn dữ liệu để ro
 
 ---
 
-## 11. Metadata A/B
+## 2.11. Metadata A/B
 
 Metadata không được update in-place trên một page duy nhất. Repo dùng hai page độc lập:
 
@@ -914,7 +958,7 @@ copy-on-write transaction
 
 ---
 
-## 12. CRC ghi cuối Metadata
+## 2.12. CRC ghi cuối Metadata
 
 CRC được đặt ở cuối metadata record.
 
@@ -928,7 +972,7 @@ Nếu reset xảy ra giữa lúc ghi, CRC chưa hoàn chỉnh và record mới s
 
 ---
 
-## 13. Flash Endurance
+## 2.13. Flash Endurance
 
 Internal Flash có số chu kỳ erase/program hữu hạn, vì vậy không nên dùng như RAM hoặc log storage ghi liên tục.
 
@@ -944,7 +988,7 @@ ROLLBACK
 
 ---
 
-## 14. Internal Flash và External W25Q
+## 2.14. Internal Flash và External W25Q
 
 Trong project:
 
@@ -975,7 +1019,7 @@ Checkpoint nên bám theo erase geometry của từng loại Flash.
 
 ---
 
-## 15. Full Firmware Installation Flow
+## 2.15. Full Firmware Installation Flow
 
 Mental model quan trọng nhất:
 
@@ -1021,7 +1065,7 @@ ROLLBACK
 
 ---
 
-## 16. Các lỗi thường gặp
+## 2.16. Các lỗi thường gặp
 
 - Không erase trước khi program.
 - Nhầm Flash page size.
@@ -1039,7 +1083,7 @@ ROLLBACK
 
 ---
 
-## Trọng tâm cần thuộc
+## 2.17. Trọng tâm cần thuộc
 
 ```text
 Flash Page = 1 KiB
