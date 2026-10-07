@@ -112,6 +112,18 @@
   - [7.11. Mô hình tư duy cần nhớ](#711-mô-hình-tư-duy-cần-nhớ)
   - [7.12. Trọng tâm cần thuộc](#712-trọng-tâm-cần-thuộc)
 - [8. Power-Loss Recovery + Checkpoint + Rollback](#8-power-loss-recovery-+-checkpoint-+-rollback)
+  - [8.1. Khôi phục sau mất điện](#81-khôi-phục-sau-mất-điện)
+  - [8.2. Checkpoint là gì?](#82-checkpoint-là-gì)
+  - [8.3. Checkpoint khi nhận OTA vào W25Q](#83-checkpoint-khi-nhận-ota-vào-w25q)
+  - [8.4. Checkpoint khi backup và cài đặt](#84-checkpoint-khi-backup-và-cài-đặt)
+  - [8.5. Mất điện trong `INSTALLING`](#85-mất-điện-trong-installing)
+  - [8.6. Tính lặp an toàn (Idempotency)](#86-tính-lặp-an-toàn-idempotency)
+  - [8.7. Recovery và Rollback khác nhau](#87-recovery-và-rollback-khác-nhau)
+  - [8.8. `TRIAL_BOOT` bảo vệ hệ thống](#88-trial_boot-bảo-vệ-hệ-thống)
+  - [8.9. Rollback hoạt động thế nào?](#89-rollback-hoạt-động-thế-nào)
+  - [8.10. Ví dụ đầy đủ](#810-ví-dụ-đầy-đủ)
+  - [8.11. Mô hình tư duy cần nhớ](#811-mô-hình-tư-duy-cần-nhớ)
+  - [8.12. Trọng tâm cần thuộc](#812-trọng-tâm-cần-thuộc)
 - [9. SHA-256 + ECDSA P-256 + Public / Private Key](#9-sha-256-+-ecdsa-p-256-+-public-private-key)
 - [10. Firmware Container + Anti-Rollback](#10-firmware-container-+-anti-rollback)
 - [11. Delta Patch / JojoDiff Concept](#11-delta-patch-jojodiff-concept)
@@ -3533,7 +3545,473 @@ Nếu giải thích được chuỗi trên, bạn đã nắm phần cốt lõi c
 
 # 8. Power-Loss Recovery + Checkpoint + Rollback
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Mục tiêu của phần này là bảo đảm **mất điện hoặc reset ở giữa OTA không làm thiết bị rơi vào trạng thái không thể phục hồi**.
+
+Ba cơ chế chính phối hợp với nhau:
+
+```text
+Persistent State
+      +
+Checkpoint
+      +
+Backup / Rollback
+```
+
+`state` cho biết hệ thống **đang làm gì**, checkpoint cho biết **đã hoàn thành an toàn tới đâu**, còn rollback phục hồi firmware cũ nếu firmware mới không hoạt động.
+
+---
+
+## 8.1. Khôi phục sau mất điện
+
+Giả sử bootloader đang cài firmware:
+
+```text
+Trang 0  OK
+Trang 1  OK
+...
+Trang 11 OK
+Trang 12 đang ghi
+           ↓
+        mất điện
+```
+
+Sau reset, bootloader đọc metadata:
+
+```text
+state       = INSTALLING
+copy_offset = 12 KiB
+```
+
+Nó hiểu rằng 12 KiB đầu đã hoàn thành an toàn, còn trang đang ghi dở phải được làm lại.
+
+```text
+Reset
+  ↓
+đọc Metadata A/B
+  ↓
+state = INSTALLING
+  ↓
+đọc checkpoint
+  ↓
+tiếp tục từ mốc an toàn cuối
+```
+
+---
+
+## 8.2. Checkpoint là gì?
+
+Checkpoint là **mốc cuối cùng mà hệ thống chắc chắn công việc đã hoàn thành và được xác minh**.
+
+Ví dụ:
+
+```text
+dữ liệu thực tế đã xử lý tới 13 KiB
+checkpoint = 12 KiB
+```
+
+Nếu mất điện, hệ thống chỉ tin:
+
+```text
+12 KiB
+```
+
+vì phần từ 12 đến 13 KiB có thể đang được ghi dở.
+
+Nguyên tắc quan trọng:
+
+> **Chỉ cập nhật checkpoint sau khi dữ liệu đã được ghi và xác minh thành công.**
+
+---
+
+## 8.3. Checkpoint khi nhận OTA vào W25Q
+
+Khi:
+
+```text
+state = RECEIVING
+```
+
+firmware đang được ghi vào vùng `Incoming Artifact` của W25Q, còn application trong Internal Flash vẫn chưa bị thay đổi.
+
+Checkpoint nhận dữ liệu bám theo sector W25Q:
+
+```text
+4 KiB
+```
+
+Ví dụ:
+
+```text
+đã nhận thực tế = 14 KiB
+checkpoint      = 12 KiB
+```
+
+Nếu mất điện:
+
+```text
+Reset
+  ↓
+đọc External Metadata A/B
+  ↓
+checkpoint = 12 KiB
+  ↓
+không tin phần chưa được checkpoint
+  ↓
+nhận lại từ mốc an toàn
+```
+
+---
+
+## 8.4. Checkpoint khi backup và cài đặt
+
+Trước khi cài firmware mới:
+
+```text
+Application hiện tại
+       ↓
+Backup sang W25Q
+       ↓
+Verify Backup
+       ↓
+INSTALLING
+```
+
+Backup phải được xác minh trước khi bootloader bắt đầu thay đổi application hiện tại.
+
+Các ranh giới checkpoint quan trọng:
+
+```text
+Nhận OTA vào W25Q
+→ 4 KiB sector
+
+Backup vào W25Q
+→ 4 KiB sector
+
+Cài vào Internal Flash
+→ 1 KiB page
+
+Rollback Internal Flash
+→ 1 KiB page
+```
+
+Checkpoint nên bám theo đơn vị thao tác vật lý của từng loại Flash.
+
+---
+
+## 8.5. Mất điện trong `INSTALLING`
+
+Một trang Internal Flash có kích thước:
+
+```text
+1 KiB
+```
+
+Luồng cài một trang:
+
+```text
+Đọc 1 KiB firmware từ W25Q
+      ↓
+Erase Internal Flash page
+      ↓
+Program
+      ↓
+Đọc lại để xác minh
+      ↓
+PASS
+      ↓
+cập nhật copy_offset
+```
+
+Nếu mất điện giữa lúc ghi trang N:
+
+```text
+checkpoint vẫn ở trang N-1
+      ↓
+Reset
+      ↓
+Erase lại trang N
+      ↓
+Program lại
+      ↓
+Verify
+```
+
+Bootloader không cố tiếp tục giữa một trang đang ghi dở.
+
+---
+
+## 8.6. Tính lặp an toàn (Idempotency)
+
+Recovery phải có tính **idempotent**, nghĩa là một thao tác có thể được thực hiện lại mà kết quả cuối vẫn đúng.
+
+Ví dụ:
+
+```text
+Erase Page N
+Program Page N
+Verify Page N
+```
+
+Nếu mất điện giữa `Program`:
+
+```text
+Reset
+  ↓
+Erase Page N lại
+  ↓
+Program lại cùng dữ liệu
+  ↓
+Verify
+```
+
+Kết quả cuối không thay đổi.
+
+Đây là lý do checkpoint chỉ được commit tại các ranh giới an toàn như page hoặc sector.
+
+---
+
+## 8.7. Recovery và Rollback khác nhau
+
+Recovery nghĩa là:
+
+```text
+một công việc bị gián đoạn
+→ tiếp tục công việc đó
+```
+
+Ví dụ:
+
+```text
+INSTALLING
+→ tiếp tục installation
+```
+
+Rollback nghĩa là:
+
+```text
+firmware mới không được chấp nhận
+→ phục hồi firmware cũ
+```
+
+Ví dụ:
+
+```text
+TRIAL_BOOT
+   ↓
+firmware mới lỗi
+   ↓
+ROLLBACK
+   ↓
+Backup Image → Internal Flash
+```
+
+---
+
+## 8.8. `TRIAL_BOOT` bảo vệ hệ thống
+
+Sau khi firmware mới được cài và xác minh:
+
+```text
+VERIFYING_INSTALL
+       ↓
+TRIAL_BOOT
+```
+
+Firmware mới chỉ đang được chạy thử, chưa được coi là firmware chính thức.
+
+Nếu application hoạt động tốt:
+
+```text
+TRIAL_BOOT
+    ↓
+CONFIRMED
+```
+
+Nếu application crash, watchdog reset hoặc không xác nhận sau số lần thử cho phép:
+
+```text
+TRIAL_BOOT
+    ↓
+ROLLBACK
+```
+
+Backup Image phải được giữ cho tới khi firmware mới được `CONFIRMED`.
+
+---
+
+## 8.9. Rollback hoạt động thế nào?
+
+Khi rollback:
+
+```text
+W25Q Backup Image
+       ↓
+đọc từng 1 KiB
+       ↓
+Erase Internal Flash page
+       ↓
+Program
+       ↓
+Verify
+       ↓
+cập nhật checkpoint
+```
+
+Rollback cũng phải chịu được mất điện.
+
+Ví dụ:
+
+```text
+state       = ROLLBACK
+copy_offset = 10 KiB
+```
+
+Nếu mất điện:
+
+```text
+Reset
+  ↓
+đọc state = ROLLBACK
+  ↓
+đọc copy_offset = 10 KiB
+  ↓
+tiếp tục phục hồi firmware cũ
+```
+
+Như vậy không chỉ installation mà **rollback cũng phải có checkpoint và tính lặp an toàn**.
+
+---
+
+## 8.10. Ví dụ đầy đủ
+
+Giả sử đang nâng:
+
+```text
+v4 → v5
+```
+
+`v4` đã được backup và xác minh trong W25Q.
+
+Metadata:
+
+```text
+state           = INSTALLING
+pending_version = 5
+copy_offset     = 12 KiB
+```
+
+Mất điện khi đang ghi trang tiếp theo:
+
+```text
+Reset
+  ↓
+đọc Metadata A/B
+  ↓
+state = INSTALLING
+copy_offset = 12 KiB
+  ↓
+ghi lại trang chưa hoàn thành
+  ↓
+tiếp tục cài v5
+```
+
+Sau khi cài xong:
+
+```text
+VERIFYING_INSTALL
+       ↓
+TRIAL_BOOT
+```
+
+Nếu v5 hoạt động tốt:
+
+```text
+CONFIRMED
+```
+
+Nếu v5 lỗi:
+
+```text
+ROLLBACK
+   ↓
+Backup v4
+   ↓
+Internal Flash
+   ↓
+v4 hoạt động trở lại
+```
+
+---
+
+## 8.11. Mô hình tư duy cần nhớ
+
+```text
+STATE
+= đang làm gì?
+
+CHECKPOINT
+= đã hoàn thành an toàn tới đâu?
+
+RECOVERY
+= tiếp tục công việc bị gián đoạn
+
+ROLLBACK
+= quay lại firmware cũ khi firmware mới thất bại
+```
+
+Nguyên tắc cốt lõi:
+
+```text
+Thực hiện một đơn vị công việc
+        ↓
+Verify
+        ↓
+Commit checkpoint
+        ↓
+Đơn vị tiếp theo
+```
+
+Nếu mất điện trước khi commit checkpoint:
+
+```text
+→ làm lại đơn vị hiện tại
+```
+
+Nếu mất điện sau khi commit:
+
+```text
+→ tiếp tục đơn vị tiếp theo
+```
+
+---
+
+## 8.12. Trọng tâm cần thuộc
+
+```text
+Power-Loss Recovery
+↓
+Persistent State
+↓
+Checkpoint
+↓
+Verify trước khi commit
+↓
+Idempotent Recovery
+↓
+Backup trước khi INSTALLING
+↓
+TRIAL_BOOT
+↓
+CONFIRMED hoặc ROLLBACK
+```
+
+Điểm quan trọng nhất:
+
+> **Checkpoint không ghi “đã từng làm tới đâu”, mà ghi “đã xác minh an toàn tới đâu”.**
+
+Và:
+
+> **Nếu firmware mới không chứng minh được rằng nó hoạt động tốt trong `TRIAL_BOOT`, bootloader dùng Backup Image để rollback về firmware cũ.**
 
 ---
 
