@@ -39,6 +39,27 @@
   - [2.15. Luồng cài đặt firmware đầy đủ](#215-luồng-cài-đặt-firmware-đầy-đủ)
   - [2.16. Các lỗi thường gặp](#216-các-lỗi-thường-gặp)
   - [2.17. Trọng tâm cần thuộc](#217-trọng-tâm-cần-thuộc)
+- [3. Linker Script + Memory Map](#3-linker-script-memory-map)
+  - [3.1. Memory Map là gì?](#31-memory-map-là-gì)
+  - [3.2. Linker Script là gì?](#32-linker-script-là-gì)
+  - [3.3. Linker Script của Bootloader](#33-linker-script-của-bootloader)
+  - [3.4. Linker Script của Application](#34-linker-script-của-application)
+  - [3.5. `ENTRY(Reset_Handler)`](#35-entryresethandler)
+  - [3.6. Các section chính](#36-các-section-chính)
+  - [3.7. `.isr_vector`](#37-isrvector)
+  - [3.8. Tại sao dùng `KEEP()`?](#38-tại-sao-dùng-keep)
+  - [3.9. `.text` và `.rodata`](#39-text-và-rodata)
+  - [3.10. `.data`](#310-data)
+  - [3.11. `.bss`](#311-bss)
+  - [3.12. Linker Symbol](#312-linker-symbol)
+  - [3.13. Stack và Heap](#313-stack-và-heap)
+  - [3.14. `ASSERT()` trong Linker Script](#314-assert-trong-linker-script)
+  - [3.15. Vì sao Bootloader và Application cùng dùng toàn bộ RAM?](#315-vì-sao-bootloader-và-application-cùng-dùng-toàn-bộ-ram)
+  - [3.16. External W25Q có nằm trong Linker Script không?](#316-external-w25q-có-nằm-trong-linker-script-không)
+  - [3.17. Quan hệ giữa Memory Map, Linker Script và Bootloader](#317-quan-hệ-giữa-memory-map-linker-script-và-bootloader)
+  - [3.18. Các lỗi thường gặp](#318-các-lỗi-thường-gặp)
+  - [3.19. Mô hình tư duy cần nhớ](#319-mô-hình-tư-duy-cần-nhớ)
+  - [3.20. Trọng tâm cần thuộc](#320-trọng-tâm-cần-thuộc)
 
 ---
 
@@ -1112,3 +1133,555 @@ Khởi động thử / Rollback
 ```
 
 Nếu giải thích được vì sao phải xóa, vì sao xóa theo 1 KiB nhưng lập trình chỉ 2 byte, vì sao phải xác minh và làm sao khôi phục khi mất điện giữa lúc ghi, bạn đã nắm phần cốt lõi của Flash nội STM32 trong dự án này.
+
+# 3. Linker Script + Memory Map
+
+## 3.1. Memory Map là gì?
+
+Memory Map là bản đồ phân chia toàn bộ bộ nhớ của MCU thành các vùng có mục đích rõ ràng.
+
+Trong dự án này:
+
+```text
+0x08000000
++---------------------------+
+| Bootloader - 24 KiB       |
++---------------------------+ 0x08006000
+| Application - 38 KiB      |
++---------------------------+ 0x0800F800
+| Metadata A - 1 KiB        |
++---------------------------+ 0x0800FC00
+| Metadata B - 1 KiB        |
++---------------------------+ 0x08010000
+```
+
+SRAM:
+
+```text
+0x20000000
+      ↓
+    20 KiB
+      ↓
+0x20004FFF
+```
+
+Memory Map là **hợp đồng bộ nhớ** của toàn hệ thống. Bootloader, application, linker script và OTA installer phải dùng cùng các địa chỉ.
+
+---
+
+## 3.2. Linker Script là gì?
+
+Compiler tạo ra các object file nhưng chưa quyết định chính xác code và dữ liệu sẽ nằm ở đâu trong bộ nhớ.
+
+Linker Script `.ld` quy định:
+
+```text
+Flash bắt đầu ở đâu?
+RAM bắt đầu ở đâu?
+Vector table nằm ở đâu?
+.text / .rodata nằm ở đâu?
+.data / .bss nằm ở đâu?
+Stack nằm ở đâu?
+Firmware được phép lớn tới đâu?
+```
+
+Bootloader và application nằm ở hai vùng Flash khác nhau nên phải dùng linker script khác nhau.
+
+---
+
+## 3.3. Linker Script của Bootloader
+
+Bootloader được liên kết tại đầu Flash:
+
+```ld
+MEMORY
+{
+    FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 24K
+    RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 20K
+}
+```
+
+Vùng Flash hợp lệ của bootloader:
+
+```text
+0x08000000
+      ↓
+0x08005FFF
+```
+
+Bootloader không được vượt sang vùng application tại `0x08006000`.
+
+---
+
+## 3.4. Linker Script của Application
+
+Application được liên kết tại:
+
+```ld
+MEMORY
+{
+    FLASH (rx)  : ORIGIN = 0x08006000, LENGTH = 38K
+    RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 20K
+}
+```
+
+Vùng Flash của application:
+
+```text
+0x08006000
+      ↓
+0x0800F7FF
+```
+
+Từ `0x0800F800` trở đi là metadata, vì vậy application tuyệt đối không được vượt vào vùng này.
+
+Không thể build application cho `0x08000000` rồi chỉ flash binary sang `0x08006000`, vì các địa chỉ bên trong binary đã được linker tính theo địa chỉ gốc.
+
+---
+
+## 3.5. `ENTRY(Reset_Handler)`
+
+Linker script thường có:
+
+```ld
+ENTRY(Reset_Handler)
+```
+
+Nó xác định `Reset_Handler` là entry symbol của ELF.
+
+Luồng khởi động vẫn là:
+
+```text
+Vector Table
+    ↓
+Reset_Handler
+    ↓
+Khởi tạo runtime
+    ↓
+main()
+```
+
+Trên Cortex-M, CPU vẫn lấy `Reset_Handler` từ vector table khi reset.
+
+---
+
+## 3.6. Các section chính
+
+Firmware thường được chia thành:
+
+```text
+.isr_vector
+.text
+.rodata
+.data
+.bss
+```
+
+Cách bố trí điển hình:
+
+```text
+FLASH
++----------------+
+| .isr_vector    |
+| .text          |
+| .rodata        |
+| initial .data  |
++----------------+
+
+RAM
++----------------+
+| .data          |
+| .bss           |
+| heap / stack   |
++----------------+
+```
+
+---
+
+## 3.7. `.isr_vector`
+
+Vector table phải nằm ngay đầu vùng Flash của firmware.
+
+Application:
+
+```ld
+.isr_vector :
+{
+    . = ALIGN(0x200);
+    __vector_table_start__ = .;
+    KEEP(*(.isr_vector))
+} > FLASH
+```
+
+Do đó:
+
+```text
+0x08006000 -> Initial MSP
+0x08006004 -> Reset_Handler
+```
+
+Bootloader dựa vào đúng hai địa chỉ này để kiểm tra và chuyển quyền điều khiển sang application.
+
+---
+
+## 3.8. Tại sao dùng `KEEP()`?
+
+Khi linker garbage collection được bật, những section không có reference thông thường có thể bị loại bỏ.
+
+Vector table không nhất thiết được code C gọi trực tiếp nên cần:
+
+```ld
+KEEP(*(.isr_vector))
+```
+
+Ý nghĩa:
+
+> Luôn giữ vector table trong firmware.
+
+Nếu vector table bị loại bỏ, firmware không thể khởi động đúng.
+
+---
+
+## 3.9. `.text` và `.rodata`
+
+`.text` chứa machine code.
+
+`.rodata` chứa dữ liệu chỉ đọc, ví dụ:
+
+```c
+const uint32_t table[] = {1, 2, 3};
+```
+
+Cả hai thường nằm trong Flash:
+
+```ld
+.text :
+{
+    *(.text)
+    *(.text*)
+    *(.rodata)
+    *(.rodata*)
+} > FLASH
+```
+
+---
+
+## 3.10. `.data`
+
+`.data` chứa các biến global/static có giá trị khởi tạo và cần thay đổi lúc chạy.
+
+Ví dụ:
+
+```c
+uint32_t counter = 100;
+```
+
+Linker script:
+
+```ld
+.data :
+{
+    _sdata = .;
+    *(.data)
+    *(.data*)
+    _edata = .;
+} > RAM AT > FLASH
+```
+
+Ý nghĩa:
+
+```text
+Giá trị ban đầu lưu trong Flash
+            ↓
+Startup code sao chép
+            ↓
+Biến chạy trong RAM
+```
+
+Các linker symbol thường dùng:
+
+```text
+_sidata
+_sdata
+_edata
+```
+
+---
+
+## 3.11. `.bss`
+
+`.bss` chứa các biến global/static chưa có giá trị khởi tạo rõ ràng.
+
+Ví dụ:
+
+```c
+uint32_t error_count;
+```
+
+Linker script:
+
+```ld
+.bss (NOLOAD) :
+{
+    _sbss = .;
+    *(.bss)
+    *(.bss*)
+    _ebss = .;
+} > RAM
+```
+
+Startup code đưa vùng:
+
+```text
+_sbss -> _ebss
+```
+
+về `0` trước khi vào `main()`.
+
+---
+
+## 3.12. Linker Symbol
+
+Các symbol như:
+
+```text
+_estack
+_sidata
+_sdata
+_edata
+_sbss
+_ebss
+_etext
+```
+
+được linker tạo ra để startup code biết các ranh giới bộ nhớ.
+
+Ví dụ:
+
+```ld
+_estack = ORIGIN(RAM) + LENGTH(RAM);
+```
+
+Với RAM 20 KiB:
+
+```text
+_estack = 0x20005000
+```
+
+Đây chính là Initial MSP.
+
+---
+
+## 3.13. Stack và Heap
+
+Linker script có thể dành trước dung lượng tối thiểu cho stack/heap.
+
+Ví dụ:
+
+```ld
+_Min_Heap_Size  = 0x000;
+_Min_Stack_Size = 0x400;
+```
+
+Tức là dành tối thiểu:
+
+```text
+0x400 = 1024 byte
+```
+
+cho stack.
+
+Nếu `.data + .bss + stack` vượt quá RAM, linker nên báo lỗi ngay lúc build.
+
+---
+
+## 3.14. `ASSERT()` trong Linker Script
+
+`ASSERT()` dùng để kiểm tra Memory Map ngay lúc build.
+
+Ví dụ:
+
+```ld
+ASSERT(ORIGIN(FLASH) == 0x08006000, ...)
+ASSERT(__vector_table_start__ == 0x08006000, ...)
+ASSERT(_etext <= 0x0800F800, ...)
+ASSERT(_ebss <= (_estack - _Min_Stack_Size), ...)
+```
+
+Nhờ đó có thể phát hiện sớm:
+
+```text
+Bootloader quá lớn
+Application quá lớn
+Vector table sai địa chỉ
+RAM bị tràn
+```
+
+Thay vì để lỗi xuất hiện khi thiết bị đã chạy thực tế.
+
+---
+
+## 3.15. Vì sao Bootloader và Application cùng dùng toàn bộ RAM?
+
+Cả bootloader và application đều có thể khai báo:
+
+```ld
+RAM : ORIGIN = 0x20000000, LENGTH = 20K
+```
+
+Điều này hợp lệ vì chúng không chạy đồng thời.
+
+```text
+Bootloader dùng SRAM
+        ↓
+Chuyển quyền điều khiển
+        ↓
+Application startup
+        ↓
+Application dùng lại SRAM
+```
+
+Persistent state nên lưu trong Flash/metadata, không dựa vào nội dung SRAM còn sót lại.
+
+---
+
+## 3.16. External W25Q có nằm trong Linker Script không?
+
+Thông thường không.
+
+W25Q được truy cập qua SPI, không phải vùng bộ nhớ mà CPU trực tiếp thực thi code như internal Flash.
+
+Có thể phân biệt:
+
+```text
+Linker Script
+    ↓
+Internal Flash + SRAM
+
+Storage Layout
+    ↓
+External W25Q
+```
+
+W25Q vẫn có Memory Map riêng, nhưng đó là bố cục lưu trữ chứ không phải linker memory region của CPU.
+
+---
+
+## 3.17. Quan hệ giữa Memory Map, Linker Script và Bootloader
+
+Ba thành phần phải hoàn toàn nhất quán:
+
+```text
+Memory Map
+    ↓
+Linker Script
+    ↓
+Bootloader constants
+```
+
+Ví dụ:
+
+```text
+Application start = 0x08006000
+```
+
+thì:
+
+- Memory Map phải quy định đúng địa chỉ này.
+- Linker Script phải link application tại địa chỉ này.
+- Bootloader phải đọc MSP/Reset_Handler và đặt `VTOR` từ địa chỉ này.
+
+Sai một trong ba là hệ thống có thể không boot được.
+
+---
+
+## 3.18. Các lỗi thường gặp
+
+- Application vẫn link tại `0x08000000`.
+- Vector table không nằm đầu application.
+- Application vượt `0x0800F800` và ghi đè metadata.
+- Bootloader vượt quá 24 KiB.
+- `.data/.bss` vượt quá RAM.
+- Linker script và địa chỉ hard-code trong source không đồng nhất.
+- Flash binary sang địa chỉ khác với địa chỉ mà linker đã dùng.
+
+---
+
+## 3.19. Mô hình tư duy cần nhớ
+
+```text
+                MEMORY MAP
+
+Internal Flash
+0x08000000
++------------------------+
+| Bootloader             |
++------------------------+ 0x08006000
+| Application            |
++------------------------+ 0x0800F800
+| Metadata A             |
++------------------------+ 0x0800FC00
+| Metadata B             |
++------------------------+
+
+RAM
+0x20000000
++------------------------+
+| .data                  |
+| .bss                   |
+| heap / stack           |
++------------------------+
+0x20005000
+```
+
+Application linker:
+
+```text
+FLASH ORIGIN = 0x08006000
+RAM   ORIGIN = 0x20000000
+        ↓
+.isr_vector -> FLASH
+.text       -> FLASH
+.rodata     -> FLASH
+.data       -> RAM, giá trị ban đầu trong FLASH
+.bss        -> RAM
+stack       -> đỉnh RAM
+```
+
+---
+
+## 3.20. Trọng tâm cần thuộc
+
+```text
+Memory Map
+    ↓
+Linker Script
+    ↓
+FLASH ORIGIN / LENGTH
+RAM ORIGIN / LENGTH
+    ↓
+.isr_vector
+.text / .rodata
+.data / .bss
+    ↓
+Linker Symbols
+    ↓
+ASSERT()
+    ↓
+Bootloader và Application dùng đúng địa chỉ
+```
+
+Các điểm cần nhớ:
+
+- Memory Map là hợp đồng bộ nhớ.
+- Bootloader bắt đầu tại `0x08000000`, tối đa 24 KiB.
+- Application bắt đầu tại `0x08006000`, tối đa 38 KiB.
+- Metadata bắt đầu tại `0x0800F800`.
+- `.isr_vector` phải nằm ngay đầu application.
+- `.text/.rodata` nằm trong Flash.
+- `.data` chạy trong RAM nhưng giá trị khởi tạo nằm trong Flash.
+- `.bss` nằm trong RAM và được đưa về `0` khi startup.
+- `_estack`, `_sidata`, `_sdata`, `_edata`, `_sbss`, `_ebss` là các linker symbol quan trọng.
+- `ASSERT()` giúp phát hiện lỗi bố cục bộ nhớ ngay lúc build.
+- Memory Map, Linker Script và Bootloader phải dùng cùng một bộ địa chỉ.
+
