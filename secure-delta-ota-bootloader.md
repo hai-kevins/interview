@@ -80,6 +80,23 @@
   - [5.17. Mô hình tư duy cần nhớ](#517-mô-hình-tư-duy-cần-nhớ)
   - [5.18. Trọng tâm cần thuộc](#518-trọng-tâm-cần-thuộc)
 - [6. CRC32 + UART Framing + COBS](#6-crc32-+-uart-framing-+-cobs)
+  - [6.1. Tại sao UART cần Framing?](#61-tại-sao-uart-cần-framing)
+  - [6.2. COBS và byte phân cách `0x00`](#62-cobs-và-byte-phân-cách-0x00)
+  - [6.3. Vì sao không dùng trực tiếp `0x00` nếu không có COBS?](#63-vì-sao-không-dùng-trực-tiếp-0x00-nếu-không-có-cobs)
+  - [6.4. Luồng nhận COBS trên STM32](#64-luồng-nhận-cobs-trên-stm32)
+  - [6.5. Cấu trúc Raw Packet](#65-cấu-trúc-raw-packet)
+  - [6.6. Ý nghĩa các field quan trọng](#66-ý-nghĩa-các-field-quan-trọng)
+  - [6.7. CRC32 dùng để làm gì?](#67-crc32-dùng-để-làm-gì)
+  - [6.8. Thứ tự đóng gói và giải mã](#68-thứ-tự-đóng-gói-và-giải-mã)
+  - [6.9. DATA Packet và `offset`](#69-data-packet-và-offset)
+  - [6.10. CRC phải đúng trước khi ghi W25Q](#610-crc-phải-đúng-trước-khi-ghi-w25q)
+  - [6.11. ACK / NACK](#611-ack-nack)
+  - [6.12. Retry và packet trùng lặp](#612-retry-và-packet-trùng-lặp)
+  - [6.13. Packet CRC và Artifact CRC](#613-packet-crc-và-artifact-crc)
+  - [6.14. CRC32 không phải cơ chế bảo mật](#614-crc32-không-phải-cơ-chế-bảo-mật)
+  - [6.15. Vai trò của từng thành phần](#615-vai-trò-của-từng-thành-phần)
+  - [6.16. Luồng OTA UART hoàn chỉnh](#616-luồng-ota-uart-hoàn-chỉnh)
+  - [6.17. Trọng tâm cần thuộc](#617-trọng-tâm-cần-thuộc)
 - [7. OTA State Machine + Persistent Metadata A/B](#7-ota-state-machine-+-persistent-metadata-ab)
 - [8. Power-Loss Recovery + Checkpoint + Rollback](#8-power-loss-recovery-+-checkpoint-+-rollback)
 - [9. SHA-256 + ECDSA P-256 + Public / Private Key](#9-sha-256-+-ecdsa-p-256-+-public-private-key)
@@ -2336,9 +2353,566 @@ Nếu giải thích được ba luồng `Read`, `Page Program`, `Sector Erase`, 
 
 ---
 
+---
+
 # 6. CRC32 + UART Framing + COBS
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Phần này mô tả cách ESP32 gửi OTA artifact sang STM32 qua UART sao cho STM32 biết **đâu là một frame hoàn chỉnh, frame có bị lỗi hay không và dữ liệu nào được phép ghi xuống W25Q**.
+
+Luồng tổng quát:
+
+```text
+ESP32
+  ↓
+Tạo packet
+  ↓
+CRC32
+  ↓
+COBS encode
+  ↓
+UART
+  ↓
+STM32
+  ↓
+COBS decode
+  ↓
+Kiểm tra CRC32
+  ↓
+Kiểm tra sequence / offset
+  ↓
+SPI → W25Q
+  ↓
+ACK / NACK
+```
+
+---
+
+## 6.1. Tại sao UART cần Framing?
+
+UART chỉ truyền một dòng byte liên tục và không tự biết packet bắt đầu/kết thúc ở đâu.
+
+```text
+12 A4 55 21 00 73 ...
+```
+
+Vì vậy protocol phải tự định nghĩa:
+
+```text
+ranh giới frame
+cấu trúc packet
+kiểm tra lỗi
+thứ tự packet
+```
+
+Trong dự án, COBS + byte `0x00` được dùng để xác định ranh giới frame.
+
+---
+
+## 6.2. COBS và byte phân cách `0x00`
+
+COBS là:
+
+```text
+Consistent Overhead Byte Stuffing
+```
+
+Sau khi COBS encode, bên trong encoded frame không còn byte:
+
+```text
+0x00
+```
+
+Do đó project có thể dùng:
+
+```text
+[COBS encoded frame] 0x00
+```
+
+với `0x00` là byte phân cách cuối frame.
+
+STM32 nhận UART:
+
+```text
+frame 1 ... 00
+frame 2 ... 00
+frame 3 ... 00
+```
+
+Khi gặp `0x00`, STM32 biết đã nhận xong một frame và có thể COBS decode.
+
+---
+
+## 6.3. Vì sao không dùng trực tiếp `0x00` nếu không có COBS?
+
+Firmware binary hoàn toàn có thể chứa:
+
+```text
+0x00
+```
+
+Nếu chỉ dùng `0x00` làm byte kết thúc:
+
+```text
+12 35 00 A7 82
+```
+
+receiver không biết `00` là:
+
+```text
+dữ liệu firmware
+```
+
+hay:
+
+```text
+kết thúc frame
+```
+
+COBS loại vấn đề này bằng cách đảm bảo `0x00` chỉ xuất hiện ở cuối encoded frame.
+
+---
+
+## 6.4. Luồng nhận COBS trên STM32
+
+STM32 tích lũy các byte UART vào buffer:
+
+```text
+UART byte
+   ↓
+byte == 0x00 ?
+   |
+   +-- NO  → lưu vào encoded buffer
+   |
+   +-- YES
+        ↓
+    frame hoàn chỉnh
+        ↓
+    COBS decode
+        ↓
+    raw packet
+```
+
+Nếu một frame lỗi, receiver có thể bỏ frame đó và đồng bộ lại ở byte `0x00` tiếp theo.
+
+---
+
+## 6.5. Cấu trúc Raw Packet
+
+Sau COBS decode, packet có dạng:
+
+```text
+Offset   Size   Field
+
+0        2      magic
+2        1      protocol_version
+3        1      command
+4        4      update_id
+8        4      offset
+12       2      sequence
+14       2      payload_length
+16       N      payload
+16+N     4      packet_crc32
+```
+
+Các giá trị quan trọng:
+
+```text
+magic            = 0xA55A
+protocol_version = 1
+header           = 16 byte
+DATA payload max = 256 byte
+CRC32            = 4 byte
+```
+
+---
+
+## 6.6. Ý nghĩa các field quan trọng
+
+`magic` giúp xác nhận đây là packet của OTA protocol.
+
+`protocol_version` đảm bảo ESP32 và STM32 đang dùng cùng phiên bản giao thức.
+
+`command` xác định loại packet, ví dụ:
+
+```text
+START
+DATA
+FINISH
+RESUME
+INSTALL
+ACK
+NACK
+```
+
+`update_id` xác định OTA session hiện tại.
+
+`offset` cho biết payload thuộc vị trí nào trong artifact.
+
+`sequence` là số thứ tự packet.
+
+`payload_length` cho biết số byte dữ liệu trong payload.
+
+---
+
+## 6.7. CRC32 dùng để làm gì?
+
+CRC32 dùng để phát hiện dữ liệu bị hỏng trong quá trình truyền hoặc lưu trữ.
+
+Sender:
+
+```text
+Header + Payload
+      ↓
+tính CRC32
+```
+
+Receiver:
+
+```text
+Header + Payload
+      ↓
+tính CRC32 lại
+      ↓
+so sánh với CRC nhận được
+```
+
+Nếu khác nhau:
+
+```text
+packet bị lỗi
+→ không ghi xuống W25Q
+→ trả NACK
+```
+
+CRC32 packet được tính trên header + payload, không bao gồm chính trường CRC32 và không tính trên dữ liệu sau COBS encode.
+
+---
+
+## 6.8. Thứ tự đóng gói và giải mã
+
+ESP32:
+
+```text
+Header
+  +
+Payload
+  ↓
+CRC32
+  ↓
+Raw Packet
+  ↓
+COBS encode
+  ↓
+thêm 0x00
+  ↓
+UART Send
+```
+
+STM32 làm ngược lại:
+
+```text
+UART Receive
+  ↓
+tìm 0x00
+  ↓
+COBS decode
+  ↓
+Raw Packet
+  ↓
+kiểm tra header
+  ↓
+CRC32
+  ↓
+xử lý command
+```
+
+Thứ tự này cần được giữ đúng.
+
+---
+
+## 6.9. DATA Packet và `offset`
+
+OTA artifact được chia thành nhiều DATA packet.
+
+Ví dụ payload 256 byte:
+
+```text
+Packet 0:
+offset = 0
+payload = 256 B
+
+Packet 1:
+offset = 256
+payload = 256 B
+
+Packet 2:
+offset = 512
+payload = 256 B
+```
+
+STM32 kiểm tra `offset` và `sequence` để bảo đảm dữ liệu đến đúng thứ tự.
+
+```text
+offset nhận được
+      =
+next_expected_offset
+```
+
+Packet sai thứ tự không được ghi tùy ý xuống W25Q.
+
+---
+
+## 6.10. CRC phải đúng trước khi ghi W25Q
+
+Luồng đúng:
+
+```text
+UART DATA
+   ↓
+COBS decode
+   ↓
+kiểm tra header
+   ↓
+CRC32
+   ↓
+sequence / offset
+   ↓
+hợp lệ?
+ /      \
+NO      YES
+↓        ↓
+NACK    SPI
+         ↓
+       W25Q
+```
+
+Nhờ vậy dữ liệu UART bị lỗi không làm hỏng `Incoming Artifact`.
+
+---
+
+## 6.11. ACK / NACK
+
+`ACK` nghĩa là packet đã được chấp nhận.
+
+`NACK` nghĩa là packet bị từ chối do lỗi như:
+
+```text
+CRC sai
+offset sai
+sequence sai
+length sai
+protocol sai
+```
+
+Với DATA packet, ACK nên được gửi sau khi dữ liệu đã được ghi và xác minh ở W25Q.
+
+```text
+CRC OK
+  ↓
+Write W25Q
+  ↓
+Verify
+  ↓
+ACK
+```
+
+---
+
+## 6.12. Retry và packet trùng lặp
+
+Nếu ESP32 không nhận được ACK, nó có thể gửi lại cùng packet.
+
+Ví dụ:
+
+```text
+DATA N
+  ↓
+STM32 ghi thành công
+  ↓
+ACK bị mất
+  ↓
+ESP32 timeout
+  ↓
+gửi lại DATA N
+```
+
+STM32 cần nhận biết packet trùng lặp và nếu dữ liệu giống packet đã chấp nhận thì có thể gửi lại ACK.
+
+Điều này giúp retry an toàn khi ACK bị mất.
+
+---
+
+## 6.13. Packet CRC và Artifact CRC
+
+Có hai mức CRC khác nhau.
+
+### Packet CRC32
+
+Kiểm tra một packet UART:
+
+```text
+Header + Payload
+```
+
+Nó trả lời:
+
+> Packet này có bị lỗi trong quá trình truyền không?
+
+### Artifact CRC32
+
+Sau khi nhận toàn bộ OTA artifact, STM32 kiểm tra CRC của toàn bộ dữ liệu trong `Incoming Artifact`.
+
+Nó trả lời:
+
+> Toàn bộ file OTA đã nhận có đúng không?
+
+Mental model:
+
+```text
+Packet CRC
+= bảo vệ từng packet
+
+Artifact CRC
+= kiểm tra toàn bộ file
+```
+
+---
+
+## 6.14. CRC32 không phải cơ chế bảo mật
+
+CRC32 chỉ phát hiện lỗi dữ liệu ngẫu nhiên như:
+
+```text
+bit flip
+nhiễu truyền
+corruption
+```
+
+CRC32 không xác thực người phát hành firmware vì một attacker có thể sửa firmware rồi tính CRC mới.
+
+```text
+CRC32
+= kiểm tra tính toàn vẹn do lỗi
+
+SHA-256 + ECDSA
+= xác thực firmware
+```
+
+---
+
+## 6.15. Vai trò của từng thành phần
+
+```text
+COBS
+= xác định ranh giới frame
+
+CRC32
+= phát hiện dữ liệu bị lỗi
+
+sequence / offset
+= bảo đảm packet đúng thứ tự/vị trí
+
+ACK / NACK
+= phản hồi packet đã thành công hay thất bại
+
+W25Q
+= lưu OTA artifact sau khi packet đã hợp lệ
+```
+
+COBS và CRC32 không mã hóa dữ liệu và không thay thế ECDSA.
+
+---
+
+## 6.16. Luồng OTA UART hoàn chỉnh
+
+```text
+Server
+  ↓
+ESP32
+  ↓
+chia artifact thành DATA packet
+  ↓
+Header + Payload
+  ↓
+CRC32
+  ↓
+COBS encode
+  ↓
+0x00
+  ↓
+UART
+  ↓
+STM32
+  ↓
+COBS decode
+  ↓
+CRC32 verify
+  ↓
+sequence / offset verify
+  ↓
+SPI
+  ↓
+W25Q Incoming Artifact
+  ↓
+Verify write
+  ↓
+ACK
+```
+
+---
+
+## 6.17. Trọng tâm cần thuộc
+
+```text
+Raw Packet
+↓
+Header + Payload
+↓
+CRC32
+↓
+COBS Encode
+↓
+0x00 delimiter
+↓
+UART
+↓
+COBS Decode
+↓
+CRC32 Verify
+↓
+Sequence / Offset
+↓
+Write W25Q
+↓
+ACK / NACK
+```
+
+Các giá trị chính:
+
+```text
+UART              = 115200, 8-N-1
+magic             = 0xA55A
+protocol_version  = 1
+header            = 16 byte
+DATA payload max  = 256 byte
+CRC32             = 4 byte
+COBS delimiter    = 0x00
+```
+
+Cần hiểu rõ ba ý:
+
+```text
+COBS
+= giúp tìm đúng ranh giới frame
+
+CRC32
+= phát hiện packet bị lỗi
+
+ACK chỉ gửi sau khi
+packet hợp lệ và dữ liệu đã được lưu/xác minh
+```
+
+Nếu giải thích được ba ý này cùng với `sequence`, `offset` và luồng ghi vào W25Q, bạn đã nắm phần cốt lõi của CRC32 + UART Framing + COBS trong dự án.
 
 ---
 
