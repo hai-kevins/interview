@@ -125,6 +125,19 @@
   - [8.11. Mô hình tư duy cần nhớ](#811-mô-hình-tư-duy-cần-nhớ)
   - [8.12. Trọng tâm cần thuộc](#812-trọng-tâm-cần-thuộc)
 - [9. SHA-256 + ECDSA P-256 + Public / Private Key](#9-sha-256-+-ecdsa-p-256-+-public-private-key)
+  - [9.1. SHA-256 là gì?](#91-sha-256-là-gì)
+  - [9.2. Vì sao SHA-256 một mình chưa đủ?](#92-vì-sao-sha-256-một-mình-chưa-đủ)
+  - [9.3. Private Key và Public Key](#93-private-key-và-public-key)
+  - [9.4. ECDSA P-256 là gì?](#94-ecdsa-p-256-là-gì)
+  - [9.5. Phía phát hành ký firmware như thế nào?](#95-phía-phát-hành-ký-firmware-như-thế-nào)
+  - [9.6. Bootloader xác minh như thế nào?](#96-bootloader-xác-minh-như-thế-nào)
+  - [9.7. Nếu attacker sửa firmware thì sao?](#97-nếu-attacker-sửa-firmware-thì-sao)
+  - [9.8. Vai trò của `key_id`](#98-vai-trò-của-key_id)
+  - [9.9. SHA-256 của firmware đích](#99-sha-256-của-firmware-đích)
+  - [9.10. CRC32, SHA-256 và ECDSA khác nhau](#910-crc32-sha-256-và-ecdsa-khác-nhau)
+  - [9.11. Chữ ký số không phải mã hóa](#911-chữ-ký-số-không-phải-mã-hóa)
+  - [9.12. Mô hình tư duy cần nhớ](#912-mô-hình-tư-duy-cần-nhớ)
+  - [9.13. Trọng tâm cần thuộc](#913-trọng-tâm-cần-thuộc)
 - [10. Firmware Container + Anti-Rollback](#10-firmware-container-+-anti-rollback)
 - [11. Delta Patch / JojoDiff Concept](#11-delta-patch-jojodiff-concept)
 - [12. ESP32 + MQTT + HTTPS + Server / Release Tooling](#12-esp32-+-mqtt-+-https-+-server-release-tooling)
@@ -4017,7 +4030,456 @@ Và:
 
 # 9. SHA-256 + ECDSA P-256 + Public / Private Key
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Mục tiêu của phần này là giúp bootloader trả lời câu hỏi:
+
+> **Firmware này có thật sự do bên phát hành đáng tin cậy tạo ra hay không?**
+
+Cơ chế chính:
+
+```text
+SHA-256
+  +
+ECDSA P-256
+  +
+Private Key / Public Key
+```
+
+CRC32 chỉ giúp phát hiện lỗi dữ liệu. ECDSA mới là cơ chế xác thực firmware.
+
+---
+
+## 9.1. SHA-256 là gì?
+
+SHA-256 là hàm băm mật mã, biến dữ liệu có kích thước bất kỳ thành:
+
+```text
+256 bit = 32 byte
+```
+
+Ví dụ:
+
+```text
+Firmware
+   ↓
+SHA-256
+   ↓
+32-byte hash
+```
+
+Nếu firmware thay đổi dù chỉ một byte, hash gần như chắc chắn sẽ thay đổi.
+
+```text
+Firmware A
+→ SHA-256
+→ H1
+
+Firmware A bị sửa
+→ SHA-256
+→ H2
+
+H1 != H2
+```
+
+SHA-256 tạo dấu vân tay của dữ liệu, nhưng tự nó chưa xác thực được ai là người tạo dữ liệu đó.
+
+---
+
+## 9.2. Vì sao SHA-256 một mình chưa đủ?
+
+Attacker có thể sửa firmware rồi tự tính SHA-256 mới.
+
+```text
+Firmware thật
+   ↓
+Attacker sửa
+   ↓
+Firmware giả
+   ↓
+tính SHA-256 mới
+```
+
+Nếu thiết bị chỉ so sánh hash do phía gửi cung cấp thì attacker vẫn có thể tạo một bộ dữ liệu mới nhất quán.
+
+Vì vậy cần thêm chữ ký số:
+
+```text
+ECDSA P-256
+```
+
+---
+
+## 9.3. Private Key và Public Key
+
+ECDSA dùng một cặp khóa:
+
+```text
+Private Key
+Public Key
+```
+
+`Private Key` dùng để ký firmware và phải được giữ bí mật ở phía phát hành.
+
+```text
+Developer / CI
+   ↓
+Private Key
+   ↓
+SIGN
+```
+
+`Public Key` dùng để xác minh chữ ký và được đặt trong bootloader.
+
+```text
+STM32 Bootloader
+   ↓
+Public Key
+   ↓
+VERIFY
+```
+
+Điểm quan trọng:
+
+> **Private Key không được nằm trên thiết bị.**
+
+Nếu attacker lấy được Private Key, họ có thể tự ký firmware độc hại và bootloader vẫn xác minh thành công.
+
+---
+
+## 9.4. ECDSA P-256 là gì?
+
+ECDSA là:
+
+```text
+Elliptic Curve Digital Signature Algorithm
+```
+
+Project sử dụng đường cong:
+
+```text
+P-256
+```
+
+Chữ ký ECDSA gồm hai giá trị:
+
+```text
+r = 32 byte
+s = 32 byte
+```
+
+Ghép lại:
+
+```text
+signature = r || s
+          = 64 byte
+```
+
+ECDSA không mã hóa firmware. Nó chỉ chứng minh dữ liệu được ký bởi Private Key tương ứng với Public Key tin cậy.
+
+---
+
+## 9.5. Phía phát hành ký firmware như thế nào?
+
+Phía phát hành tạo firmware hoặc firmware container:
+
+```text
+Header + Payload
+```
+
+Sau đó:
+
+```text
+Header + Payload
+      ↓
+SHA-256
+      ↓
+32-byte hash
+      ↓
+ECDSA P-256 Sign
+      ↓
+Private Key
+      ↓
+64-byte Signature
+```
+
+Container cuối cùng chứa:
+
+```text
+[ Header ][ Payload ][ Signature ]
+```
+
+Private Key chỉ tồn tại ở phía phát hành.
+
+---
+
+## 9.6. Bootloader xác minh như thế nào?
+
+Sau khi OTA artifact đã nằm trong W25Q, bootloader lấy:
+
+```text
+Header
+Payload
+Signature
+```
+
+và tự tính SHA-256 trên đúng dữ liệu đã được ký:
+
+```text
+Header + Payload
+      ↓
+SHA-256
+      ↓
+hash
+```
+
+Sau đó:
+
+```text
+hash
++
+signature
++
+Public Key
+      ↓
+ECDSA Verify
+```
+
+Kết quả:
+
+```text
+VALID
+→ được phép tiếp tục
+
+INVALID
+→ từ chối firmware
+```
+
+Firmware không được đi tới bước `INSTALLING` nếu chữ ký không hợp lệ.
+
+---
+
+## 9.7. Nếu attacker sửa firmware thì sao?
+
+Giả sử firmware ban đầu đã được ký hợp lệ.
+
+Attacker sửa một byte:
+
+```text
+Firmware
+   ↓
+bị sửa
+   ↓
+Firmware'
+```
+
+Khi bootloader tính lại:
+
+```text
+SHA-256(Firmware')
+```
+
+hash sẽ khác hash đã được ký trước đó.
+
+Vì attacker không có Private Key nên không thể tạo chữ ký ECDSA mới hợp lệ.
+
+```text
+Firmware bị sửa
+      ↓
+SHA-256 mới
+      ↓
+ECDSA Verify
+      ↓
+FAIL
+```
+
+Firmware bị từ chối.
+
+---
+
+## 9.8. Vai trò của `key_id`
+
+`key_id` dùng để xác định khóa tin cậy nào được dùng để xác minh container.
+
+Có thể hiểu:
+
+```text
+key_id
+= "container này thuộc khóa ký nào?"
+```
+
+Bootloader có:
+
+```text
+Trusted Public Key
++
+Trusted key_id
+```
+
+`key_id` chỉ giúp chọn hoặc xác định khóa. Public Key mới là thành phần thực hiện xác minh chữ ký.
+
+---
+
+## 9.9. SHA-256 của firmware đích
+
+Sau khi chữ ký container hợp lệ, bootloader vẫn cần xác minh firmware đích cuối cùng.
+
+Với full OTA:
+
+```text
+Payload
+= firmware đích
+```
+
+Với delta OTA:
+
+```text
+Payload
+= delta patch
+      ↓
+PATCHING
+      ↓
+Reconstructed Image
+```
+
+Bootloader tính:
+
+```text
+Reconstructed Image
+      ↓
+SHA-256
+      ↓
+Calculated Hash
+```
+
+rồi so sánh với:
+
+```text
+target_image_sha256
+```
+
+Chỉ khi hai giá trị khớp, firmware đích mới được phép đi tiếp tới backup và cài đặt.
+
+---
+
+## 9.10. CRC32, SHA-256 và ECDSA khác nhau
+
+Ba cơ chế có vai trò khác nhau:
+
+```text
+CRC32
+= phát hiện lỗi dữ liệu ngẫu nhiên
+
+SHA-256
+= tạo dấu vân tay mật mã của dữ liệu
+
+ECDSA P-256
+= xác thực dữ liệu được ký bởi Private Key đáng tin cậy
+```
+
+Ví dụ attacker sửa firmware rồi tính lại CRC32:
+
+```text
+CRC32
+→ có thể PASS
+```
+
+nhưng không có Private Key:
+
+```text
+ECDSA Verify
+→ FAIL
+```
+
+Do đó CRC32 không thay thế được chữ ký số.
+
+---
+
+## 9.11. Chữ ký số không phải mã hóa
+
+ECDSA cung cấp:
+
+```text
+xác thực nguồn gốc
++
+phát hiện dữ liệu bị thay đổi
+```
+
+nhưng không che giấu nội dung firmware.
+
+```text
+Signed Firmware
+≠
+Encrypted Firmware
+```
+
+Firmware có chữ ký vẫn có thể được đọc bình thường.
+
+---
+
+## 9.12. Mô hình tư duy cần nhớ
+
+Phía phát hành:
+
+```text
+Firmware / Container
+      ↓
+SHA-256
+      ↓
+Private Key
+      ↓
+ECDSA P-256 Sign
+      ↓
+Signature
+```
+
+Phía STM32:
+
+```text
+Signed Container trong W25Q
+      ↓
+SHA-256
+      ↓
+Public Key
+      ↓
+ECDSA Verify
+   /       \
+ FAIL     PASS
+  ↓         ↓
+Reject    kiểm tra tiếp
+             ↓
+           Install
+```
+
+---
+
+## 9.13. Trọng tâm cần thuộc
+
+```text
+SHA-256
+= tạo hash 32 byte
+
+Private Key
+= dùng để ký
+= phải giữ bí mật
+
+Public Key
+= dùng để verify
+= nằm trong bootloader
+
+ECDSA P-256
+= xác thực firmware
+
+Signature
+= r || s
+= 64 byte
+```
+
+Điểm quan trọng nhất:
+
+> **Private Key chỉ ở phía phát hành, Public Key nằm trong bootloader.**
+
+> **SHA-256 tạo hash của dữ liệu, còn ECDSA P-256 chứng minh hash đó được ký bởi Private Key đáng tin cậy.**
+
+> **CRC32 phát hiện lỗi dữ liệu, còn ECDSA cung cấp xác thực nguồn gốc firmware.**
 
 ---
 
