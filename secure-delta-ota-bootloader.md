@@ -61,6 +61,23 @@
   - [4.8. Quyết định khởi động](#48-quyết-định-khởi-động)
   - [4.9. Các lỗi Bootloader thường gặp](#49-các-lỗi-bootloader-thường-gặp)
 - [5. W25Q SPI NOR: Erase / Program / Read / Status](#5-w25q-spi-nor-erase-program-read-status)
+  - [5.1. Giao tiếp SPI](#51-giao-tiếp-spi)
+  - [5.2. JEDEC ID](#52-jedec-id)
+  - [5.3. Các lệnh quan trọng](#53-các-lệnh-quan-trọng)
+  - [5.4. Quy tắc của NOR Flash](#54-quy-tắc-của-nor-flash)
+  - [5.5. Page và Sector](#55-page-và-sector)
+  - [5.6. Write Enable và WEL](#56-write-enable-và-wel)
+  - [5.7. Status Register và BUSY](#57-status-register-và-busy)
+  - [5.8. Read Data](#58-read-data)
+  - [5.9. Page Program](#59-page-program)
+  - [5.10. Page Boundary](#510-page-boundary)
+  - [5.11. Sector Erase](#511-sector-erase)
+  - [5.12. Đọc lại để xác minh](#512-đọc-lại-để-xác-minh)
+  - [5.13. Vai trò của W25Q trong OTA](#513-vai-trò-của-w25q-trong-ota)
+  - [5.14. Flash nội và W25Q khác nhau](#514-flash-nội-và-w25q-khác-nhau)
+  - [5.15. Các lỗi thường gặp](#515-các-lỗi-thường-gặp)
+  - [5.16. Mô hình tư duy cần nhớ](#516-mô-hình-tư-duy-cần-nhớ)
+  - [5.17. Trọng tâm cần thuộc](#517-trọng-tâm-cần-thuộc)
 - [6. CRC32 + UART Framing + COBS](#6-crc32-+-uart-framing-+-cobs)
 - [7. OTA State Machine + Persistent Metadata A/B](#7-ota-state-machine-+-persistent-metadata-ab)
 - [8. Power-Loss Recovery + Checkpoint + Rollback](#8-power-loss-recovery-+-checkpoint-+-rollback)
@@ -1666,9 +1683,492 @@ Vì vậy bootloader thực chất là:
 
 ---
 
+---
+
 # 5. W25Q SPI NOR: Erase / Program / Read / Status
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+W25Q là Flash NOR ngoài giao tiếp SPI. Trong dự án này, nó đóng vai trò vùng lưu trữ bền vững cho OTA: chứa gói firmware nhận vào, image đã tái tạo, bản sao lưu application và một số metadata/checkpoint. Firmware cuối cùng vẫn được chạy từ Flash nội của STM32.
+
+## 5.1. Giao tiếp SPI
+
+Các tín hiệu chính:
+
+```text
+SCK   -> xung nhịp
+MOSI  -> STM32 gửi dữ liệu
+MISO  -> STM32 nhận dữ liệu
+CS    -> chọn chip
+```
+
+Một giao dịch điển hình:
+
+```text
+CS = LOW
+   ↓
+Command
+   ↓
+Address
+   ↓
+Data
+   ↓
+CS = HIGH
+```
+
+`CS` xác định ranh giới của một lệnh gửi tới W25Q.
+
+---
+
+## 5.2. JEDEC ID
+
+Trước khi sử dụng Flash, driver nên đọc `JEDEC ID` bằng lệnh:
+
+```text
+0x9F
+```
+
+Kết quả cho biết:
+
+```text
+Manufacturer
+Memory Type
+Capacity
+```
+
+Mục đích là xác nhận đúng chip Flash và dung lượng được hỗ trợ trước khi thực hiện OTA.
+
+---
+
+## 5.3. Các lệnh quan trọng
+
+Nhóm lệnh cốt lõi:
+
+```text
+0x9F   Read JEDEC ID
+0x03   Read Data
+0x06   Write Enable
+0x05   Read Status Register-1
+0x02   Page Program
+0x20   Sector Erase 4 KiB
+```
+
+Mental model:
+
+```text
+READ
+  -> 0x03
+
+PROGRAM
+  -> Write Enable
+  -> Page Program
+
+ERASE
+  -> Write Enable
+  -> Sector Erase
+
+STATUS
+  -> Read Status Register
+```
+
+---
+
+## 5.4. Quy tắc của NOR Flash
+
+Sau khi erase:
+
+```text
+FF FF FF FF ...
+```
+
+Ở mức bit:
+
+```text
+Erase   : đưa bit về 1
+Program : chỉ chuyển 1 -> 0
+```
+
+Nếu dữ liệu mới cần một bit chuyển:
+
+```text
+0 -> 1
+```
+
+thì sector phải được erase trước.
+
+Vì vậy không thể tùy ý ghi đè dữ liệu mới lên dữ liệu cũ.
+
+---
+
+## 5.5. Page và Sector
+
+Hai kích thước cần nhớ:
+
+```text
+Page   = 256 byte
+Sector = 4 KiB
+```
+
+`Page` là giới hạn quan trọng của `Page Program`.
+
+`Sector` là đơn vị erase.
+
+```text
+1 Sector = 16 Page
+          = 4096 byte
+```
+
+---
+
+## 5.6. Write Enable và WEL
+
+Trước `Page Program` hoặc `Sector Erase`, phải gửi:
+
+```text
+Write Enable = 0x06
+```
+
+Lệnh này đặt bit:
+
+```text
+WEL = Write Enable Latch
+```
+
+Driver nên kiểm tra `WEL = 1` trước khi tiếp tục ghi/xóa.
+
+Flow:
+
+```text
+Write Enable
+     ↓
+Đọc Status Register
+     ↓
+WEL = 1?
+   /     \
+ no      yes
+ ↓        ↓
+lỗi   Program/Erase
+```
+
+---
+
+## 5.7. Status Register và BUSY
+
+Lệnh:
+
+```text
+0x05
+```
+
+đọc `Status Register-1`.
+
+Hai bit quan trọng:
+
+```text
+BUSY
+WEL
+```
+
+`BUSY = 1` nghĩa là Flash đang program/erase.
+
+`BUSY = 0` nghĩa là Flash đã sẵn sàng.
+
+Sau mỗi operation ghi/xóa, driver phải poll `BUSY` cho tới khi clear và nên có timeout để tránh treo vô hạn.
+
+---
+
+## 5.8. Read Data
+
+Đọc dữ liệu dùng:
+
+```text
+0x03
+```
+
+Flow:
+
+```text
+CS LOW
+  ↓
+0x03
+  ↓
+24-bit Address
+  ↓
+Nhận Data
+  ↓
+CS HIGH
+```
+
+Read không cần `Write Enable` và không làm thay đổi dữ liệu Flash.
+
+---
+
+## 5.9. Page Program
+
+Quy trình ghi:
+
+```text
+Wait Ready
+    ↓
+Write Enable
+    ↓
+Kiểm tra WEL
+    ↓
+Page Program 0x02
+    ↓
+24-bit Address
+    ↓
+Data
+    ↓
+CS HIGH
+    ↓
+Poll BUSY
+    ↓
+Đọc lại để xác minh
+```
+
+Sau khi gửi lệnh program, không được thực hiện operation tiếp theo cho đến khi `BUSY = 0`.
+
+---
+
+## 5.10. Page Boundary
+
+`Page Program` không nên vượt qua ranh giới page 256 byte.
+
+Ví dụ nếu bắt đầu tại offset:
+
+```text
+0xF0
+```
+
+thì page hiện tại chỉ còn:
+
+```text
+0x100 - 0xF0 = 16 byte
+```
+
+Driver phải chia dữ liệu:
+
+```text
+16 byte
+  ↓
+Program page hiện tại
+
+phần còn lại
+  ↓
+Program page tiếp theo
+```
+
+Đây là lý do một hàm ghi lớn phải tự chia thành nhiều chunk theo page boundary.
+
+---
+
+## 5.11. Sector Erase
+
+Erase dùng:
+
+```text
+0x20
+```
+
+với sector 4 KiB.
+
+Flow:
+
+```text
+Kiểm tra địa chỉ sector
+      ↓
+Write Enable
+      ↓
+Sector Erase 0x20
+      ↓
+24-bit Address
+      ↓
+Poll BUSY
+      ↓
+Ready
+```
+
+Địa chỉ erase nên căn theo boundary 4 KiB:
+
+```text
+0x000000
+0x001000
+0x002000
+0x003000
+...
+```
+
+Không nên tự động làm tròn một địa chỉ sai vì có thể xóa nhầm sector.
+
+---
+
+## 5.12. Đọc lại để xác minh
+
+Sau khi program:
+
+```text
+Program
+   ↓
+Poll BUSY
+   ↓
+Read lại
+   ↓
+So sánh dữ liệu
+```
+
+Nếu dữ liệu đọc lại khác dữ liệu mong đợi, operation phải được coi là thất bại.
+
+Nguyên tắc giống Flash nội:
+
+> Gửi lệnh thành công không có nghĩa dữ liệu đã được chứng minh là đúng.
+
+---
+
+## 5.13. Vai trò của W25Q trong OTA
+
+Có thể xem W25Q như vùng làm việc bền vững giữa quá trình nhận firmware và quá trình cài vào Flash nội.
+
+```text
+ESP32 / UART
+      ↓
+Incoming Artifact
+      ↓
+W25Q
+      ↓
+Verify
+      ↓
+Reconstructed Image
+      ↓
+Backup Application
+      ↓
+Install vào Flash nội STM32
+```
+
+W25Q cho phép giữ cả candidate firmware và backup mà không phải phá ngay active application.
+
+---
+
+## 5.14. Flash nội và W25Q khác nhau
+
+Trong dự án:
+
+```text
+STM32 Internal Flash
+Erase   = 1 KiB page
+Program = 16-bit half-word
+
+W25Q SPI NOR
+Erase   = 4 KiB sector
+Program = theo page tối đa 256 byte
+```
+
+Vai trò:
+
+```text
+Internal Flash
+  -> Bootloader
+  -> Application
+  -> Metadata quan trọng
+
+W25Q
+  -> OTA staging
+  -> Reconstructed image
+  -> Backup
+  -> Checkpoint / storage
+```
+
+---
+
+## 5.15. Các lỗi thường gặp
+
+- Quên `Write Enable` trước Program/Erase.
+- Không kiểm tra `WEL`.
+- Không chờ `BUSY` clear.
+- Không có timeout khi poll `BUSY`.
+- Ghi xuyên page boundary mà không chia chunk.
+- Erase địa chỉ không căn theo sector 4 KiB.
+- Cố program bit `0 -> 1` mà chưa erase.
+- Không đọc lại để xác minh.
+- Không kiểm tra `JEDEC ID`.
+- Cho module OTA ghi tùy ý bằng địa chỉ tuyệt đối mà không kiểm tra phạm vi.
+
+---
+
+## 5.16. Mô hình tư duy cần nhớ
+
+```text
+READ
+CS LOW
+  ↓
+0x03
+  ↓
+Address
+  ↓
+Data
+  ↓
+CS HIGH
+
+
+PROGRAM
+Write Enable 0x06
+  ↓
+WEL = 1
+  ↓
+Page Program 0x02
+  ↓
+Address + Data
+  ↓
+BUSY = 1
+  ↓
+Wait BUSY = 0
+  ↓
+Readback Verify
+
+
+ERASE
+Write Enable 0x06
+  ↓
+Sector Erase 0x20
+  ↓
+4 KiB-aligned Address
+  ↓
+BUSY = 1
+  ↓
+Wait BUSY = 0
+```
+
+---
+
+## 5.17. Trọng tâm cần thuộc
+
+```text
+SPI
+↓
+CS / SCK / MOSI / MISO
+↓
+JEDEC ID 0x9F
+↓
+Read 0x03
+↓
+Write Enable 0x06
+↓
+WEL
+↓
+Page Program 0x02
+↓
+Page = 256 byte
+↓
+Sector Erase 0x20
+↓
+Sector = 4 KiB
+↓
+Status 0x05
+↓
+BUSY
+↓
+Đọc lại để xác minh
+```
+
+Nếu giải thích được ba luồng `Read`, `Page Program`, `Sector Erase`, đồng thời hiểu vì sao cần `WEL`, `BUSY`, page boundary và erase trước khi chuyển bit `0 -> 1`, bạn đã nắm phần cốt lõi của W25Q SPI NOR trong dự án này.
 
 ---
 
