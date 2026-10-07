@@ -2054,6 +2054,45 @@ Vai trò chính:
 - **Reserved**: dành cho mở rộng sau này.
 - **Flash Self-Test**: sector riêng để kiểm tra driver W25Q mà không phá dữ liệu OTA.
 
+### Hiểu nhanh External Metadata A/B
+
+`Incoming Artifact` chứa **dữ liệu firmware thật**. `External Metadata A/B` chỉ là hai bản **ghi chú trạng thái** để hệ thống biết quá trình OTA đã tiến tới đâu và có thể tiếp tục từ đâu sau khi reset/mất điện.
+
+Ví dụ:
+
+```text
+Incoming Artifact:
+đã ghi dữ liệu tới 36 KiB
+
+Metadata hiện tại:
+checkpoint = 32 KiB
+```
+
+Điều này có nghĩa dữ liệu vật lý có thể đã tới 36 KiB, nhưng hệ thống mới chỉ **tin chắc** mốc 32 KiB. Nếu mất điện trước khi checkpoint mới được ghi hợp lệ, sau reboot hệ thống sẽ tiếp tục từ mốc 32 KiB.
+
+Hai bản A/B giúp cập nhật metadata an toàn:
+
+```text
+A: generation = 10, checkpoint = 32 KiB, VALID
+        ↓
+Erase + ghi B
+        ↓
+B: generation = 11, checkpoint = 36 KiB
+        ↓
+Verify B
+```
+
+Nếu mất điện khi đang erase/ghi B thì A vẫn còn hợp lệ. Chỉ khi B ghi xong và verify thành công, B mới trở thành bản mới nhất.
+
+Cần nhớ:
+
+```text
+Incoming Artifact = dữ liệu firmware thật
+Metadata A/B      = bookmark trạng thái OTA
+generation        = số thứ tự để biết metadata nào mới hơn
+checkpoint        = mốc an toàn cuối cùng có thể tiếp tục
+```
+
 Mental model:
 
 ```text
