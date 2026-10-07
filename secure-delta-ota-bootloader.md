@@ -96,7 +96,8 @@
   - [6.14. CRC32 không phải cơ chế bảo mật](#614-crc32-không-phải-cơ-chế-bảo-mật)
   - [6.15. Vai trò của từng thành phần](#615-vai-trò-của-từng-thành-phần)
   - [6.16. Luồng OTA UART hoàn chỉnh](#616-luồng-ota-uart-hoàn-chỉnh)
-  - [6.17. Trọng tâm cần thuộc](#617-trọng-tâm-cần-thuộc)
+  - [6.17. Ví dụ đầy đủ: gửi một DATA packet từ ESP32 xuống W25Q](#617-ví-dụ-đầy-đủ-gửi-một-data-packet-từ-esp32-xuống-w25q)
+  - [6.18. Trọng tâm cần thuộc](#618-trọng-tâm-cần-thuộc)
 - [7. OTA State Machine + Persistent Metadata A/B](#7-ota-state-machine-+-persistent-metadata-ab)
 - [8. Power-Loss Recovery + Checkpoint + Rollback](#8-power-loss-recovery-+-checkpoint-+-rollback)
 - [9. SHA-256 + ECDSA P-256 + Public / Private Key](#9-sha-256-+-ecdsa-p-256-+-public-private-key)
@@ -2861,7 +2862,198 @@ ACK
 
 ---
 
-## 6.17. Trọng tâm cần thuộc
+## 6.17. Ví dụ đầy đủ: gửi một DATA packet từ ESP32 xuống W25Q
+
+Giả sử server có OTA artifact:
+
+```text
+firmware.bin = 1024 byte
+```
+
+ESP32 chia thành 4 DATA packet, mỗi packet 256 byte:
+
+```text
+Packet 0 → offset =   0
+Packet 1 → offset = 256
+Packet 2 → offset = 512   ← xét packet này
+Packet 3 → offset = 768
+```
+
+Với Packet 2, ESP32 lấy:
+
+```text
+payload = firmware[512 ... 767]
+payload_length = 256
+sequence = 2
+offset = 512
+```
+
+Sau đó tạo header:
+
+```text
+magic            = 0xA55A
+protocol_version = 1
+command          = DATA
+update_id        = OTA session hiện tại
+offset           = 512
+sequence         = 2
+payload_length   = 256
+```
+
+ESP32 ghép:
+
+```text
+Header 16 B
++
+Payload 256 B
+```
+
+rồi tính `CRC32` trên `Header + Payload` và gắn thêm 4 byte CRC:
+
+```text
+[ Header ][ Payload ][ CRC32 ]
+```
+
+Vì raw packet có thể chứa `0x00`, ESP32 chạy:
+
+```text
+COBS encode
+```
+
+để encoded frame không chứa `0x00`, rồi thêm một byte `0x00` ở cuối:
+
+```text
+[ COBS encoded frame ][ 0x00 ]
+```
+
+Frame được gửi qua UART sang STM32.
+
+STM32 nhận từng byte cho tới khi gặp `0x00`, sau đó:
+
+```text
+COBS decode
+    ↓
+khôi phục Raw Packet
+    ↓
+kiểm tra magic / version / length
+    ↓
+tính lại CRC32
+```
+
+Nếu CRC sai:
+
+```text
+NACK
+→ không ghi xuống W25Q
+```
+
+Nếu CRC đúng, STM32 tiếp tục kiểm tra:
+
+```text
+sequence = 2
+offset   = 512
+```
+
+Giả sử đây đúng là packet tiếp theo cần nhận, STM32 tính địa chỉ ghi trong phân vùng `Incoming Artifact`:
+
+```text
+Incoming Artifact base = 0x002000
+offset                  = 0x000200
+
+địa chỉ ghi = 0x002000 + 0x000200
+            = 0x002200
+```
+
+Sau đó:
+
+```text
+Payload 256 B
+    ↓
+STM32
+    ↓
+SPI
+    ↓
+W25Q address 0x002200
+    ↓
+Page Program
+    ↓
+Readback Verify
+```
+
+Nếu dữ liệu đọc lại đúng với payload vừa nhận:
+
+```text
+Verify PASS
+    ↓
+ACK
+```
+
+Lúc này STM32 có thể báo:
+
+```text
+next_expected_offset = 768
+```
+
+để ESP32 gửi Packet 3.
+
+Toàn bộ ví dụ có thể nhớ theo một chuỗi:
+
+```text
+Server
+  ↓
+ESP32 lấy 256 B tại offset 512
+  ↓
+Header + Payload
+  ↓
+CRC32
+  ↓
+COBS Encode
+  ↓
+0x00
+  ↓
+UART
+  ↓
+STM32
+  ↓
+COBS Decode
+  ↓
+CRC32 Verify
+  ↓
+sequence / offset Verify
+  ↓
+SPI
+  ↓
+W25Q Incoming Artifact @ 0x002200
+  ↓
+Readback Verify
+  ↓
+ACK
+  ↓
+next_expected_offset = 768
+```
+
+Cách hiểu vai trò từng bước:
+
+```text
+COBS
+= xác định đúng ranh giới frame
+
+CRC32
+= phát hiện packet bị lỗi
+
+sequence / offset
+= xác nhận đúng packet và đúng vị trí
+
+W25Q Readback Verify
+= xác nhận dữ liệu đã thực sự được ghi đúng
+
+ACK
+= cho phép ESP32 gửi packet tiếp theo
+```
+
+---
+
+## 6.18. Trọng tâm cần thuộc
 
 ```text
 Raw Packet
