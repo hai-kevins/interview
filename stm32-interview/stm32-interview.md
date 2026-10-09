@@ -12630,26 +12630,14 @@ Bảng này tập trung toàn bộ các điểm so sánh giữa SPI và I2C đ�
 
 | Đặc điểm | SPI | I2C |
 |---|---|---|
-| Đồng bộ | Có | Có |
-| Clock | `SCK` | `SCL` |
-| Data | `MOSI` + `MISO` | `SDA` |
-| Full-Duplex tự nhiên | Có | Không |
-| Dây cơ bản | SCK + MOSI + MISO + CS/NSS | SCL + SDA |
-| Chọn Slave | NSS/CS | Address |
-| Output driver điển hình | Push-Pull | Open-Drain |
-| Pull-up theo bus | Không phải đặc trưng bắt buộc của SPI | Có |
-| Nhiều Slave | Thường cần CS riêng | Dùng chung bus, khác address |
-| ACK/NACK | Không theo cơ chế I2C | Có |
-| Repeated START | Không | Có |
-| Clock stretching | Không | Có |
-| Arbitration | Không theo cơ chế I2C | Có |
-| Clock polarity | Có `CPOL` | Không có `CPOL` |
-| Clock phase | Có `CPHA` | Không có `CPHA` |
-| Timing lấy mẫu | Sample/Shift theo cạnh `SCK` do `CPOL/CPHA` quyết định | `SDA` phải ổn định khi `SCL = High` |
-| Chuẩn bị bit tiếp theo | Theo cạnh Shift của SPI mode | `SDA` được phép thay đổi khi `SCL = Low` |
-| Số mode timing | 4 mode cơ bản | Một quy tắc timing chung, không có 4 mode như SPI |
-| Cách đọc dữ liệu | Master vẫn phải phát clock và đồng thời shift bit ra MOSI, thường dùng dummy byte/frame | Master release SDA, tiếp tục phát SCL để Slave truyền dữ liệu trên SDA |
-| State machine | Đơn giản hơn | Phức tạp hơn |
+| Dây dữ liệu | `MOSI` + `MISO` riêng biệt | Một đường `SDA` hai chiều |
+| Full-Duplex | Có, truyền và nhận đồng thời | Không theo kiểu Full-Duplex của SPI |
+| Chọn Slave | Dùng `CS/NSS` riêng cho từng Slave | Dùng địa chỉ trên bus |
+| Kiểu điện | Thường Push-Pull | Open-Drain + Pull-Up |
+| ACK/NACK | Không có cơ chế ACK/NACK chuẩn của bus | Có ACK/NACK sau mỗi byte |
+| Timing dữ liệu | Sample/Shift theo cạnh `SCK`, phụ thuộc `CPOL/CPHA` | `SDA` thay đổi khi `SCL = Low`, phải ổn định khi `SCL = High` |
+| Đọc dữ liệu | Master vẫn phải phát clock và thường gửi dummy byte/frame | Master release SDA, tiếp tục phát SCL để Slave truyền dữ liệu |
+| Đặc trưng chính | Nhanh, Full-Duplex, logic đơn giản hơn nhưng tốn nhiều dây/CS | Ít dây, nhiều Slave dùng chung bus theo address nhưng protocol phức tạp hơn |
 
 ### Khác nhau về Sample / Shift
 
