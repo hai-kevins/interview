@@ -157,8 +157,8 @@
     - [8.3. VREF+ / VREF- / VDDA / VSSA](#muc-08-03)
     - [8.4. ADC Clock và Prescaler](#muc-08-04)
     - [8.5. ADC Channel và GPIO Analog Mode](#muc-08-05)
-    - [8.6. Sampling Time](#muc-08-06)
-    - [8.7. Conversion Time](#muc-08-07)
+    - [8.6. Thời gian lấy mẫu (Sampling Time)](#muc-08-06)
+    - [8.7. Thời gian chuyển đổi (Conversion Time)](#muc-08-07)
     - [8.8. Regular Group và Injected Group](#muc-08-08)
     - [8.9. Conversion Sequence và Rank](#muc-08-09)
     - [8.10. Single Conversion và Continuous Conversion](#muc-08-10)
@@ -13707,8 +13707,8 @@ STM32F10xxx dùng ADC kiểu **successive approximation** với độ phân gi�
 | **reference voltage** | Dải tham chiếu `VREF-...VREF+` dùng để ánh xạ analog input sang ADC code. |
 | **`ADCCLK`** | Clock cấp cho ADC sau ADC prescaler từ `PCLK2`. |
 | **ADC prescaler / `ADCPRE`** | Bộ chia từ `PCLK2` để tạo `ADCCLK`. |
-| **sampling time** | Thời gian ADC nối channel vào mạch sample-and-hold trước giai đoạn chuyển đổi. |
-| **conversion time** | Tổng thời gian từ sampling tới khi conversion result hoàn tất; với STM32F1 bằng sampling time cộng 12.5 chu kỳ `ADCCLK`. |
+| **thời gian lấy mẫu (sampling time)** | Khoảng thời gian ADC nối channel đã chọn vào mạch lấy mẫu và giữ để điện áp trên tụ lấy mẫu tiến đủ gần điện áp đầu vào. |
+| **thời gian chuyển đổi (conversion time)** | Tổng thời gian từ lúc bắt đầu lấy mẫu tới khi có conversion result; với STM32F1 bằng thời gian lấy mẫu cộng 12.5 chu kỳ `ADCCLK`. |
 | **Regular Group** | Nhóm conversion thông thường, tối đa 16 rank. |
 | **Injected Group** | Nhóm conversion có thể chen vào Regular Group theo cơ chế injected conversion, tối đa 4 rank. |
 | **conversion sequence** | Danh sách channel được ADC chuyển đổi theo thứ tự. |
@@ -13789,68 +13789,72 @@ SAR ADC
 → ADC xấp xỉ liên tiếp
 ```
 
-SAR ADC tìm digital code bằng cách **thử từng bit từ MSB đến LSB**, tương tự một quá trình tìm kiếm nhị phân trên toàn dải điện áp.
+SAR ADC tìm **mã số đầu ra** bằng cách thử từng bit từ **MSB** tới **LSB**. Có thể hình dung đây là một quá trình **tìm kiếm nhị phân** trên dải điện áp cần đo.
 
-Ở mức khái niệm, một SAR ADC có bốn khối chính:
+Ở mức khái niệm, SAR ADC có bốn khối chính:
 
 | Khối | Chức năng |
 |---|---|
-| **Sample-and-Hold (S/H)** | Lấy mẫu analog input vào tụ lấy mẫu và giữ điện áp đó đủ ổn định trong quá trình chuyển đổi. Điện áp trên tụ cần settle đủ gần `VIN` trong sai số cho phép; không nên hiểu là luôn bằng `VIN` tuyệt đối. |
-| **Comparator** | So sánh điện áp đã được giữ với mức điện áp thử do DAC nội bộ tạo ra và trả kết quả lớn hơn/nhỏ hơn cho SAR logic. Comparator không nên gọi đơn giản là một Op-Amp. |
-| **SAR logic / Successive Approximation Register** | Điều khiển quá trình thử từng bit từ MSB đến LSB; dựa vào kết quả comparator để giữ bit đang thử ở `1` hoặc xóa về `0`. |
-| **Internal DAC** | Nhận trial code từ SAR logic và tạo một mức analog tương ứng `VDAC` để comparator so sánh với điện áp đã lấy mẫu. |
+| **Mạch lấy mẫu và giữ (Sample-and-Hold — S/H)** | Lấy mẫu điện áp đầu vào vào tụ lấy mẫu, sau đó giữ giá trị điện áp này đủ ổn định để ADC thực hiện quá trình xấp xỉ. Điện áp trên tụ cần tiến đủ gần `VIN` trong sai số cho phép, không nên hiểu là luôn bằng `VIN` tuyệt đối. |
+| **Bộ so sánh (Comparator)** | So sánh điện áp đã lấy mẫu với điện áp thử `VDAC` do DAC nội bộ tạo ra, rồi báo cho logic SAR biết mức thử đang cao hơn hay thấp hơn điện áp cần đo. Comparator là mạch so sánh, không nên gọi đơn giản là một Op-Amp. |
+| **Thanh ghi/logic xấp xỉ liên tiếp (SAR)** | Điều khiển quá trình thử từng bit từ MSB tới LSB. Dựa vào kết quả của bộ so sánh, SAR quyết định giữ bit đang thử ở `1` hay xóa về `0`. |
+| **DAC nội bộ** | Nhận mã thử từ SAR và chuyển mã đó thành một mức điện áp thử `VDAC` để đưa tới bộ so sánh. |
 
 Luồng khái niệm:
 
 ```text
-Analog input
-     ↓
-Sample-and-Hold
-     ↓
-VIN đã được giữ
-     │
-     ├───────────────┐
-     ↓               │
-Comparator ← VDAC ← Internal DAC
-     │               ↑
-     ↓               │
-   SAR logic ─────────┘
-     ↓
-Digital code
+Tín hiệu tương tự đầu vào
+          ↓
+  Mạch lấy mẫu và giữ
+          ↓
+    điện áp mẫu VIN
+          │
+          ├────────────────┐
+          ↓                │
+     Bộ so sánh ← VDAC ← DAC nội bộ
+          │                ↑
+          ↓                │
+       Logic SAR ───────────┘
+          ↓
+       Mã số ADC
 ```
 
-### Hoạt động theo tìm kiếm nhị phân
+### Hoạt động theo thuật toán tìm kiếm nhị phân
 
 Giả sử ADC có `N` bit:
 
 ```text
 Bước 1
-→ thử MSB = 1
+→ thử bit MSB = 1
 
 Bước 2
-→ comparator quyết định giữ hoặc xóa MSB
-→ thử bit kế tiếp = 1
+→ DAC tạo điện áp thử tương ứng
+→ bộ so sánh so sánh VIN với VDAC
+→ SAR giữ bit hoặc xóa bit
+
+Bước tiếp theo
+→ thử bit thấp hơn
 
 ...
 
 Bước N
-→ quyết định LSB
+→ quyết định bit LSB
 
 Kết quả
-→ N-bit digital code
+→ thu được mã số N-bit
 ```
 
 Quy tắc khái niệm:
 
 ```text
 VIN ≥ VDAC thử
-→ giữ bit = 1
+→ giữ bit đang thử = 1
 
 VIN < VDAC thử
-→ xóa bit = 0
+→ xóa bit đang thử về 0
 ```
 
-Mỗi lần quyết định sẽ thu hẹp khoảng giá trị còn lại xấp xỉ một nửa, vì vậy SAR ADC có thể được hiểu như một **binary search trong miền điện áp**.
+Sau mỗi lần quyết định bit, khoảng giá trị còn phải xét được thu hẹp xấp xỉ một nửa. Vì vậy cách hoạt động của SAR ADC tương tự **tìm kiếm nhị phân trong miền điện áp**.
 
 Với ADC 12-bit:
 
@@ -13860,8 +13864,7 @@ Với ADC 12-bit:
 → bit 11 (MSB) → ... → bit 0 (LSB)
 ```
 
-Đây là mô hình để hiểu **thuật toán SAR**. Timing phần cứng STM32F1 không được suy ra thành đúng `12.0 ADCCLK cycles`; timing thực tế được trình bày tại **8.7**.
-
+Đây là mô hình để hiểu **thuật toán SAR**. Không được suy ra rằng ADC STM32F1 chỉ mất đúng `12.0` chu kỳ `ADCCLK`; timing phần cứng được trình bày tại **8.7**.
 
 ---
 
@@ -13909,7 +13912,7 @@ ADC_Code = 2048
 ```
 
 
-### Ví dụ SAR 12-bit: `VIN = 2.65 V`, reference = `3.3 V`
+### Ví dụ SAR 12-bit: `VIN = 2.65 V`, `VREF+ = 3.3 V`
 
 Giả sử:
 
@@ -13920,9 +13923,9 @@ VREF+ = 3.3 V
 N     = 12 bit
 ```
 
-Nếu board dùng nguồn analog `VDDA = 3.3 V` và `VREF+` được nối cùng mức đó thì có thể nói ngắn gọn nguồn/reference ADC là `3.3 V`. Tuy nhiên về thuật ngữ, ADC so sánh theo **`VREF+ / VREF-`**, không phải một `VCC` chung chung.
+Nếu bo mạch dùng `VDDA = 3.3 V` và `VREF+` được nối cùng mức đó, có thể nói ngắn gọn điện áp tham chiếu ADC là `3.3 V`. Tuy nhiên khi nói chính xác về ADC nên dùng **`VREF+ / VREF-`**, không dùng `VCC` như một tên chung.
 
-Bước lượng tử hóa lý tưởng:
+Độ lớn một bước lượng tử hóa lý tưởng:
 
 ```text
 1 LSB
@@ -13931,17 +13934,17 @@ Bước lượng tử hóa lý tưởng:
 ≈ 0.8057 mV
 ```
 
-Để minh họa **thuật toán SAR lý tưởng**, có thể mô hình mức thử của DAC là:
+Để minh họa thuật toán SAR, mô hình điện áp thử của DAC nội bộ là:
 
 ```text
-VDAC(trial)
+VDAC(thử)
 =
-trial_code × 3.3 / 4096
+mã_thử × 3.3 / 4096
 ```
 
-Sau sampling, SAR thử lần lượt từ bit 11 tới bit 0:
+Sau giai đoạn lấy mẫu, SAR thử lần lượt từ bit 11 tới bit 0:
 
-| Bước | Bit thử | Trial code | Decimal | `VDAC` xấp xỉ | Quyết định |
+| Bước | Bit thử | Mã thử | Giá trị thập phân | `VDAC` xấp xỉ | Quyết định |
 |---:|---|---|---:|---:|---|
 | 1 | bit 11 | `1000 0000 0000` | 2048 | `1.6500 V` | `2.65 ≥ 1.6500` → giữ `1` |
 | 2 | bit 10 | `1100 0000 0000` | 3072 | `2.4750 V` | `2.65 ≥ 2.4750` → giữ `1` |
@@ -13956,58 +13959,47 @@ Sau sampling, SAR thử lần lượt từ bit 11 tới bit 0:
 | 11 | bit 1 | `1100 1101 1010` | 3290 | `2.6506 V` | `2.65 < 2.6506` → xóa về `0` |
 | 12 | bit 0 | `1100 1101 1001` | 3289 | `2.6498 V` | `2.65 ≥ 2.6498` → giữ `1` |
 
-Kết quả của mô hình SAR lý tưởng này:
+Kết quả của mô hình SAR lý tưởng:
 
 ```text
-Binary
+Nhị phân
 → 1100 1101 1001
 
-Decimal
+Thập phân
 → 3289
 
-Hex
+Thập lục phân
 → 0xCD9
 ```
 
-Có thể kiểm tra biên cuối:
+Có thể kiểm tra khoảng điện áp cuối cùng:
 
 ```text
-code 3289
+mã 3289
 → 3289 × 3.3 / 4096
 ≈ 2.64983 V
 
-code 3290
+mã 3290
 → 3290 × 3.3 / 4096
 ≈ 2.65063 V
 
 2.64983 V ≤ 2.65 V < 2.65063 V
-→ code 3289
+→ mã 3289
 ```
 
-Điểm quan trọng:
+Điểm cần nhớ:
 
 ```text
-12-bit SAR
+ADC SAR 12-bit
 → 12 lần quyết định bit
 
 không đồng nghĩa
-→ STM32F1 hoàn tất conversion trong đúng 12.0 ADCCLK cycles
+→ STM32F1 hoàn tất toàn bộ conversion trong đúng 12.0 chu kỳ ADCCLK
 ```
 
-Timing thực tế của STM32F1 vẫn dùng:
+Timing thực tế của STM32F1 được trình bày tại **8.7**.
 
-```text
-total conversion time
-=
-sampling time
-+
-12.5 ADCCLK cycles
-```
-
-như trình bày tại **8.7**.
-
-> **Lưu ý:** Bảng trên là mô hình lý tưởng để nhìn rõ binary-search behavior của SAR ADC, không phải mô tả transistor-level của DAC nội bộ STM32F1. Sai số thực tế còn phụ thuộc reference, sampling, source impedance, offset/gain error, noise và các thông số ADC trong datasheet.
-
+> **Lưu ý:** Bảng trên là mô hình lý tưởng để nhìn rõ cơ chế tìm kiếm nhị phân của SAR ADC. Nó không mô tả chi tiết cấu trúc transistor của DAC nội bộ. Sai số thực tế còn phụ thuộc điện áp tham chiếu, thời gian lấy mẫu, trở kháng nguồn tín hiệu, sai số offset/gain, nhiễu và các thông số ADC trong datasheet.
 
 `ADC_DR` chứa **conversion result**, không chứa đơn vị Volt. Muốn đổi ADC code sang điện áp phải biết reference voltage thực tế tại thời điểm đo; các tín hiệu reference và analog supply nằm tại **8.3**.
 
@@ -14167,11 +14159,52 @@ Không dùng digital input mode cho pin ADC chỉ vì tín hiệu đi qua GPIO p
 ---
 
 <a id="muc-08-06"></a>
-## 8.6. Sampling Time
+## 8.6. Thời gian lấy mẫu (Sampling Time)
 
-Trước giai đoạn chuyển đổi, ADC sample analog input trong một số chu kỳ `ADCCLK`.
+**Thời gian lấy mẫu** là khoảng thời gian ADC nối channel đã chọn vào mạch **lấy mẫu và giữ (Sample-and-Hold)** để điện áp trên tụ lấy mẫu tiến đủ gần điện áp đầu vào `VIN`.
 
-Sampling time được cấu hình riêng theo channel:
+Có thể hình dung:
+
+```text
+Nguồn tín hiệu analog
+        ↓
+trở kháng nguồn
+        ↓
+công tắc lấy mẫu đang đóng
+        ↓
+tụ lấy mẫu của ADC
+```
+
+### Trong thời gian lấy mẫu, ADC đang làm gì?
+
+Ở mức khái niệm:
+
+```text
+1. Bộ chọn kênh analog chọn ADC channel
+        ↓
+2. Mạch lấy mẫu nối tín hiệu vào tụ lấy mẫu
+        ↓
+3. Tụ lấy mẫu nạp/xả theo điện áp VIN
+        ↓
+4. Điện áp trên tụ tiến dần về VIN
+        ↓
+5. Chờ đủ thời gian để sai số ổn định nằm trong giới hạn cho phép
+```
+
+Trong giai đoạn này:
+
+```text
+thuật toán SAR chưa bắt đầu quyết định 12 bit
+DAC nội bộ chưa thực hiện chuỗi thử MSB → LSB
+```
+
+Điểm quan trọng là tụ lấy mẫu **không cần "bằng VIN tuyệt đối"**; yêu cầu thực tế là điện áp trên tụ phải ổn định **đủ gần `VIN` trong sai số cho phép của hệ thống**.
+
+Khi thời gian lấy mẫu kết thúc, điện áp đã lấy mẫu được giữ lại để giai đoạn xấp xỉ liên tiếp sử dụng. Cơ chế SAR sau đó được trình bày tại **8.1** và **8.7**.
+
+### Cấu hình thời gian lấy mẫu
+
+STM32F1 cho phép cấu hình riêng theo channel:
 
 ```text
 ADC_SMPR1
@@ -14183,139 +14216,240 @@ ADC_SMPR2
 
 Mỗi channel dùng `SMPx[2:0]`:
 
-| `SMPx` | Sampling time |
+| `SMPx` | Thời gian lấy mẫu |
 |---|---:|
-| `000` | 1.5 cycles |
-| `001` | 7.5 cycles |
-| `010` | 13.5 cycles |
-| `011` | 28.5 cycles |
-| `100` | 41.5 cycles |
-| `101` | 55.5 cycles |
-| `110` | 71.5 cycles |
-| `111` | 239.5 cycles |
+| `000` | 1.5 chu kỳ `ADCCLK` |
+| `001` | 7.5 chu kỳ `ADCCLK` |
+| `010` | 13.5 chu kỳ `ADCCLK` |
+| `011` | 28.5 chu kỳ `ADCCLK` |
+| `100` | 41.5 chu kỳ `ADCCLK` |
+| `101` | 55.5 chu kỳ `ADCCLK` |
+| `110` | 71.5 chu kỳ `ADCCLK` |
+| `111` | 239.5 chu kỳ `ADCCLK` |
 
-ADC dùng mạch sample-and-hold:
-
-```text
-Analog source
-     ↓
-source impedance
-     ↓
-sample-and-hold capacitor
-     ↓
-ADC core
-```
-
-Nguồn có trở kháng cao cần nhiều thời gian hơn để điện áp trên sample-and-hold capacitor tiến đủ gần `VIN`. Vì vậy:
+Công thức đổi sang thời gian thực:
 
 ```text
-sampling time quá ngắn
-→ conversion result có thể sai
-```
-
-Sampling time phải được chọn dựa trên:
-
-```text
-source impedance
-ADCCLK
-accuracy requirement
-sampling-rate requirement
-electrical characteristics
-```
-
-Mục **8.7** dùng sampling time này để tính tổng conversion time.
-
----
-
-<a id="muc-08-07"></a>
-## 8.7. Conversion Time
-
-Với STM32F1:
-
-```text
-conversion time
+Tsample
 =
-sampling time
-+
-12.5 ADCCLK cycles
+số chu kỳ lấy mẫu / fADCCLK
 ```
-
-Cơ chế SAR và 12 lần quyết định bit từ MSB đến LSB đã được trình bày tại **8.1–8.2**. Tại đây chỉ cần tách rõ:
-
-```text
-SAR algorithm
-→ 12 lần quyết định bit
-
-STM32F1 hardware timing sau sampling
-→ 12.5 ADCCLK cycles
-```
-
-Vì vậy không được đồng nhất:
-
-```text
-12 bit
-→ 12.0 ADCCLK cycles
-```
-
-Phần `+0.5 cycle` **không nên tự gán** cho một chức năng cụ thể như:
-
-```text
-latch ADC_DR
-reset logic
-ổn định DAC nội bộ
-chuẩn bị lần sampling tiếp theo
-```
-
-vì Reference Manual chỉ quy định timing là `12.5 ADCCLK cycles` nhưng không phân rã `0.5 cycle` đó thành một công đoạn nội bộ cụ thể.
-
-Có thể nhớ:
-
-```text
-Sampling phase
-→ sample analog input
-
-Successive-approximation phase
-→ quyết định 12 bit từ MSB đến LSB
-
-STM32F1 conversion timing sau sampling
-→ 12.5 ADCCLK cycles
-
-Total conversion time
-→ sampling time + 12.5 ADCCLK cycles
-```
-
 
 Ví dụ:
 
 ```text
-ADCCLK = 14 MHz
-sampling time = 1.5 cycles
+ADCCLK = 12 MHz
+thời gian lấy mẫu = 55.5 chu kỳ
 
-→ total = 14 cycles
-→ Tconv = 1 µs
+Tsample
+= 55.5 / 12 MHz
+≈ 4.625 µs
 ```
 
-Ví dụ khác:
+### Vì sao trở kháng nguồn tín hiệu quan trọng?
+
+Đường nạp tụ có thể hình dung như một mạch RC:
+
+```text
+Nguồn VIN
+   ↓
+trở kháng nguồn + trở kháng đường vào ADC
+   ↓
+tụ lấy mẫu
+```
+
+Nếu trở kháng nguồn lớn:
+
+```text
+dòng nạp/xả nhỏ hơn
+→ tụ cần lâu hơn để tiến đủ gần VIN
+→ phải chọn thời gian lấy mẫu dài hơn
+```
+
+Nếu chọn thời gian lấy mẫu quá ngắn:
+
+```text
+tụ chưa ổn định đủ gần VIN
+        ↓
+ADC bắt đầu xấp xỉ từ một điện áp mẫu chưa đúng
+        ↓
+kết quả chuyển đổi có thể sai
+```
+
+Vì vậy thời gian lấy mẫu cần được chọn dựa trên:
+
+```text
+trở kháng nguồn tín hiệu
+ADCCLK
+độ chính xác cần đạt
+tốc độ lấy mẫu mong muốn
+đặc tính điện trong datasheet
+```
+
+> **Điểm cần nhớ:** Thời gian lấy mẫu là thời gian để **thu nhận và ổn định điện áp analog trên tụ lấy mẫu**. Trong khoảng này, quá trình quyết định 12 bit của SAR chưa diễn ra.
+
+---
+
+<a id="muc-08-07"></a>
+## 8.7. Thời gian chuyển đổi (Conversion Time)
+
+Trong cách tính timing của STM32F1, **thời gian chuyển đổi `Tconv`** là **tổng thời gian từ lúc ADC bắt đầu lấy mẫu cho tới khi kết quả chuyển đổi hoàn tất**.
+
+Vì vậy cần tách hai giai đoạn:
+
+| Giai đoạn | ADC thực hiện gì? | Thời gian |
+|---|---|---:|
+| **Lấy mẫu** | Nối channel vào mạch lấy mẫu và giữ; tụ lấy mẫu nạp/xả để điện áp tiến đủ gần `VIN`. | Do `SMPx[2:0]` chọn tại **8.6** |
+| **Xấp xỉ liên tiếp** | Giữ điện áp đã lấy mẫu; SAR, DAC nội bộ và bộ so sánh lần lượt quyết định 12 bit từ MSB tới LSB. | `12.5` chu kỳ `ADCCLK` |
+
+Do đó:
+
+```text
+Tconv
+=
+Tsample
++
+12.5 chu kỳ ADCCLK
+```
+
+hay nếu tính theo số chu kỳ:
+
+```text
+số chu kỳ tổng
+=
+số chu kỳ lấy mẫu
++
+12.5
+```
+
+### Trong 12.5 chu kỳ sau lấy mẫu, ADC đang làm gì?
+
+Sau khi giai đoạn lấy mẫu kết thúc:
+
+```text
+điện áp mẫu được giữ
+        ↓
+SAR thử bit 11 (MSB)
+        ↓
+DAC nội bộ tạo VDAC
+        ↓
+bộ so sánh so sánh điện áp mẫu với VDAC
+        ↓
+giữ hoặc xóa bit 11
+        ↓
+thử bit 10
+        ↓
+...
+        ↓
+quyết định bit 0 (LSB)
+        ↓
+hoàn tất kết quả chuyển đổi
+```
+
+Với ADC 12-bit:
+
+```text
+thuật toán SAR
+→ có 12 lần quyết định bit
+
+timing phần cứng STM32F1 sau lấy mẫu
+→ được quy định là 12.5 chu kỳ ADCCLK
+```
+
+Hai câu trên **không mâu thuẫn**:
+
+```text
+12 bit
+→ 12 lần quyết định bit
+
+không đồng nghĩa
+→ phần cứng chỉ cần đúng 12.0 chu kỳ ADCCLK
+```
+
+Phần `+0.5` chu kỳ **không nên tự gán** cho một công việc nội bộ cụ thể như:
+
+```text
+chốt ADC_DR
+reset logic
+ổn định DAC nội bộ
+chuẩn bị lần lấy mẫu tiếp theo
+```
+
+vì Reference Manual chỉ quy định timing là `12.5 ADCCLK cycles` nhưng không phân rã `0.5` chu kỳ đó thành một công đoạn riêng.
+
+Khi kết quả chuyển đổi hoàn tất, dữ liệu của Regular conversion được đưa vào `ADC_DR`; cờ `EOC` và data register được trình bày tại **8.14**.
+
+### Ví dụ 1 — thời gian lấy mẫu ngắn nhất
+
+```text
+ADCCLK = 14 MHz
+thời gian lấy mẫu = 1.5 chu kỳ
+
+tổng số chu kỳ
+= 1.5 + 12.5
+= 14 chu kỳ
+
+Tconv
+= 14 / 14 MHz
+= 1 µs
+```
+
+Có thể nhìn theo hai giai đoạn:
+
+```text
+1.5 chu kỳ
+→ lấy mẫu
+
+12.5 chu kỳ
+→ xấp xỉ liên tiếp để tạo kết quả 12-bit
+
+tổng
+→ 14 chu kỳ
+```
+
+### Ví dụ 2 — thời gian lấy mẫu dài hơn
 
 ```text
 ADCCLK = 12 MHz
-sampling time = 55.5 cycles
+thời gian lấy mẫu = 55.5 chu kỳ
 
-→ total = 68 cycles
-→ Tconv ≈ 5.67 µs
+tổng số chu kỳ
+= 55.5 + 12.5
+= 68 chu kỳ
+
+Tconv
+= 68 / 12 MHz
+≈ 5.67 µs
 ```
 
-Cần phân biệt:
+Trong đó:
 
 ```text
-sampling time
-→ thời gian lấy mẫu analog input
+Tsample
+= 55.5 / 12 MHz
+≈ 4.625 µs
 
-conversion time
-→ sampling time + 12.5 cycles
+phần xấp xỉ liên tiếp
+= 12.5 / 12 MHz
+≈ 1.042 µs
 ```
 
-Giá trị `ADCCLK` được xác định tại **8.4**; các lựa chọn sampling time nằm tại **8.6**.
+### Phân biệt ba khái niệm dễ nhầm
+
+```text
+Thời gian lấy mẫu
+→ chỉ giai đoạn thu nhận VIN vào tụ lấy mẫu
+
+Giai đoạn xấp xỉ liên tiếp
+→ SAR quyết định 12 bit
+→ STM32F1: 12.5 chu kỳ ADCCLK
+
+Thời gian chuyển đổi Tconv
+→ toàn bộ quá trình
+→ thời gian lấy mẫu + 12.5 chu kỳ ADCCLK
+```
+
+> **Điểm cần nhớ:** `12-bit` nói về **số bit cần quyết định**, còn `12.5 ADCCLK cycles` là **timing phần cứng của giai đoạn xấp xỉ sau lấy mẫu**. Tổng `Tconv` luôn phải cộng thêm thời gian lấy mẫu đã chọn tại **8.6**.
 
 ---
 
