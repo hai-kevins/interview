@@ -10840,6 +10840,12 @@ frame 8-bit
 → cần 8 chu kỳ SCK
 ```
 
+Cách diễn đạt phù hợp khi phỏng vấn:
+
+> **SPI Full-Duplex có thể hình dung như hai Shift Register trao đổi dữ liệu đồng thời. Với frame 8-bit và MSB First, mỗi chu kỳ SCK trao đổi một bit theo thứ tự từ bit 7 đến bit 0. Sau 8 chu kỳ, mỗi phía đã nhận đủ một byte từ phía còn lại. Cạnh Sample và Shift cụ thể phụ thuộc CPOL/CPHA.**
+
+Đây cũng là lý do khi Master chỉ muốn **đọc**, nó vẫn phải truyền một dummy byte. Các bit dummy được dịch ra MOSI để Master tạo đủ xung SCK, trong khi dữ liệu thật của Slave được dịch vào Master qua MISO.
+
 ### Dummy byte / dummy frame
 
 Trong SPI **Full-Duplex**, mỗi xung `SCK` đồng thời dịch:
@@ -11320,6 +11326,219 @@ nhận frame từ Slave
 ```
 
 Full-Duplex và data path đã được giải thích tại **7.4** và **7.9**, nên ví dụ không lặp lại cơ chế đó.
+
+### SPI không có bit R/W chuẩn chung
+
+Khác với I2C, SPI **không quy định một bit Read/Write chung ở mức giao thức bus**.
+
+Với I2C 7-bit:
+
+```text
+Address[6:0] + R/W
+```
+
+bit `R/W` là một phần của định dạng address phase do chuẩn I2C quy định.
+
+Trong SPI, bản thân bus chỉ quy định cách truyền bit qua:
+
+```text
+SCK
+MOSI
+MISO
+NSS / CS
+```
+
+Còn ý nghĩa của byte đầu tiên như:
+
+```text
+Read
+Write
+Register Address
+Command
+Opcode
+```
+
+được **nhà sản xuất từng Slave tự định nghĩa trong datasheet**.
+
+Vì vậy khi viết SPI driver, không được mặc định rằng mọi Slave đều có:
+
+```text
+bit 7 = Read/Write
+```
+
+mà phải đọc đúng protocol của linh kiện đang sử dụng.
+
+Hai cách tổ chức rất thường gặp là:
+
+#### Kiểu A — Gộp R/W vào byte command đầu tiên
+
+Cách này thường gặp ở các cảm biến hoặc peripheral có nhiều register nội bộ.
+
+Một byte đầu tiên có thể chứa:
+
+```text
++-------+-------------------------------+
+|  R/W  | Register Address / Field khác |
++-------+-------------------------------+
+```
+
+Ví dụ một thiết bị có thể quy định:
+
+```text
+bit 7
+→ R/W
+
+bit 6..0
+→ Register Address
+```
+
+hoặc sử dụng một số bit còn lại cho chức năng khác.
+
+Ví dụ ADXL345 định nghĩa byte giao tiếp SPI theo dạng:
+
+```text
+bit 7
+→ R/W
+
+bit 6
+→ MB (Multiple Byte)
+
+bit 5..0
+→ Register Address
+```
+
+Do đó không nên học thuộc một format cố định kiểu:
+
+```text
+R/W + 7-bit Register Address
+```
+
+cho mọi thiết bị SPI.
+
+Luồng khái niệm:
+
+```text
+CS Low
+  ↓
+Command byte
+[R/W + Address / Control fields]
+  ↓
+Data
+  ↓
+CS High
+```
+
+Trong kiểu này, một bit hoặc field trong command cho Slave biết transaction hiện tại là đọc hay ghi.
+
+#### Kiểu B — Dùng opcode riêng cho từng thao tác
+
+Cách này rất phổ biến ở NOR Flash như W25Qxx.
+
+Thay vì có một bit R/W riêng, mỗi thao tác có một opcode riêng:
+
+```text
+0x03
+→ Read Data
+
+0x02
+→ Page Program
+
+0x20
+→ Sector Erase
+
+0x05
+→ Read Status Register
+
+0x06
+→ Write Enable
+```
+
+Ví dụ đọc dữ liệu:
+
+```text
+CS Low
+  ↓
+0x03
+  ↓
+Address
+  ↓
+Dummy transmission để tạo SCK
+  ↓
+Data từ Slave trên MISO
+  ↓
+CS High
+```
+
+Ví dụ ghi dữ liệu:
+
+```text
+CS Low
+  ↓
+0x02
+  ↓
+Address
+  ↓
+Data từ Master trên MOSI
+  ↓
+CS High
+```
+
+Điểm quan trọng là:
+
+```text
+0x03
+→ toàn bộ byte opcode có nghĩa là Read Data
+
+0x02
+→ toàn bộ byte opcode có nghĩa là Page Program
+```
+
+Không có một bit R/W riêng cần tách ra khỏi hai opcode này.
+
+### MOSI/MISO không đổi hướng theo Read/Write
+
+Với SPI 4-wire:
+
+```text
+MOSI
+→ Master → Slave
+
+MISO
+→ Slave → Master
+```
+
+Hai đường này giữ nguyên hướng điện theo vai trò Master/Slave.
+
+Command Read/Write chỉ cho Slave biết:
+
+```text
+transaction hiện tại có ý nghĩa gì
+và
+ở giai đoạn nào dữ liệu trên MOSI/MISO là dữ liệu hợp lệ
+```
+
+Nó không làm MOSI và MISO đổi hướng giống như cách một đường SDA của I2C được dùng hai chiều.
+
+Có thể nhớ:
+
+```text
+I2C
+→ chuẩn bus quy định Address + R/W
+
+SPI
+→ không có R/W bit chuẩn chung
+→ datasheet của Slave định nghĩa protocol
+```
+
+Hai dạng phổ biến:
+
+```text
+Kiểu A
+→ R/W nằm trong command byte cùng Address/Control field
+
+Kiểu B
+→ mỗi thao tác có opcode riêng
+```
 
 ---
 
