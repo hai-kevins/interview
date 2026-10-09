@@ -11674,16 +11674,6 @@ SCL = High
 → dữ liệu được coi là hợp lệ để Receiver lấy mẫu
 ```
 
-Không nên gọi I2C là `Level-triggered`. Cách hiểu chính xác hơn là:
-
-```text
-SCL Low
-→ Data Change / Data Setup
-
-SCL High
-→ Data Valid
-```
-
 Trong khoảng `SCL = Low`, Transmitter được phép thay đổi SDA để chuẩn bị bit kế tiếp. Tuy nhiên, SDA vẫn phải đáp ứng các yêu cầu timing như setup time và hold time; không nên hiểu rằng SDA có thể thay đổi tùy ý tới sát thời điểm SCL lên High.
 
 Trong khoảng `SCL = High`, SDA phải giữ ổn định đối với một bit dữ liệu thông thường.
@@ -11715,8 +11705,6 @@ SCL HIGH + SDA ↓
 SCL HIGH + SDA ↑
 → STOP
 ```
-
-Phần so sánh timing giữa I2C và SPI được tập trung tại **7.30** để tránh lặp logic.
 
 ### START condition
 
