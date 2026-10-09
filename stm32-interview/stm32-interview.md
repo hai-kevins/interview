@@ -4499,6 +4499,194 @@ Vì output driver không chủ động tạo mức High, đường tín hiệu p
 | Khi xuất logic `1` | High | High-Z |
 | Ứng dụng điển hình | GPIO output, USART TX, SPI output | I2C SDA/SCL |
 
+### Source Current và Sink Current
+
+`Source Current` và `Sink Current` mô tả **hướng dòng điện qua chân GPIO**.
+
+```text
+Source Current
+→ GPIO cấp dòng ra ngoài tải
+
+Sink Current
+→ GPIO hút dòng từ tải về GND
+```
+
+#### Source Current
+
+Khi GPIO ở mức High và cấp dòng cho tải:
+
+```text
+GPIO HIGH
+   │
+   └──→ dòng điện
+          │
+          ↓
+         tải
+          │
+         GND
+```
+
+Ví dụ:
+
+```text
+GPIO HIGH
+→ điện trở
+→ LED
+→ GND
+```
+
+Khi đó GPIO đang:
+
+```text
+source current
+```
+
+Dòng điện đi **ra khỏi chân GPIO**.
+
+#### Sink Current
+
+Khi tải nối về phía `VDD` và GPIO kéo xuống Low:
+
+```text
+VDD
+ │
+tải
+ │
+ ↓ dòng điện
+GPIO LOW
+ │
+GND
+```
+
+Ví dụ:
+
+```text
+VDD
+→ điện trở
+→ LED
+→ GPIO LOW
+```
+
+Khi đó GPIO đang:
+
+```text
+sink current
+```
+
+Dòng điện đi **vào chân GPIO** rồi được transistor output kéo xuống GND.
+
+Có thể nhớ:
+
+```text
+Source
+→ chân GPIO cấp dòng
+
+Sink
+→ chân GPIO hút dòng
+```
+
+#### Liên hệ với thông số điện của GPIO
+
+Datasheet thường dùng:
+
+```text
+IOH
+→ output High current
+→ liên quan tới source current
+
+IOL
+→ output Low current
+→ liên quan tới sink current
+```
+
+Khi dòng tăng quá lớn, mức điện áp output không còn lý tưởng:
+
+```text
+Source current tăng
+→ VOH có thể giảm
+
+Sink current tăng
+→ VOL có thể tăng
+```
+
+Vì vậy không được chỉ nhìn absolute maximum current; phải kiểm tra các điều kiện `VOH`, `VOL`, `IOH`, `IOL` trong datasheet của đúng MCU.
+
+#### Liên hệ với Push-Pull
+
+Push-Pull có thể thực hiện cả hai hướng:
+
+```text
+GPIO HIGH
+→ transistor phía High hoạt động
+→ source current
+
+GPIO LOW
+→ transistor phía Low hoạt động
+→ sink current
+```
+
+Do đó Push-Pull có thể chủ động tạo cả mức High và mức Low.
+
+#### Liên hệ với Open-Drain và I2C
+
+Open-Drain chỉ có transistor kéo xuống:
+
+```text
+output = 0
+→ transistor ON
+→ sink current
+→ kéo line xuống Low
+
+output = 1
+→ transistor OFF
+→ release line
+→ GPIO không source current để tạo High
+```
+
+Với I2C:
+
+```text
+VDD
+ │
+Rp
+ │
+SDA / SCL
+ │
+Open-Drain transistor
+ │
+GND
+```
+
+Khi thiết bị kéo bus xuống Low:
+
+```text
+VDD
+→ Rp
+→ SDA/SCL
+→ chân Open-Drain
+→ GND
+```
+
+thiết bị đang **sink current**.
+
+Khi thiết bị release line:
+
+```text
+Open-Drain transistor OFF
+→ không sink current
+→ pull-up đưa line lên High
+```
+
+Đây cũng là lý do khi tính điện trở pull-up I2C, công thức giới hạn dưới sử dụng `IOL`:
+
+```text
+Rp(min) = (VDD - VOL(max)) / IOL
+```
+
+Trong đó `IOL` là dòng sink mà output được bảo đảm vẫn giữ `VOL` trong giới hạn yêu cầu.
+
+> **Cách trả lời phỏng vấn:** Source Current là dòng do GPIO cấp ra tải khi output High; Sink Current là dòng đi từ tải vào GPIO khi output Low. Push-Pull có thể source và sink current, còn Open-Drain chỉ chủ động sink current khi kéo line xuống Low; mức High được tạo bằng pull-up khi transistor được release.
+
 Việc I2C dùng Alternate Function Open-Drain chỉ được dẫn chiếu tại **3.15**; chi tiết bus I2C thuộc **Chương 7**.
 
 ---
