@@ -10840,12 +10840,6 @@ frame 8-bit
 → cần 8 chu kỳ SCK
 ```
 
-Cách diễn đạt phù hợp khi phỏng vấn:
-
-> **SPI Full-Duplex có thể hình dung như hai Shift Register trao đổi dữ liệu đồng thời. Với frame 8-bit và MSB First, mỗi chu kỳ SCK trao đổi một bit theo thứ tự từ bit 7 đến bit 0. Sau 8 chu kỳ, mỗi phía đã nhận đủ một byte từ phía còn lại. Cạnh Sample và Shift cụ thể phụ thuộc CPOL/CPHA.**
-
-Đây cũng là lý do khi Master chỉ muốn **đọc**, nó vẫn phải truyền một dummy byte. Các bit dummy được dịch ra MOSI để Master tạo đủ xung SCK, trong khi dữ liệu thật của Slave được dịch vào Master qua MISO.
-
 ### Dummy byte / dummy frame
 
 Trong SPI **Full-Duplex**, mỗi xung `SCK` đồng thời dịch:
