@@ -10736,69 +10736,87 @@ Master Shift Register: M7 M6 M5 M4 M3 M2 M1 M0
 Slave  Shift Register: S7 S6 S5 S4 S3 S2 S1 S0
 ```
 
-Trong mỗi **chu kỳ SCK**, hai phía đồng thời:
+Trong mỗi **chu kỳ SCK**, Master và Slave đồng thời trao đổi một bit:
 
 ```text
-Master đưa 1 bit ra MOSI
-Slave  đưa 1 bit ra MISO
+Master đưa bit hiện tại ra MOSI
+Slave  đưa bit hiện tại ra MISO
 
-Master lấy mẫu 1 bit từ MISO
-Slave  lấy mẫu 1 bit từ MOSI
+Master lấy mẫu bit từ MISO
+Slave  lấy mẫu bit từ MOSI
 
-sau đó Shift Register dịch sang bit kế tiếp
+Shift Register chuyển sang bit kế tiếp
 ```
 
-Cạnh nào dùng để **Sample** và cạnh nào dùng để **Shift** phụ thuộc `CPOL/CPHA` như đã trình bày tại **7.6**. Vì vậy, nên hiểu đây là luồng logic của từng bit-time, không phải mọi SPI mode đều có cùng thứ tự cạnh vật lý.
+Tuy nhiên, không nên hiểu rằng mọi SPI mode đều có thứ tự vật lý cố định là **“đưa bit ra trước rồi ngay sau đó đọc bit vào”**. Cạnh clock dùng để **Sample** và cạnh dùng để **Shift** phụ thuộc `CPOL/CPHA` như đã trình bày tại **7.6**.
 
-Với **MSB First**, quá trình trao đổi có thể hình dung:
+Vì vậy, cách hiểu chính xác hơn là:
+
+```text
+mỗi bit-time
+→ có một thời điểm dữ liệu phải ổn định để được Sample
+→ có một cạnh dùng để Shift sang bit kế tiếp
+
+cạnh nào thực hiện nhiệm vụ nào
+→ phụ thuộc SPI mode
+```
+
+Với **MSB First**, thứ tự các bit được trao đổi có thể hình dung:
 
 ```text
 Chu kỳ 1:
-MOSI: M7 ─────────────→ Slave
-MISO: S7 ←───────────── Master
+MOSI: Master M7 ─────────→ Slave
+MISO: Master    ←───────── Slave S7
 
 Chu kỳ 2:
-MOSI: M6 ─────────────→ Slave
-MISO: S6 ←───────────── Master
+MOSI: Master M6 ─────────→ Slave
+MISO: Master    ←───────── Slave S6
 
 Chu kỳ 3:
-MOSI: M5 ─────────────→ Slave
-MISO: S5 ←───────────── Master
+MOSI: Master M5 ─────────→ Slave
+MISO: Master    ←───────── Slave S5
 
 ...
 
 Chu kỳ 7:
-MOSI: M1 ─────────────→ Slave
-MISO: S1 ←───────────── Master
+MOSI: Master M1 ─────────→ Slave
+MISO: Master    ←───────── Slave S1
 
 Chu kỳ 8:
-MOSI: M0 ─────────────→ Slave
-MISO: S0 ←───────────── Master
+MOSI: Master M0 ─────────→ Slave
+MISO: Master    ←───────── Slave S0
 ```
 
-Có thể xem Shift Register dịch như sau ở mức khái niệm:
+Có thể hình dung Shift Register của Master dịch như sau ở mức khái niệm:
 
 ```text
-Master:
+Ban đầu:
 [M7 M6 M5 M4 M3 M2 M1 M0]
- ↓ phát M7                  ← nhận S7
+
+sau khi trao đổi bit đầu:
 [M6 M5 M4 M3 M2 M1 M0 S7]
- ↓ phát M6                  ← nhận S6
+
+sau khi trao đổi bit tiếp theo:
 [M5 M4 M3 M2 M1 M0 S7 S6]
- ...
-sau 8 chu kỳ
+
+...
+
+sau 8 chu kỳ:
 [S7 S6 S5 S4 S3 S2 S1 S0]
 ```
 
-Đồng thời ở Slave:
+Đồng thời Shift Register của Slave:
 
 ```text
-Slave:
+Ban đầu:
 [S7 S6 S5 S4 S3 S2 S1 S0]
- ↓ phát S7                  ← nhận M7
+
+sau khi trao đổi bit đầu:
 [S6 S5 S4 S3 S2 S1 S0 M7]
- ...
-sau 8 chu kỳ
+
+...
+
+sau 8 chu kỳ:
 [M7 M6 M5 M4 M3 M2 M1 M0]
 ```
 
@@ -10806,24 +10824,27 @@ Kết quả sau 8 chu kỳ SCK:
 
 ```text
 byte ban đầu của Master
-→ đã được dịch sang Slave
+→ Slave đã nhận đủ
 
 byte ban đầu của Slave
-→ đã được dịch sang Master
+→ Master đã nhận đủ
 ```
 
-Vì vậy SPI Full-Duplex có thể được hình dung như **hai Shift Register trao đổi đồng thời một frame dữ liệu**:
+Do đó, SPI Full-Duplex có thể được hình dung như **hai Shift Register trao đổi đồng thời một frame dữ liệu**:
 
 ```text
-Master byte  ─────→ Slave
-Master byte  ←───── Slave byte
+Master byte ─────────→ Slave
+Master      ←───────── Slave byte
 
-8-bit frame
+frame 8-bit
 → cần 8 chu kỳ SCK
 ```
 
-Đây cũng là lý do khi Master chỉ muốn **đọc**, nó vẫn phải truyền một dummy byte: 8 bit dummy được dịch ra MOSI để tạo đủ 8 chu kỳ SCK, trong khi 8 bit dữ liệu thật của Slave được dịch vào Master.
+Cách diễn đạt phù hợp khi phỏng vấn:
 
+> **SPI Full-Duplex có thể hình dung như hai Shift Register trao đổi dữ liệu đồng thời. Với frame 8-bit và MSB First, mỗi chu kỳ SCK trao đổi một bit theo thứ tự từ bit 7 đến bit 0. Sau 8 chu kỳ, mỗi phía đã nhận đủ một byte từ phía còn lại. Cạnh Sample và Shift cụ thể phụ thuộc CPOL/CPHA.**
+
+Đây cũng là lý do khi Master chỉ muốn **đọc**, nó vẫn phải truyền một dummy byte. Các bit dummy được dịch ra MOSI để Master tạo đủ xung SCK, trong khi dữ liệu thật của Slave được dịch vào Master qua MISO.
 
 ### Dummy byte / dummy frame
 
