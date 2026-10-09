@@ -4335,6 +4335,8 @@ Analog path
 
 `Push-Pull` và `Open-Drain` là hai cách hoạt động của output driver, được giải thích tại **3.6**.
 
+![RM0008 Figure 13 — Basic structure of a standard I/O port bit](assets/chapter-3/figure-13.png)
+
 ### 5-V tolerant I/O
 
 Một số pin STM32F1 có đặc tính 5-V tolerant. Không được suy ra mọi GPIO đều chịu được 5 V; phải kiểm tra đúng pin và electrical characteristics của part number đang dùng.
@@ -4353,6 +4355,8 @@ Input with Pull-Up/Pull-Down
 ```
 
 Bit encoding `MODE/CNF` của từng cấu hình được tập trung tại **3.9**.
+
+![RM0008 Figure 15 — Input floating/pull-up/pull-down configurations](assets/chapter-3/figure-15.png)
 
 ### Floating Input
 
@@ -4489,6 +4493,8 @@ output = 1
 ```
 
 Vì output driver không chủ động tạo mức High, đường tín hiệu phải có cơ chế pull-up phù hợp nếu cần mức High xác định.
+
+![RM0008 Figure 16 — Output configuration](assets/chapter-3/figure-16.png)
 
 ### So sánh
 
@@ -5151,6 +5157,8 @@ Alternate Function Output Open-Drain
 
 Bit encoding nằm tại **3.9**.
 
+![RM0008 Figure 17 — Alternate function configuration](assets/chapter-3/figure-17.png)
+
 ### Peripheral input trên STM32F1
 
 STM32F1 **không có một `Alternate Function Input` encoding riêng trong `MODE/CNF`**.
@@ -5284,6 +5292,8 @@ analog peripheral
 GPIO dùng làm ADC input phải được cấu hình Analog mode. Tắt digital input path cũng tránh các chuyển mức digital không cần thiết trên tín hiệu analog.
 
 Bit encoding đã được tổng hợp tại **3.9**; cấu hình ADC chi tiết thuộc **Chương 8**.
+
+![RM0008 Figure 18 — High impedance-analog configuration](assets/chapter-3/figure-18.png)
 
 ---
 
