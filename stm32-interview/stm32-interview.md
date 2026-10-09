@@ -13819,6 +13819,8 @@ Tín hiệu tương tự đầu vào
        Mã số ADC
 ```
 
+![Sơ đồ cấu trúc và luồng hoạt động của SAR ADC](assets/chapter-8/sar-adc.png)
+
 ### Hoạt động theo thuật toán tìm kiếm nhị phân
 
 Giả sử ADC có `N` bit:
