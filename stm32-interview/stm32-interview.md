@@ -11658,37 +11658,65 @@ release line để pull-up đưa line lên High
 
 Không nên hiểu I2C theo kiểu các thiết bị chủ động lái cả High và Low như Push-Pull.
 
-### Quy tắc thay đổi SDA theo SCL
+### I2C không có CPOL / CPHA như SPI
 
-Trong quá trình truyền bit dữ liệu:
+SPI cho phép cấu hình `CPOL` và `CPHA` để xác định mức nghỉ của clock và cạnh `SCK` dùng để Sample/Shift dữ liệu. Vì vậy SPI có 4 mode cơ bản.
+
+I2C không có cơ chế `CPOL/CPHA`. Timing giữa `SDA` và `SCL` được protocol quy định theo một quy tắc chung:
 
 ```text
 SCL = Low
 → SDA được phép thay đổi
+→ Transmitter chuẩn bị bit tiếp theo
 
 SCL = High
-→ SDA phải ổn định để phía nhận Sample
+→ SDA phải ổn định
+→ dữ liệu được coi là hợp lệ để Receiver lấy mẫu
 ```
 
-Hai ngoại lệ quan trọng khi `SCL = High` là:
+Không nên gọi I2C là `Level-triggered`. Cách hiểu chính xác hơn là:
 
 ```text
-SDA: High → Low
-→ START
+SCL Low
+→ Data Change / Data Setup
 
-SDA: Low → High
+SCL High
+→ Data Valid
+```
+
+Trong khoảng `SCL = Low`, Transmitter được phép thay đổi SDA để chuẩn bị bit kế tiếp. Tuy nhiên, SDA vẫn phải đáp ứng các yêu cầu timing như setup time và hold time; không nên hiểu rằng SDA có thể thay đổi tùy ý tới sát thời điểm SCL lên High.
+
+Trong khoảng `SCL = High`, SDA phải giữ ổn định đối với một bit dữ liệu thông thường.
+
+Hai ngoại lệ quan trọng là:
+
+```text
+SCL High + SDA: High → Low
+→ START hoặc Repeated START
+
+SCL High + SDA: Low → High
 → STOP
 ```
 
-Có thể nhớ:
+Có thể nhớ ngắn gọn:
 
 ```text
-START / STOP
-→ SDA thay đổi khi SCL đang High
+I2C:
 
-Data bit
-→ SDA thay đổi khi SCL đang Low
+SCL LOW
+→ CHANGE / SETUP
+
+SCL HIGH
+→ DATA VALID
+
+SCL HIGH + SDA ↓
+→ START / Repeated START
+
+SCL HIGH + SDA ↑
+→ STOP
 ```
+
+Phần so sánh timing giữa I2C và SPI được tập trung tại **7.30** để tránh lặp logic.
 
 ### START condition
 
@@ -11947,38 +11975,6 @@ Master Write
 Master Read
 → Master là Receiver
 → Slave là Transmitter
-```
-
-### I2C Read và SPI Read khác nhau ở đâu?
-
-Không nên kết luận giao thức nào “tốt hơn” chỉ từ cách đọc dữ liệu.
-
-Với SPI Full-Duplex:
-
-```text
-Master muốn nhận data
-→ vẫn phải phát clock
-→ đồng thời một bit cũng được shift ra MOSI
-→ thường dùng dummy byte/frame
-```
-
-Với I2C Master Read:
-
-```text
-Master muốn nhận data
-→ release SDA
-→ vẫn tiếp tục phát SCL
-→ Slave truyền data trên SDA
-```
-
-Khác biệt cốt lõi:
-
-```text
-SPI
-→ MOSI và MISO là hai đường dữ liệu riêng
-
-I2C
-→ SDA là một đường dữ liệu hai chiều Open-Drain
 ```
 
 ![RM0008 Figure 269 — I2C bus protocol](assets/chapter-7/figure-269.png)
@@ -12642,6 +12638,8 @@ Mục này chỉ tổng hợp **thứ tự cấu hình**; công thức timing kh
 <a id="muc-07-30"></a>
 ## 7.30. So sánh SPI và I2C
 
+Bảng này tập trung toàn bộ các điểm so sánh giữa SPI và I2C để tránh lặp lại ở các mục transaction riêng.
+
 | Đặc điểm | SPI | I2C |
 |---|---|---|
 | Đồng bộ | Có | Có |
@@ -12657,9 +12655,86 @@ Mục này chỉ tổng hợp **thứ tự cấu hình**; công thức timing kh
 | Repeated START | Không | Có |
 | Clock stretching | Không | Có |
 | Arbitration | Không theo cơ chế I2C | Có |
+| Clock polarity | Có `CPOL` | Không có `CPOL` |
+| Clock phase | Có `CPHA` | Không có `CPHA` |
+| Timing lấy mẫu | Sample/Shift theo cạnh `SCK` do `CPOL/CPHA` quyết định | `SDA` phải ổn định khi `SCL = High` |
+| Chuẩn bị bit tiếp theo | Theo cạnh Shift của SPI mode | `SDA` được phép thay đổi khi `SCL = Low` |
+| Số mode timing | 4 mode cơ bản | Một quy tắc timing chung, không có 4 mode như SPI |
+| Cách đọc dữ liệu | Master vẫn phải phát clock và đồng thời shift bit ra MOSI, thường dùng dummy byte/frame | Master release SDA, tiếp tục phát SCL để Slave truyền dữ liệu trên SDA |
 | State machine | Đơn giản hơn | Phức tạp hơn |
 
-Tư duy lựa chọn:
+### Khác nhau về Sample / Shift
+
+SPI xác định thời điểm Sample và Shift bằng các **cạnh SCK**:
+
+```text
+CPOL
+→ mức nghỉ của SCK
+
+CPHA
+→ chọn cạnh dùng để Sample / Shift
+```
+
+Do đó hai thiết bị SPI phải thống nhất mode.
+
+I2C không có `CPOL/CPHA`:
+
+```text
+SCL Low
+→ SDA được phép thay đổi để chuẩn bị bit mới
+
+SCL High
+→ SDA phải ổn định
+→ dữ liệu ở trạng thái hợp lệ để Receiver lấy mẫu
+```
+
+Ngoại lệ:
+
+```text
+SCL High + SDA ↓
+→ START / Repeated START
+
+SCL High + SDA ↑
+→ STOP
+```
+
+Cách trả lời ngắn khi phỏng vấn:
+
+> **SPI xác định thời điểm Sample và Shift bằng các cạnh SCK theo CPOL/CPHA. I2C không có CPOL/CPHA; SDA được thay đổi khi SCL Low và phải ổn định khi SCL High. START và STOP là các trường hợp đặc biệt khi SDA thay đổi trong lúc SCL đang High.**
+
+### Khác nhau khi Master đọc dữ liệu
+
+Với SPI Full-Duplex:
+
+```text
+Master muốn nhận data
+→ vẫn phải phát SCK
+→ đồng thời một bit cũng được shift ra MOSI
+→ thường dùng dummy byte/frame
+```
+
+Với I2C Master Read:
+
+```text
+Master muốn nhận data
+→ release SDA
+→ vẫn tiếp tục phát SCL
+→ Slave truyền data trên SDA
+```
+
+Khác biệt cốt lõi:
+
+```text
+SPI
+→ MOSI và MISO là hai đường dữ liệu riêng
+
+I2C
+→ SDA là một đường dữ liệu hai chiều Open-Drain
+```
+
+Không nên kết luận giao thức nào “tốt hơn” chỉ từ khác biệt này; đây là hai kiến trúc bus khác nhau với các đánh đổi khác nhau.
+
+### Tư duy lựa chọn
 
 ```text
 SPI
@@ -12671,7 +12746,7 @@ I2C
 → nhiều thiết bị dùng chung bus theo address
 ```
 
-Các hàng trong bảng chỉ so sánh những cơ chế đã được định nghĩa ở các mục trước, không tạo thêm định nghĩa mới.
+Các hàng trong bảng chỉ tổng hợp những cơ chế đã được định nghĩa ở các mục trước, không tạo thêm định nghĩa mới.
 
 ---
 
