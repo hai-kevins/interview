@@ -7031,10 +7031,7 @@ Mục này là nơi tham chiếu chính cho các công thức time-base.
 Từ **5.5**:
 
 ```text
-fCK_CNT =
-fTIMxCLK
-─────────
-PSC + 1
+fCK_CNT = fTIMxCLK / (PSC + 1)
 ```
 
 Từ **5.6**:
@@ -7047,19 +7044,13 @@ số timer tick / chu kỳ
 Suy ra:
 
 ```text
-fUPDATE =
-fTIMxCLK
-──────────────────────
-(PSC + 1)(ARR + 1)
+fUPDATE = fTIMxCLK / ((PSC + 1) × (ARR + 1))
 ```
 
 và:
 
 ```text
-TUPDATE =
-(PSC + 1)(ARR + 1)
-──────────────────────
-fTIMxCLK
+TUPDATE = ((PSC + 1) × (ARR + 1)) / fTIMxCLK
 ```
 
 Ví dụ:
@@ -7090,10 +7081,7 @@ số timer tick / chu kỳ
 nên:
 
 ```text
-fCENTER =
-fCK_CNT
-────────
-2 × ARR
+fCENTER = fCK_CNT / (2 × ARR)
 ```
 
 Không áp dụng nguyên xi công thức `(ARR + 1)` của Edge-Aligned Upcounting cho Center-Aligned mode.
@@ -7264,10 +7252,7 @@ duty cycle
 Duty cycle:
 
 ```text
-Duty =
-Tactive
-─────── × 100%
-Tperiod
+Duty = (Tactive / Tperiod) × 100%
 ```
 
 Ví dụ:
@@ -7290,10 +7275,7 @@ PWM trên STM32 Timer được tạo từ time-base (`PSC`, `ARR`) kết hợp c
 Với Edge-Aligned Upcounting, PWM frequency dùng công thức time-base đã trình bày tại **5.9**:
 
 ```text
-fPWM =
-fTIMxCLK
-──────────────────────
-(PSC + 1)(ARR + 1)
+fPWM = fTIMxCLK / ((PSC + 1) × (ARR + 1))
 ```
 
 Vai trò của các giá trị:
@@ -7325,10 +7307,7 @@ CNT >= CCRx
 Khi output polarity không đảo:
 
 ```text
-Duty =
-CCRx
-─────── × 100%
-ARR + 1
+Duty = (CCRx / (ARR + 1)) × 100%
 ```
 
 Ví dụ:
@@ -8578,10 +8557,7 @@ Peripheral cụ thể có tồn tại hay không phụ thuộc part number.
 Trong asynchronous mode thông thường:
 
 ```text
-Baud =
-fCK
-────────────────
-16 × USARTDIV
+Baud = fCK / (16 × USARTDIV)
 ```
 
 với:
@@ -10223,10 +10199,7 @@ Ngay cả khi application chỉ quan tâm TX, receive path vẫn hoạt động;
 Khi STM32F1 là SPI Master:
 
 ```text
-fSCK =
-fPCLK
-──────────
-Prescaler
+fSCK = fPCLK / Prescaler
 ```
 
 `SPI_CR1.BR[2:0]` chọn:
@@ -11549,10 +11522,7 @@ Không ghi tốc độ SCL mong muốn vào `FREQ`.
 ### `CCR` — Standard-mode
 
 ```text
-fSCL =
-PCLK1
-──────────
-2 × CCR
+fSCL = PCLK1 / (2 × CCR)
 ```
 
 Ví dụ:
@@ -11569,19 +11539,13 @@ fSCL  = 100 kHz
 Với `DUTY = 0`:
 
 ```text
-fSCL =
-PCLK1
-──────────
-3 × CCR
+fSCL = PCLK1 / (3 × CCR)
 ```
 
 Với `DUTY = 1`:
 
 ```text
-fSCL =
-PCLK1
-───────────
-25 × CCR
+fSCL = PCLK1 / (25 × CCR)
 ```
 
 ### `TRISE`
@@ -12362,21 +12326,13 @@ VREF- = 0 V
 có thể ước lượng điện áp theo mô hình lý tưởng:
 
 ```text
-VIN ≈ ADC_Code × VREF+
-      ─────────────────
-             4095
+VIN ≈ (ADC_Code × VREF+) / 4095
 ```
 
 Tổng quát:
 
 ```text
-VIN
-≈
-VREF-
-+
-ADC_Code × (VREF+ - VREF-)
-──────────────────────────
-           4095
+VIN ≈ VREF- + (ADC_Code × (VREF+ - VREF-)) / 4095
 ```
 
 Ví dụ:
