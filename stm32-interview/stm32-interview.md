@@ -13778,6 +13778,91 @@ một ADC độc lập
 
 External channel và GPIO tương ứng được trình bày tại **8.5**; Temperature Sensor và `VREFINT` được trình bày tại **8.18**.
 
+
+### SAR ADC là gì?
+
+ADC của STM32F1 dùng nguyên lý:
+
+```text
+SAR ADC
+→ Successive Approximation Register ADC
+→ ADC xấp xỉ liên tiếp
+```
+
+SAR ADC tìm digital code bằng cách **thử từng bit từ MSB đến LSB**, tương tự một quá trình tìm kiếm nhị phân trên toàn dải điện áp.
+
+Ở mức khái niệm, một SAR ADC có bốn khối chính:
+
+| Khối | Chức năng |
+|---|---|
+| **Sample-and-Hold (S/H)** | Lấy mẫu analog input vào tụ lấy mẫu và giữ điện áp đó đủ ổn định trong quá trình chuyển đổi. Điện áp trên tụ cần settle đủ gần `VIN` trong sai số cho phép; không nên hiểu là luôn bằng `VIN` tuyệt đối. |
+| **Comparator** | So sánh điện áp đã được giữ với mức điện áp thử do DAC nội bộ tạo ra và trả kết quả lớn hơn/nhỏ hơn cho SAR logic. Comparator không nên gọi đơn giản là một Op-Amp. |
+| **SAR logic / Successive Approximation Register** | Điều khiển quá trình thử từng bit từ MSB đến LSB; dựa vào kết quả comparator để giữ bit đang thử ở `1` hoặc xóa về `0`. |
+| **Internal DAC** | Nhận trial code từ SAR logic và tạo một mức analog tương ứng `VDAC` để comparator so sánh với điện áp đã lấy mẫu. |
+
+Luồng khái niệm:
+
+```text
+Analog input
+     ↓
+Sample-and-Hold
+     ↓
+VIN đã được giữ
+     │
+     ├───────────────┐
+     ↓               │
+Comparator ← VDAC ← Internal DAC
+     │               ↑
+     ↓               │
+   SAR logic ─────────┘
+     ↓
+Digital code
+```
+
+### Hoạt động theo tìm kiếm nhị phân
+
+Giả sử ADC có `N` bit:
+
+```text
+Bước 1
+→ thử MSB = 1
+
+Bước 2
+→ comparator quyết định giữ hoặc xóa MSB
+→ thử bit kế tiếp = 1
+
+...
+
+Bước N
+→ quyết định LSB
+
+Kết quả
+→ N-bit digital code
+```
+
+Quy tắc khái niệm:
+
+```text
+VIN ≥ VDAC thử
+→ giữ bit = 1
+
+VIN < VDAC thử
+→ xóa bit = 0
+```
+
+Mỗi lần quyết định sẽ thu hẹp khoảng giá trị còn lại xấp xỉ một nửa, vì vậy SAR ADC có thể được hiểu như một **binary search trong miền điện áp**.
+
+Với ADC 12-bit:
+
+```text
+12 bit
+→ 12 lần quyết định bit
+→ bit 11 (MSB) → ... → bit 0 (LSB)
+```
+
+Đây là mô hình để hiểu **thuật toán SAR**. Timing phần cứng STM32F1 không được suy ra thành đúng `12.0 ADCCLK cycles`; timing thực tế được trình bày tại **8.7**.
+
+
 ---
 
 <a id="muc-08-02"></a>
@@ -13822,6 +13907,107 @@ ADC_Code = 2048
 
 → VIN ≈ 1.65 V
 ```
+
+
+### Ví dụ SAR 12-bit: `VIN = 2.65 V`, reference = `3.3 V`
+
+Giả sử:
+
+```text
+VIN   = 2.65 V
+VREF- = 0 V
+VREF+ = 3.3 V
+N     = 12 bit
+```
+
+Nếu board dùng nguồn analog `VDDA = 3.3 V` và `VREF+` được nối cùng mức đó thì có thể nói ngắn gọn nguồn/reference ADC là `3.3 V`. Tuy nhiên về thuật ngữ, ADC so sánh theo **`VREF+ / VREF-`**, không phải một `VCC` chung chung.
+
+Bước lượng tử hóa lý tưởng:
+
+```text
+1 LSB
+= (VREF+ - VREF-) / 2^12
+= 3.3 / 4096
+≈ 0.8057 mV
+```
+
+Để minh họa **thuật toán SAR lý tưởng**, có thể mô hình mức thử của DAC là:
+
+```text
+VDAC(trial)
+=
+trial_code × 3.3 / 4096
+```
+
+Sau sampling, SAR thử lần lượt từ bit 11 tới bit 0:
+
+| Bước | Bit thử | Trial code | Decimal | `VDAC` xấp xỉ | Quyết định |
+|---:|---|---|---:|---:|---|
+| 1 | bit 11 | `1000 0000 0000` | 2048 | `1.6500 V` | `2.65 ≥ 1.6500` → giữ `1` |
+| 2 | bit 10 | `1100 0000 0000` | 3072 | `2.4750 V` | `2.65 ≥ 2.4750` → giữ `1` |
+| 3 | bit 9 | `1110 0000 0000` | 3584 | `2.8875 V` | `2.65 < 2.8875` → xóa về `0` |
+| 4 | bit 8 | `1101 0000 0000` | 3328 | `2.6813 V` | `2.65 < 2.6813` → xóa về `0` |
+| 5 | bit 7 | `1100 1000 0000` | 3200 | `2.5781 V` | `2.65 ≥ 2.5781` → giữ `1` |
+| 6 | bit 6 | `1100 1100 0000` | 3264 | `2.6297 V` | `2.65 ≥ 2.6297` → giữ `1` |
+| 7 | bit 5 | `1100 1110 0000` | 3296 | `2.6555 V` | `2.65 < 2.6555` → xóa về `0` |
+| 8 | bit 4 | `1100 1101 0000` | 3280 | `2.6426 V` | `2.65 ≥ 2.6426` → giữ `1` |
+| 9 | bit 3 | `1100 1101 1000` | 3288 | `2.6490 V` | `2.65 ≥ 2.6490` → giữ `1` |
+| 10 | bit 2 | `1100 1101 1100` | 3292 | `2.6522 V` | `2.65 < 2.6522` → xóa về `0` |
+| 11 | bit 1 | `1100 1101 1010` | 3290 | `2.6506 V` | `2.65 < 2.6506` → xóa về `0` |
+| 12 | bit 0 | `1100 1101 1001` | 3289 | `2.6498 V` | `2.65 ≥ 2.6498` → giữ `1` |
+
+Kết quả của mô hình SAR lý tưởng này:
+
+```text
+Binary
+→ 1100 1101 1001
+
+Decimal
+→ 3289
+
+Hex
+→ 0xCD9
+```
+
+Có thể kiểm tra biên cuối:
+
+```text
+code 3289
+→ 3289 × 3.3 / 4096
+≈ 2.64983 V
+
+code 3290
+→ 3290 × 3.3 / 4096
+≈ 2.65063 V
+
+2.64983 V ≤ 2.65 V < 2.65063 V
+→ code 3289
+```
+
+Điểm quan trọng:
+
+```text
+12-bit SAR
+→ 12 lần quyết định bit
+
+không đồng nghĩa
+→ STM32F1 hoàn tất conversion trong đúng 12.0 ADCCLK cycles
+```
+
+Timing thực tế của STM32F1 vẫn dùng:
+
+```text
+total conversion time
+=
+sampling time
++
+12.5 ADCCLK cycles
+```
+
+như trình bày tại **8.7**.
+
+> **Lưu ý:** Bảng trên là mô hình lý tưởng để nhìn rõ binary-search behavior của SAR ADC, không phải mô tả transistor-level của DAC nội bộ STM32F1. Sai số thực tế còn phụ thuộc reference, sampling, source impedance, offset/gain error, noise và các thông số ADC trong datasheet.
+
 
 `ADC_DR` chứa **conversion result**, không chứa đơn vị Volt. Muốn đổi ADC code sang điện áp phải biết reference voltage thực tế tại thời điểm đo; các tín hiệu reference và analog supply nằm tại **8.3**.
 
@@ -14054,25 +14240,21 @@ sampling time
 12.5 ADCCLK cycles
 ```
 
-Cần hiểu đúng phần `12.5 ADCCLK cycles`:
+Cơ chế SAR và 12 lần quyết định bit từ MSB đến LSB đã được trình bày tại **8.1–8.2**. Tại đây chỉ cần tách rõ:
 
 ```text
-ADC 12-bit
-→ thuật toán SAR có 12 lần quyết định bit
-→ từ MSB đến LSB
+SAR algorithm
+→ 12 lần quyết định bit
 
-STM32F1 hardware timing
-→ giai đoạn chuyển đổi sau sampling được quy định là 12.5 chu kỳ ADCCLK
+STM32F1 hardware timing sau sampling
+→ 12.5 ADCCLK cycles
 ```
 
-Vì vậy:
+Vì vậy không được đồng nhất:
 
 ```text
 12 bit
-→ 12 quyết định bit
-
-không đồng nghĩa
-→ conversion phase chỉ mất đúng 12.0 chu kỳ ADCCLK
+→ 12.0 ADCCLK cycles
 ```
 
 Phần `+0.5 cycle` **không nên tự gán** cho một chức năng cụ thể như:
