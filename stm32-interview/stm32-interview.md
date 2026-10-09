@@ -14054,6 +14054,55 @@ sampling time
 12.5 ADCCLK cycles
 ```
 
+Cần hiểu đúng phần `12.5 ADCCLK cycles`:
+
+```text
+ADC 12-bit
+→ thuật toán SAR có 12 lần quyết định bit
+→ từ MSB đến LSB
+
+STM32F1 hardware timing
+→ giai đoạn chuyển đổi sau sampling được quy định là 12.5 chu kỳ ADCCLK
+```
+
+Vì vậy:
+
+```text
+12 bit
+→ 12 quyết định bit
+
+không đồng nghĩa
+→ conversion phase chỉ mất đúng 12.0 chu kỳ ADCCLK
+```
+
+Phần `+0.5 cycle` **không nên tự gán** cho một chức năng cụ thể như:
+
+```text
+latch ADC_DR
+reset logic
+ổn định DAC nội bộ
+chuẩn bị lần sampling tiếp theo
+```
+
+vì Reference Manual chỉ quy định timing là `12.5 ADCCLK cycles` nhưng không phân rã `0.5 cycle` đó thành một công đoạn nội bộ cụ thể.
+
+Có thể nhớ:
+
+```text
+Sampling phase
+→ sample analog input
+
+Successive-approximation phase
+→ quyết định 12 bit từ MSB đến LSB
+
+STM32F1 conversion timing sau sampling
+→ 12.5 ADCCLK cycles
+
+Total conversion time
+→ sampling time + 12.5 ADCCLK cycles
+```
+
+
 Ví dụ:
 
 ```text
