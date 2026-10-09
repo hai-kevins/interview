@@ -4683,11 +4683,7 @@ Open-Drain transistor OFF
 Rp(min) = (VDD - VOL(max)) / IOL
 ```
 
-Trong đó `IOL` là dòng sink mà output được bảo đảm vẫn giữ `VOL` trong giới hạn yêu cầu.
-
-> **Cách trả lời phỏng vấn:** Source Current là dòng do GPIO cấp ra tải khi output High; Sink Current là dòng đi từ tải vào GPIO khi output Low. Push-Pull có thể source và sink current, còn Open-Drain chỉ chủ động sink current khi kéo line xuống Low; mức High được tạo bằng pull-up khi transistor được release.
-
-Việc I2C dùng Alternate Function Open-Drain chỉ được dẫn chiếu tại **3.15**; chi tiết bus I2C thuộc **Chương 7**.
+Trong đó `IOL` là dòng sink mà output được bảo đảm vẫn giữ `VOL` trong giới hạn yêu cầu. Việc I2C dùng Alternate Function Open-Drain chỉ được dẫn chiếu tại **3.15**; chi tiết bus I2C thuộc **Chương 7**.
 
 ---
 
