@@ -4581,7 +4581,168 @@ CPU clock
 
 Ví dụ, CPU chạy 72 MHz không có nghĩa một LED output phải cấu hình 50 MHz.
 
+### Không suy ra chu kỳ HIGH / LOW từ 2 / 10 / 50 MHz
+
+Một nhầm lẫn thường gặp là suy luận:
+
+```text
+GPIO speed = 2 MHz
+→ T = 1 / 2 MHz = 0.5 µs
+→ HIGH tối thiểu = 0.25 µs
+→ LOW tối thiểu = 0.25 µs
+```
+
+Cách hiểu này **không đúng**.
+
+Các mức `2 / 10 / 50 MHz` mô tả khả năng tốc độ của **output driver**, không phải một bộ tạo clock bên trong GPIO và cũng không trực tiếp quy định thời gian pin phải giữ ở mức High hoặc Low.
+
+Thời gian High/Low thực tế do nguồn tạo tín hiệu quyết định:
+
+```text
+General-Purpose Output
+→ software ghi ODR / BSRR
+
+Timer / PWM
+→ Timer quyết định period và duty
+
+USART / SPI / peripheral khác
+→ peripheral quyết định timing tín hiệu
+```
+
+Ví dụ GPIO cấu hình `2 MHz` vẫn có thể:
+
+```text
+LOW → HIGH
+→ giữ HIGH 10 ms
+
+HIGH → LOW
+→ giữ LOW 3 ms
+```
+
+Hoàn toàn bình thường.
+
+### Phân biệt Output Speed và Rise / Fall Time
+
+Khi output chuyển mức, điện áp tại pin không đổi tức thời:
+
+```text
+LOW → HIGH
+→ Rise Time (tr)
+
+HIGH → LOW
+→ Fall Time (tf)
+```
+
+`tr` và `tf` phụ thuộc vào:
+
+```text
+output driver strength / slew rate
+điện áp nguồn
+điện dung tải CL
+PCB / dây dẫn
+loại output Push-Pull hay Open-Drain
+```
+
+Có thể hiểu:
+
+```text
+GPIO Speed thấp
+→ output driver chậm hơn
+→ cạnh lên/xuống thường thoải hơn
+→ EMI và ringing thường thấp hơn
+
+GPIO Speed cao
+→ output driver nhanh hơn
+→ cạnh lên/xuống nhanh hơn
+→ phù hợp tín hiệu tốc độ cao hơn
+→ nhưng EMI / ringing có thể tăng
+```
+
+Ví dụ trên một số STM32F103, datasheet đặc trưng mode `2 MHz` với tải `CL = 50 pF` có rise/fall time tối đa cỡ:
+
+```text
+tr(max) ≈ 125 ns
+tf(max) ≈ 125 ns
+```
+
+Đây chỉ là **thời gian chuyển mức**, không phải thời gian tối thiểu phải giữ High hoặc Low. Giá trị chính xác phải kiểm tra datasheet của đúng part number và điều kiện tải.
+
+Do đó phải tách ba khái niệm:
+
+```text
+1. GPIO Output Speed
+→ khả năng / slew của output driver
+
+2. Rise / Fall Time
+→ điện áp mất bao lâu để chuyển LOW ↔ HIGH
+
+3. Signal Frequency / Duty Cycle
+→ do software hoặc peripheral tạo ra
+```
+
+### Quan hệ với UART / SPI / I2C
+
+Tín hiệu càng nhanh thì thường cần cạnh lên/xuống đủ nhanh:
+
+```text
+signal frequency tăng
+→ yêu cầu timing chặt hơn
+→ thường cần Output Speed cao hơn
+```
+
+Nhưng không dùng quy tắc máy móc:
+
+```text
+protocol frequency
+≤
+GPIO Speed setting
+```
+
+để thay cho việc kiểm tra timing và datasheet.
+
+Với Push-Pull như SPI SCK/MOSI hoặc USART TX, Output Speed ảnh hưởng trực tiếp tới khả năng tạo cạnh nhanh.
+
+Với I2C Open-Drain:
+
+```text
+LOW
+→ transistor trong MCU kéo xuống
+
+HIGH
+→ MCU release line
+→ pull-up + bus capacitance kéo line lên
+```
+
+nên cạnh lên của SDA/SCL chủ yếu phụ thuộc:
+
+```text
+Rp × Cb
+→ Rise Time
+```
+
+không chỉ phụ thuộc mức `2 / 10 / 50 MHz` của GPIO.
+
+### Cách chọn thực tế
+
+Nguyên tắc:
+
+```text
+chọn mức thấp nhất
+nhưng vẫn đáp ứng timing của tín hiệu
+```
+
+Không nên luôn chọn `50 MHz` vì cạnh quá nhanh có thể làm tăng:
+
+```text
+EMI
+ringing
+overshoot / undershoot
+công suất chuyển mạch
+```
+
 Lựa chọn output speed nên đáp ứng yêu cầu tín hiệu và tránh dùng mức cao hơn cần thiết. Bit encoding cụ thể được tập trung tại **3.9**.
+
+> **Cách trả lời phỏng vấn:** Trên STM32F1, GPIO Output Speed `2/10/50 MHz` không quy định tần số tín hiệu mà pin phải phát và cũng không trực tiếp quy định thời gian HIGH/LOW. Nó cấu hình khả năng chuyển mức của output driver. Tốc độ cao hơn thường cho rise/fall time ngắn hơn, nhưng có thể làm tăng EMI và ringing; tần số và duty cycle thực tế vẫn do software hoặc peripheral tạo ra.
 
 ---
 
