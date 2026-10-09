@@ -11808,6 +11808,128 @@ R/W = 1
 
 Cách phân biệt 7-bit Slave address và address byte được trình bày chi tiết tại **7.19**.
 
+### I2C không bắt buộc mọi Slave phải có Register Address
+
+I2C chuẩn hóa cách truyền dữ liệu trên bus như:
+
+```text
+START
+→ Slave Address + R/W
+→ ACK/NACK
+→ Data byte
+→ STOP / Repeated START
+```
+
+Nhưng I2C **không quy định các Data byte sau address phase phải có ý nghĩa gì**. Cấu trúc protocol ở tầng thiết bị do datasheet của từng Slave định nghĩa.
+
+Vì vậy không nên mặc định mọi thiết bị I2C đều có transaction dạng:
+
+```text
+Slave Address
+→ Register Address
+→ Data
+```
+
+Một số dạng thường gặp:
+
+#### 1. Không có Register Address
+
+Một số thiết bị đơn giản nhận hoặc trả dữ liệu trực tiếp sau address phase.
+
+Ví dụ PCF8574:
+
+```text
+Write:
+START
+→ Slave Address + W
+→ Data
+→ STOP
+```
+
+```text
+Read:
+START
+→ Slave Address + R
+→ Data
+→ Master NACK
+→ STOP
+```
+
+Ở đây không có byte Register Address riêng.
+
+#### 2. Có Internal Address nhiều byte
+
+Một số thiết bị, đặc biệt là EEPROM, cần nhiều byte để chọn vị trí dữ liệu bên trong.
+
+Ví dụ AT24C256 dùng Word Address 2 byte:
+
+```text
+START
+→ Slave Address + W
+→ Word Address MSB
+→ Word Address LSB
+→ Data
+→ STOP
+```
+
+Trong trường hợp EEPROM, nên gọi đây là:
+
+```text
+Word Address / Memory Address
+```
+
+thay vì mặc định gọi là Register Address.
+
+Có thể hiểu:
+
+```text
+8-bit internal address
+→ tối đa 256 giá trị địa chỉ
+
+16-bit internal address
+→ tối đa 65536 giá trị địa chỉ
+```
+
+Số bit địa chỉ thực sự được sử dụng vẫn phụ thuộc dung lượng và protocol của từng chip.
+
+#### 3. Auto-Increment khi truyền nhiều byte
+
+Nhiều Slave có các register hoặc vị trí memory liên tiếp và tự tăng internal address sau mỗi byte. Khi đó Master chỉ cần gửi địa chỉ bắt đầu một lần.
+
+Ví dụ đọc nhiều register liên tiếp từ cảm biến:
+
+```text
+START
+→ Slave Address + W
+→ Register Address bắt đầu
+→ Repeated START
+→ Slave Address + R
+→ Data 1
+→ ACK
+→ Data 2
+→ ACK
+→ ...
+→ Data cuối
+→ NACK
+→ STOP
+```
+
+Ví dụ MPU6050 có các thanh ghi dữ liệu gia tốc liên tiếp bắt đầu từ `0x3B`, nên Master có thể đọc nhiều byte liên tục thay vì gửi lại Register Address cho từng byte.
+
+Điểm cần nhớ:
+
+```text
+I2C bus protocol
+→ quy định START / Address / R/W / ACK / NACK / Data / STOP
+
+Device protocol
+→ datasheet quyết định Data byte có ý nghĩa gì
+```
+
+Do đó:
+
+> **Không phải mọi thiết bị I2C đều có Register Address. Sau address phase, ý nghĩa và số lượng các Data byte hoàn toàn phụ thuộc protocol được nhà sản xuất định nghĩa trong datasheet của Slave.**
+
 ---
 
 ### Luồng Master Write → Slave Receive
