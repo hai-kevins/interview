@@ -11631,7 +11631,195 @@ Open-Drain cho phép nhiều thiết bị dùng chung line mà không có trư�
 
 Giá trị pull-up thực tế phụ thuộc điện dung bus, tần số SCL, điện áp và yêu cầu rise time; không dùng một giá trị cố định cho mọi bus.
 
+### Tính điện trở Pull-Up cho I2C
+
+Điện trở pull-up `Rp` cần nằm trong khoảng:
+
+```text
+Rp(min) ≤ Rp ≤ Rp(max)
+```
+
+Giới hạn dưới bảo đảm thiết bị vẫn có thể kéo bus xuống Low với dòng sink phù hợp. Giới hạn trên bảo đảm SDA/SCL tăng lên High đủ nhanh so với yêu cầu rise time của bus.
+
+#### Giới hạn dưới — `Rp(min)`
+
+Công thức:
+
+```text
+Rp(min) = (VDD - VOL(max)) / IOL
+```
+
+Trong đó:
+
+```text
+VDD
+→ điện áp pull-up của bus
+
+VOL(max)
+→ điện áp Low tối đa vẫn được bảo đảm
+
+IOL
+→ dòng sink mà output được bảo đảm vẫn giữ VOL trong giới hạn
+```
+
+Không nên hiểu `IOL` là absolute maximum current của chân. Khi thiết kế thực tế phải kiểm tra datasheet của tất cả thiết bị trên bus, đặc biệt thiết bị có khả năng kéo Low yếu nhất.
+
+Với Standard-mode và Fast-mode, giá trị thường dùng theo I2C specification là:
+
+```text
+VOL(max) = 0.4 V
+IOL      = 3 mA
+```
+
+Ví dụ với:
+
+```text
+VDD = 3.3 V
+```
+
+ta có:
+
+```text
+Rp(min) = (3.3 - 0.4) / 0.003 ≈ 966.7 Ω ≈ 1 kΩ
+```
+
+Nếu `Rp` quá nhỏ:
+
+```text
+Rp ↓
+→ sink current ↑
+→ VOL có thể vượt specification
+→ thiết bị có thể không còn bảo đảm mức Low hợp lệ
+```
+
+#### Giới hạn trên — `Rp(max)`
+
+SDA/SCL cùng điện dung bus tạo thành mạch RC khi line được release:
+
+```text
+VDD
+ │
+ Rp
+ │
+ ├──── SDA / SCL
+ │
+ Cb
+ │
+GND
+```
+
+Công thức:
+
+```text
+Rp(max) = tr(max) / (0.8473 × Cb)
+```
+
+Trong đó:
+
+```text
+tr(max)
+→ rise time tối đa cho phép
+
+Cb
+→ tổng điện dung của bus
+→ gồm trace PCB, dây dẫn, connector và capacitance của các pin
+```
+
+Hệ số `0.8473` xuất phát từ đáp ứng RC khi đo rise time từ khoảng `0.3 × VDD` đến `0.7 × VDD`.
+
+Các giá trị cần nhớ:
+
+| I2C mode | Tốc độ điển hình | `tr(max)` | `Cb(max)` |
+|---|---:|---:|---:|
+| Standard-mode | 100 kHz | 1000 ns | 400 pF |
+| Fast-mode | 400 kHz | 300 ns | 400 pF |
+| Fast-mode Plus | 1 MHz | 120 ns | 550 pF |
+
+Trong phạm vi STM32F1 của tài liệu này, hai mode cần tập trung là Standard-mode và Fast-mode.
+
+Ví dụ Fast-mode:
+
+```text
+tr(max) = 300 ns
+Cb      = 150 pF
+```
+
+ta có:
+
+```text
+Rp(max) = 300 ns / (0.8473 × 150 pF) ≈ 2.36 kΩ
+```
+
+Nếu `Rp` quá lớn:
+
+```text
+Rp ↑
+→ RC time constant ↑
+→ cạnh lên chậm
+→ SDA/SCL có thể không đạt mức High đúng timing
+```
+
+#### Ví dụ chọn giá trị thực tế
+
+Với:
+
+```text
+VDD       = 3.3 V
+Fast-mode = 400 kHz
+Cb        = 150 pF
+```
+
+ta có:
+
+```text
+Rp(min) ≈ 1.0 kΩ
+Rp(max) ≈ 2.36 kΩ
+```
+
+Do đó:
+
+```text
+1.0 kΩ ≤ Rp ≤ 2.36 kΩ
+```
+
+Có thể chọn một giá trị chuẩn nằm trong khoảng, ví dụ:
+
+```text
+1.5 kΩ
+hoặc
+2.2 kΩ
+```
+
+Không nên mặc định:
+
+```text
+I2C
+→ luôn dùng 4.7 kΩ
+hoặc
+→ luôn dùng 10 kΩ
+```
+
+vì giá trị đúng phụ thuộc vào `VDD`, tốc độ bus, `Cb`, rise time và khả năng sink của các thiết bị.
+
+Có thể nhớ bản chất:
+
+```text
+Rp quá nhỏ
+→ dòng khi bus Low quá lớn
+
+Rp quá lớn
+→ cạnh lên quá chậm
+
+Cb càng lớn
+→ Rp(max) càng nhỏ
+
+bus càng nhanh
+→ tr(max) càng nhỏ
+→ cần pull-up mạnh hơn
+```
+
 ---
+
 
 <a id="muc-07-18"></a>
 ## 7.18. START / STOP / Data / Address / R/W / ACK / NACK
