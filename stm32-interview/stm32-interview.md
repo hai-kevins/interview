@@ -13802,23 +13802,6 @@ SAR ADC tìm **mã số đầu ra** bằng cách thử từng bit từ **MSB** t
 
 Luồng khái niệm:
 
-```text
-Tín hiệu tương tự đầu vào
-          ↓
-  Mạch lấy mẫu và giữ
-          ↓
-    điện áp mẫu VIN
-          │
-          ├────────────────┐
-          ↓                │
-     Bộ so sánh ← VDAC ← DAC nội bộ
-          │                ↑
-          ↓                │
-       Logic SAR ───────────┘
-          ↓
-       Mã số ADC
-```
-
 ![Sơ đồ cấu trúc và luồng hoạt động của SAR ADC](assets/chapter-8/sar-adc.png)
 
 ### Hoạt động theo thuật toán tìm kiếm nhị phân
