@@ -11634,59 +11634,356 @@ Giá trị pull-up thực tế phụ thuộc điện dung bus, tần số SCL, �
 ---
 
 <a id="muc-07-18"></a>
-## 7.18. START / STOP / Address / R/W / ACK / NACK
+## 7.18. START / STOP / Data / Address / R/W / ACK / NACK
 
-Một transaction điển hình:
+I2C chỉ có hai tín hiệu vật lý:
 
 ```text
-START
-  ↓
-Address + R/W
-  ↓
-ACK
-  ↓
-Data
-  ↓
-ACK / NACK
-  ↓
-STOP
+SCL
+→ Serial Clock
+
+SDA
+→ Serial Data
 ```
 
-### START condition
+`START`, `STOP`, bit dữ liệu và `ACK/NACK` không phải các dây tín hiệu riêng; chúng là **điều kiện hoặc giai đoạn của giao dịch trên hai đường SCL/SDA**.
 
-Khi `SCL = High`:
+Do SDA/SCL dùng Open-Drain như đã trình bày tại **7.17**, một thiết bị trên bus về bản chất chỉ:
+
+```text
+kéo line xuống Low
+hoặc
+release line để pull-up đưa line lên High
+```
+
+Không nên hiểu I2C theo kiểu các thiết bị chủ động lái cả High và Low như Push-Pull.
+
+### Quy tắc thay đổi SDA theo SCL
+
+Trong quá trình truyền bit dữ liệu:
+
+```text
+SCL = Low
+→ SDA được phép thay đổi
+
+SCL = High
+→ SDA phải ổn định để phía nhận Sample
+```
+
+Hai ngoại lệ quan trọng khi `SCL = High` là:
 
 ```text
 SDA: High → Low
 → START
-```
 
-### STOP condition
-
-Khi `SCL = High`:
-
-```text
 SDA: Low → High
 → STOP
 ```
 
+Có thể nhớ:
+
+```text
+START / STOP
+→ SDA thay đổi khi SCL đang High
+
+Data bit
+→ SDA thay đổi khi SCL đang Low
+```
+
+### START condition
+
+Master bắt đầu một transaction bằng:
+
+```text
+SCL = High
+SDA: High → Low
+```
+
+```text
+SDA: ‾‾‾‾\____
+          ↑
+        START
+SCL: ‾‾‾‾‾‾‾‾
+```
+
+Sau START, các Slave theo dõi address phase; chỉ Slave có địa chỉ phù hợp mới ACK và tham gia transaction.
+
+### STOP condition
+
+Master kết thúc transaction và trả bus về trạng thái rảnh bằng:
+
+```text
+SCL = High
+SDA: Low → High
+```
+
+```text
+SDA: ____/‾‾‾‾
+         ↑
+        STOP
+SCL: ‾‾‾‾‾‾‾‾
+```
+
+Ngoài STOP, Master cũng có thể phát **Repeated START** để bắt đầu transaction tiếp theo mà không nhả bus; xem **7.26**.
+
 ### Byte và ACK/NACK
 
-Data/address được truyền MSB First. Sau 8 bit có xung clock thứ 9 dành cho ACK/NACK:
+I2C truyền một byte dữ liệu theo thứ tự:
+
+```text
+bit 7
+→ bit 6
+→ ...
+→ bit 0
+```
+
+tức:
+
+```text
+MSB First
+```
+
+Sau 8 bit luôn có **clock thứ 9** dành cho ACK/NACK.
+
+```text
+8 data/address bits
+        ↓
+clock thứ 9
+        ↓
+ACK hoặc NACK
+```
+
+Bên nhận tạo phản hồi:
 
 ```text
 Receiver kéo SDA Low
 → ACK
 
-Receiver nhả SDA High
+Receiver release SDA
+→ pull-up giữ SDA High
 → NACK
 ```
 
-Trong Master Receiver, NACK thường được dùng cho byte cuối để báo không nhận thêm data.
+Không nên hiểu rằng bên nhận luôn bắt buộc phải ACK. `NACK` cũng là một phản hồi hợp lệ, ví dụ:
+
+```text
+Slave không nhận address
+Slave chưa sẵn sàng nhận thêm data
+Master Receiver đã nhận byte cuối và muốn kết thúc
+```
+
+### Address + R/W trong I2C 7-bit
+
+Address phase có dạng:
+
+```text
+[A6 A5 A4 A3 A2 A1 A0 R/W]
+```
+
+```text
+R/W = 0
+→ Master Write
+→ Master truyền data, Slave nhận
+
+R/W = 1
+→ Master Read
+→ Slave truyền data, Master nhận
+```
+
+Cách phân biệt 7-bit Slave address và address byte được trình bày chi tiết tại **7.19**.
+
+---
+
+### Luồng Master Write → Slave Receive
+
+Luồng tổng quát:
+
+```text
+START
+  ↓
+Address + W(0)
+  ↓
+Slave ACK
+  ↓
+Data byte
+  ↓
+Slave ACK
+  ↓
+Data byte tiếp theo nếu có
+  ↓
+Slave ACK
+  ↓
+STOP hoặc Repeated START
+```
+
+#### Phía Master
+
+Master là bên tạo SCL và truyền address/data trên SDA.
+
+```text
+1. Phát START.
+2. Gửi 7-bit Slave address + W = 0.
+3. Release SDA ở clock thứ 9 để Slave có thể phát ACK/NACK.
+4. Nếu nhận ACK, gửi data byte.
+5. Sau mỗi byte, release SDA ở clock thứ 9 để nhận ACK/NACK.
+6. Khi hoàn tất, phát STOP hoặc Repeated START.
+```
+
+Về mặt điện:
+
+```text
+Master muốn gửi 0
+→ kéo SDA Low
+
+Master muốn gửi 1
+→ release SDA
+→ pull-up đưa SDA High
+```
+
+Nếu dùng peripheral I2C phần cứng của STM32, firmware không tự đổi GPIO Input/Output cho từng bit; I2C peripheral tự quản lý việc kéo Low hoặc release SDA.
+
+#### Phía Slave
+
+Các Slave theo dõi START và address phase.
+
+```text
+1. Phát hiện START.
+2. Nhận Address + W.
+3. Slave có address phù hợp kéo SDA Low ở clock thứ 9 để ACK.
+4. Nhận từng data byte do Master truyền.
+5. Sau mỗi byte nhận thành công, Slave phát ACK nếu muốn tiếp tục.
+6. Transaction kết thúc khi Master phát STOP hoặc chuyển sang transaction khác bằng Repeated START.
+```
+
+Có thể nhớ:
+
+```text
+Master Write
+
+Master
+→ Address + W
+→ Data
+→ Data
+→ ...
+
+Slave
+→ ACK
+→ ACK
+→ ACK
+→ ...
+```
+
+---
+
+### Luồng Master Read ← Slave Transmit
+
+Luồng tổng quát:
+
+```text
+START
+  ↓
+Address + R(1)
+  ↓
+Slave ACK
+  ↓
+Slave Data
+  ↓
+Master ACK nếu muốn đọc tiếp
+  ↓
+Slave Data tiếp theo
+  ↓
+Master NACK ở byte cuối
+  ↓
+STOP hoặc Repeated START
+```
+
+#### Phía Master
+
+Master vẫn luôn là bên tạo SCL, nhưng sau address phase nó release SDA để Slave truyền data.
+
+```text
+1. Phát START.
+2. Gửi 7-bit Slave address + R = 1.
+3. Release SDA ở clock thứ 9 và kiểm tra ACK/NACK từ Slave.
+4. Sau ACK, tiếp tục tạo SCL nhưng release SDA để Slave điều khiển dữ liệu.
+5. Sample SDA theo từng clock để nhận 8 bit data.
+6. Sau mỗi byte:
+   - phát ACK nếu muốn nhận thêm byte;
+   - phát NACK nếu đây là byte cuối.
+7. Sau byte cuối, phát STOP hoặc Repeated START.
+```
+
+Ở đây không nên hiểu là Master “chuyển SDA thành Input” theo nghĩa phải đổi GPIO mode bằng software ở từng bit. Với I2C Open-Drain, ý đúng là:
+
+```text
+Master release SDA
+→ không kéo line xuống
+→ Slave có thể điều khiển SDA bằng cách kéo Low hoặc release
+```
+
+#### Phía Slave
+
+```text
+1. Nhận Address + R.
+2. Nếu address phù hợp, phát ACK.
+3. Trong các clock data tiếp theo, Slave đặt từng bit lên SDA theo nhịp SCL do Master tạo.
+4. Sau 8 bit, Slave release SDA để Master phát ACK/NACK ở clock thứ 9.
+5. Nếu nhận ACK, Slave chuẩn bị byte tiếp theo.
+6. Nếu nhận NACK, Slave không truyền thêm byte và chờ STOP hoặc Repeated START.
+```
+
+Điểm quan trọng:
+
+```text
+Master
+→ luôn điều khiển SCL
+
+Data direction
+→ thay đổi theo R/W
+
+Master Write
+→ Master là Transmitter
+
+Master Read
+→ Master là Receiver
+→ Slave là Transmitter
+```
+
+### I2C Read và SPI Read khác nhau ở đâu?
+
+Không nên kết luận giao thức nào “tốt hơn” chỉ từ cách đọc dữ liệu.
+
+Với SPI Full-Duplex:
+
+```text
+Master muốn nhận data
+→ vẫn phải phát clock
+→ đồng thời một bit cũng được shift ra MOSI
+→ thường dùng dummy byte/frame
+```
+
+Với I2C Master Read:
+
+```text
+Master muốn nhận data
+→ release SDA
+→ vẫn tiếp tục phát SCL
+→ Slave truyền data trên SDA
+```
+
+Khác biệt cốt lõi:
+
+```text
+SPI
+→ MOSI và MISO là hai đường dữ liệu riêng
+
+I2C
+→ SDA là một đường dữ liệu hai chiều Open-Drain
+```
 
 ![RM0008 Figure 269 — I2C bus protocol](assets/chapter-7/figure-269.png)
 
-Cách tạo address phase và phân biệt 7-bit address với address byte nằm tại **7.19**.
+Phần này mô tả **logic transaction trên bus**. Trình tự flag/register cụ thể của STM32F1 khi Master Transmit/Receive được trình bày riêng tại **7.27**.
 
 ---
 
@@ -11741,37 +12038,34 @@ I2C có hai cặp vai trò độc lập:
 
 ```text
 Master / Slave
-→ ai điều khiển transaction
+→ ai khởi tạo và điều khiển transaction / SCL
 
 Transmitter / Receiver
-→ ai đang gửi hoặc nhận data
+→ ai đang truyền hoặc nhận data trong giai đoạn hiện tại
 ```
 
-Bốn tổ hợp:
+Bốn tổ hợp cần nhận diện:
+
+| Vai trò | Ý nghĩa |
+|---|---|
+| Master Transmitter | Master điều khiển transaction và gửi data |
+| Master Receiver | Master điều khiển transaction nhưng nhận data |
+| Slave Transmitter | Slave được chọn và gửi data |
+| Slave Receiver | Slave được chọn và nhận data |
+
+Quan hệ với bit `R/W` trong address phase:
 
 ```text
-Master Transmitter
-→ Master gửi data
+Address + W
+→ Master Transmitter
+→ Slave Receiver
 
-Master Receiver
-→ Master nhận data
-
-Slave Transmitter
-→ Slave gửi data
-
-Slave Receiver
-→ Slave nhận data
+Address + R
+→ Master Receiver
+→ Slave Transmitter
 ```
 
-Ví dụ:
-
-```text
-Master Transmitter
-→ START → Address + W → Data → STOP
-
-Master Receiver
-→ START → Address + R → nhận Data → NACK → STOP
-```
+Luồng START, Address, ACK/NACK, Data và STOP đã được trình bày đầy đủ tại **7.18**, nên mục này không lặp lại transaction sequence.
 
 Các bit trạng thái trong `I2C_SR2`:
 
@@ -12106,7 +12400,7 @@ START
 <a id="muc-07-27"></a>
 ## 7.27. Master Transmit / Master Receive
 
-Mục này áp dụng state flag tại **7.23** và transaction primitive tại **7.18**.
+Mục **7.18** đã giải thích logic transaction trên bus. Mục này chỉ tập trung vào **trình tự flag/register của STM32F1** khi thực hiện Master Transmit và Master Receive.
 
 ### Master Transmit
 
@@ -12172,17 +12466,7 @@ I2C1->CR1 |= I2C_CR1_STOP;
 
 ### Master Receive
 
-Master Receive cần xử lý ACK/NACK và STOP theo số byte còn lại.
-
-Nguyên tắc:
-
-```text
-byte chưa phải cuối
-→ ACK
-
-byte cuối
-→ NACK
-```
+Ở mức bus, quy tắc ACK/NACK của Master Receiver đã được trình bày tại **7.18**. Trên STM32F1, thứ tự thao tác `ACK`, `ADDR`, `STOP`, `RxNE` và `BTF` còn phụ thuộc số byte cần nhận.
 
 Receive 1 byte:
 
