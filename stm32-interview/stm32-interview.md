@@ -11965,6 +11965,152 @@ Master Read
 → Slave là Transmitter
 ```
 
+### Bàn giao quyền điều khiển SDA giữa Master và Slave
+
+Có thể hình dung I2C như việc **bàn giao quyền kéo SDA xuống Low** giữa bên truyền dữ liệu và bên phát ACK/NACK.
+
+Do SDA là Open-Drain, không nên hiểu quá literal rằng firmware liên tục đổi chân GPIO giữa `Input` và `Output`. Ở mức bus, mỗi thiết bị chỉ cần hai hành vi:
+
+```text
+Drive Low
+→ chủ động kéo SDA xuống 0
+
+Release SDA
+→ ngừng kéo SDA xuống
+→ pull-up đưa SDA lên 1 nếu không có thiết bị nào khác kéo Low
+```
+
+Với peripheral I2C phần cứng của STM32, việc kéo Low hoặc release SDA được hardware tự xử lý theo trạng thái transaction.
+
+#### Khi Master Write
+
+Trong 8 bit dữ liệu:
+
+```text
+Master
+→ điều khiển SDA
+→ truyền 8 bit
+
+Slave
+→ nhận dữ liệu
+```
+
+Sau bit thứ 8, Master phải release SDA để dành clock thứ 9 cho Receiver phản hồi:
+
+```text
+8 data bits
+     ↓
+Master release SDA
+     ↓
+clock thứ 9
+     ↓
+Slave kéo SDA Low
+→ ACK
+
+hoặc
+
+Slave release SDA
+→ NACK
+```
+
+Sau clock thứ 9, Slave release SDA. Master có thể:
+
+```text
+gửi byte tiếp theo
+hoặc
+phát STOP
+hoặc
+phát Repeated START
+```
+
+Luồng nhớ nhanh:
+
+```text
+Master Write:
+
+8 bit data
+Master → Slave
+
+clock thứ 9
+Slave → ACK/NACK
+```
+
+#### Khi Master Read
+
+Trong 8 bit dữ liệu:
+
+```text
+Slave
+→ điều khiển SDA
+→ truyền 8 bit
+
+Master
+→ tạo SCL và nhận dữ liệu
+```
+
+Sau bit thứ 8, Slave phải release SDA để Master phát ACK/NACK ở clock thứ 9:
+
+```text
+8 data bits
+     ↓
+Slave release SDA
+     ↓
+clock thứ 9
+     ↓
+Master kéo SDA Low
+→ ACK
+→ muốn đọc thêm byte
+
+hoặc
+
+Master release SDA
+→ NACK
+→ đây là byte cuối
+```
+
+Nếu Master phát ACK:
+
+```text
+SCL trở lại Low
+→ Master release SDA
+→ Slave tiếp tục truyền byte kế tiếp
+```
+
+Nếu Master phát NACK:
+
+```text
+Slave không truyền thêm byte
+→ Master phát STOP
+hoặc
+→ Master phát Repeated START
+```
+
+Luồng nhớ nhanh:
+
+```text
+Master Read:
+
+8 bit data
+Slave → Master
+
+clock thứ 9
+Master → ACK/NACK
+```
+
+Do đó có thể nhớ tính đối xứng:
+
+| Giai đoạn | Master Write | Master Read |
+|---|---|---|
+| 8 bit dữ liệu | Master truyền | Slave truyền |
+| Clock thứ 9 | Slave phát ACK/NACK | Master phát ACK/NACK |
+| ACK | Receiver kéo SDA Low | Receiver kéo SDA Low |
+| NACK | Receiver release SDA | Receiver release SDA |
+| SCL | Master điều khiển | Master điều khiển |
+
+Điểm cốt lõi:
+
+> **Trong I2C, bên đang nhận byte luôn là bên phát ACK/NACK ở clock thứ 9. Việc “bàn giao SDA” thực chất là các thiết bị lần lượt kéo SDA Low hoặc release SDA theo đúng thời điểm của transaction.**
+
 ![RM0008 Figure 269 — I2C bus protocol](assets/chapter-7/figure-269.png)
 
 Phần này mô tả **logic transaction trên bus**. Trình tự flag/register cụ thể của STM32F1 khi Master Transmit/Receive được trình bày riêng tại **7.27**.
