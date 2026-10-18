@@ -64,6 +64,21 @@
   - [4.14. Mô hình tư duy cần nhớ](#414-mô-hình-tư-duy-cần-nhớ)
   - [4.15. Trọng tâm cần thuộc](#415-trọng-tâm-cần-thuộc)
 - [5. Preemption + Round-Robin](#5-preemption-round-robin)
+  - [5.1. Preemption là gì?](#51-preemption-là-gì)
+  - [5.2. Priority Preemption trong `hairtos`](#52-priority-preemption-trong-hairtos)
+  - [5.3. Round-Robin là gì?](#53-round-robin-là-gì)
+  - [5.4. Time Slice](#54-time-slice)
+  - [5.5. `time_slice_remaining`](#55-time_slice_remaining)
+  - [5.6. SysTick xử lý Time Slicing thế nào?](#56-systick-xử-lý-time-slicing-thế-nào)
+  - [5.7. Ready Queue được Rotate thế nào?](#57-ready-queue-được-rotate-thế-nào)
+  - [5.8. `hr_task_yield()`](#58-hr_task_yield)
+  - [5.9. `hr_task_delay(0)`](#59-hr_task_delay0)
+  - [5.10. Preemption và Round-Robin khác nhau](#510-preemption-và-round-robin-khác-nhau)
+  - [5.11. Khi chỉ có một Task ở Priority hiện tại](#511-khi-chỉ-có-một-task-ở-priority-hiện-tại)
+  - [5.12. Khi Task Priority cao hơn thức dậy](#512-khi-task-priority-cao-hơn-thức-dậy)
+  - [5.13. Ví dụ cụ thể](#513-ví-dụ-cụ-thể)
+  - [5.14. Mô hình tư duy cần nhớ](#514-mô-hình-tư-duy-cần-nhớ)
+  - [5.15. Trọng tâm cần thuộc](#515-trọng-tâm-cần-thuộc)
 - [6. SysTick + Delay + Timeout](#6-systick-delay-timeout)
 - [7. Queue + Blocking IPC](#7-queue-blocking-ipc)
 - [8. Semaphore + ISR Synchronization](#8-semaphore-isr-synchronization)
@@ -2689,7 +2704,530 @@ Câu cần nhớ nhất:
 
 # 5. Preemption + Round-Robin
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+`hairtos` kết hợp hai cơ chế scheduling:
+
+```text
+Priority Preemption
++
+Round-Robin cùng Priority
+```
+
+Priority quyết định **nhóm task nào được chạy trước**, còn Round-Robin quyết định **task nào trong cùng một priority được chạy tiếp theo**.
+
+```text
+Priority khác nhau
+→ ưu tiên task priority cao hơn
+
+Priority giống nhau
+→ chia CPU theo Round-Robin
+```
+
+---
+
+## 5.1. Preemption là gì?
+
+Preemption nghĩa là kernel có thể dừng task đang chạy để chuyển CPU cho task khác có priority cao hơn.
+
+Ví dụ:
+
+```text
+Task A
+priority = 5
+RUNNING
+```
+
+Task B trở thành READY:
+
+```text
+Task B
+priority = 2
+```
+
+Vì:
+
+```text
+2 < 5
+```
+
+nên Task B có priority cao hơn. Kernel yêu cầu `PendSV`, Task A chuyển từ `RUNNING` về `READY`, còn context của A vẫn được giữ để tiếp tục sau này.
+
+---
+
+## 5.2. Priority Preemption trong `hairtos`
+
+`hairtos` mặc định:
+
+```text
+HR_CFG_PREEMPTION = 1
+```
+
+Nếu một task READY có:
+
+```text
+effective_priority
+<
+effective_priority của task hiện tại
+```
+
+thì kernel yêu cầu context switch.
+
+```text
+Task priority cao hơn READY
+        ↓
+PREEMPT
+        ↓
+PendSV
+        ↓
+Task priority cao hơn RUNNING
+```
+
+Task cùng priority không preempt nhau chỉ vì vừa trở thành READY.
+
+---
+
+## 5.3. Round-Robin là gì?
+
+Round-Robin chia CPU giữa nhiều task có cùng priority.
+
+Ví dụ:
+
+```text
+Priority 3:
+
+[A] → [B] → [C]
+```
+
+Khi A hết lượt:
+
+```text
+[B] → [C] → [A]
+```
+
+Scheduler sau đó chọn B.
+
+Round-Robin giúp các task ngang priority lần lượt có cơ hội sử dụng CPU.
+
+---
+
+## 5.4. Time Slice
+
+`hairtos` mặc định:
+
+```text
+HR_CFG_TIME_SLICING = 1
+HR_CFG_TIME_SLICE_TICKS = 1
+```
+
+Target tham chiếu có:
+
+```text
+SysTick = 1 kHz
+```
+
+nên mặc định:
+
+```text
+1 time slice ≈ 1 ms
+```
+
+Time slice chỉ cần thiết khi có nhiều task READY cùng priority.
+
+---
+
+## 5.5. `time_slice_remaining`
+
+Mỗi TCB có bộ đếm:
+
+```text
+time_slice_remaining
+```
+
+Kernel nạp:
+
+```text
+time_slice_remaining
+=
+HR_CFG_TIME_SLICE_TICKS
+```
+
+Ví dụ:
+
+```text
+3
+↓ tick
+2
+↓ tick
+1
+↓ tick
+0
+```
+
+Khi về `0`, kernel yêu cầu đổi lượt nếu có task cùng priority đang chờ.
+
+---
+
+## 5.6. SysTick xử lý Time Slicing thế nào?
+
+Mỗi SysTick, kernel ưu tiên kiểm tra preemption trước.
+
+Nếu có task priority cao hơn READY:
+
+```text
+Priority Preemption
+```
+
+Nếu chưa cần preempt và có peer cùng priority:
+
+```text
+time_slice_remaining--
+```
+
+Khi:
+
+```text
+time_slice_remaining == 0
+```
+
+kernel:
+
+```text
+reload time slice
+      ↓
+mark TIME_SLICE
+      ↓
+request PendSV
+```
+
+Nếu không có peer cùng priority, kernel chỉ reload time slice và task hiện tại tiếp tục chạy.
+
+---
+
+## 5.7. Ready Queue được Rotate thế nào?
+
+Khi yield hoặc time slice hết:
+
+```text
+[A] → [B] → [C]
+```
+
+scheduler:
+
+```text
+pop front A
+      ↓
+push back A
+```
+
+thành:
+
+```text
+[B] → [C] → [A]
+```
+
+Nếu queue chỉ có một task:
+
+```text
+[A]
+```
+
+thì rotate không làm thay đổi gì.
+
+---
+
+## 5.8. `hr_task_yield()`
+
+Task có thể chủ động nhường CPU:
+
+```c
+hr_task_yield();
+```
+
+Luồng:
+
+```text
+Task A
+  ↓
+hr_task_yield()
+  ↓
+mark YIELD
+  ↓
+PendSV
+  ↓
+rotate Ready Queue
+  ↓
+task cùng priority tiếp theo
+```
+
+Yield không cho phép task priority thấp chạy vượt qua task priority cao hơn. Nó chỉ rotate queue ở priority cao nhất hiện tại.
+
+---
+
+## 5.9. `hr_task_delay(0)`
+
+Trong `hairtos`:
+
+```c
+hr_task_delay(0);
+```
+
+được xử lý như:
+
+```c
+hr_task_yield();
+```
+
+Task không block theo timeout mà chỉ nhường lượt cho task khác cùng priority nếu có.
+
+---
+
+## 5.10. Preemption và Round-Robin khác nhau
+
+### Preemption
+
+Xảy ra giữa các task priority khác nhau:
+
+```text
+Task Low đang chạy
+      ↓
+Task High READY
+      ↓
+Task High giành CPU
+```
+
+Mục tiêu là đáp ứng task quan trọng hơn.
+
+### Round-Robin
+
+Xảy ra giữa các task cùng priority:
+
+```text
+Task A
+Task B
+Task C
+
+cùng priority
+```
+
+CPU được chia bằng:
+
+```text
+time slice
+hoặc
+yield
+```
+
+Mục tiêu là công bằng giữa các task ngang priority.
+
+---
+
+## 5.11. Khi chỉ có một Task ở Priority hiện tại
+
+Giả sử:
+
+```text
+Priority 2:
+[A]
+```
+
+Không có peer cùng priority.
+
+Kernel không cần thực hiện:
+
+```text
+A → A
+```
+
+vì đó là context switch vô ích.
+
+Do đó SysTick chỉ reload time slice và Task A tiếp tục chạy.
+
+---
+
+## 5.12. Khi Task Priority cao hơn thức dậy
+
+Giả sử:
+
+```text
+Priority 1:
+Task H = BLOCKED
+
+Priority 3:
+Task A → Task B
+Task A = RUNNING
+```
+
+Khi H trở thành READY:
+
+```text
+1 < 3
+```
+
+kernel chọn preemption thay vì tiếp tục Round-Robin A/B.
+
+```text
+H READY
+  ↓
+PREEMPT
+  ↓
+PendSV
+  ↓
+H RUNNING
+```
+
+Priority luôn được ưu tiên trước time slicing.
+
+---
+
+## 5.13. Ví dụ cụ thể
+
+Giả sử:
+
+```text
+HR_CFG_TIME_SLICE_TICKS = 1
+
+Priority 2:
+[A] → [B]
+
+Priority 4:
+[C]
+```
+
+Task A đang RUNNING.
+
+Tick tiếp theo không có task priority cao hơn, nhưng có B cùng priority:
+
+```text
+A.time_slice_remaining
+1 → 0
+```
+
+Kernel:
+
+```text
+TIME_SLICE
+   ↓
+PendSV
+```
+
+Queue:
+
+```text
+[A] → [B]
+```
+
+rotate thành:
+
+```text
+[B] → [A]
+```
+
+Task B chạy.
+
+Nếu sau đó Task H priority `0` trở thành READY thì B bị preempt ngay, dù time slice của B chưa hết.
+
+---
+
+## 5.14. Mô hình tư duy cần nhớ
+
+```text
+Có task priority cao hơn READY?
+        /            \
+      YES            NO
+      ↓               ↓
+  Preemption      có peer cùng priority?
+                     /         \
+                   YES         NO
+                   ↓            ↓
+              Time Slice      tiếp tục
+              / Yield         task hiện tại
+                   ↓
+              Rotate Queue
+                   ↓
+              Task kế tiếp
+```
+
+Có thể nhớ:
+
+```text
+Preemption
+= dọc giữa các Priority
+
+Round-Robin
+= ngang trong cùng Priority
+```
+
+---
+
+## 5.15. Trọng tâm cần thuộc
+
+Cấu hình mặc định:
+
+```text
+HR_CFG_PREEMPTION = 1
+HR_CFG_TIME_SLICING = 1
+HR_CFG_TIME_SLICE_TICKS = 1
+SysTick = 1 kHz
+```
+
+Các khái niệm:
+
+```text
+Preemption
+= task priority cao hơn giành CPU
+
+Round-Robin
+= chia CPU giữa task cùng priority
+
+Time Slice
+= thời lượng task cùng priority được chạy
+
+Yield
+= task chủ động nhường lượt
+
+Rotate
+= đầu queue chuyển xuống cuối queue
+```
+
+Luồng time slicing:
+
+```text
+SysTick
+  ↓
+có peer cùng priority?
+  ↓
+giảm time_slice_remaining
+  ↓
+= 0?
+  ↓
+mark TIME_SLICE
+  ↓
+PendSV
+  ↓
+rotate Ready Queue
+  ↓
+task cùng priority tiếp theo
+```
+
+Các điểm cần nhớ:
+
+- Priority khác nhau được xử lý bằng preemption.
+- Task cùng priority được chia CPU bằng Round-Robin.
+- Mặc định time slice là 1 tick.
+- Với tick 1 kHz, 1 tick tương đương khoảng 1 ms.
+- Time slicing chỉ xảy ra khi có ít nhất hai task cùng priority trong ready queue.
+- Nếu chỉ có một task, kernel tránh context switch không cần thiết.
+- `hr_task_yield()` chủ động nhường lượt.
+- `hr_task_delay(0)` tương đương yield.
+- Yield chỉ rotate priority cao nhất, không phá luật fixed-priority.
+- Task priority cao hơn luôn được ưu tiên hơn Round-Robin.
+- `PendSV` vẫn là cơ chế thực hiện context switch cuối cùng.
+
+Điểm quan trọng nhất:
+
+> **Preemption giải quyết “task priority nào phải chạy”, còn Round-Robin giải quyết “trong các task cùng priority, task nào được chạy tiếp theo”.**
+
+> **`hairtos` chỉ giảm time slice khi thực sự có một task cùng priority đang chờ, nhờ đó tránh context switch không cần thiết.**
+
 
 ---
 
