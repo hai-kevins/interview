@@ -33,6 +33,20 @@
   - [2.15. Mô hình tư duy cần nhớ](#215-mô-hình-tư-duy-cần-nhớ)
   - [2.16. Trọng tâm cần thuộc](#216-trọng-tâm-cần-thuộc)
 - [3. SVC + PendSV Context Switch](#3-svc-pendsv-context-switch)
+  - [3.1. Vì sao Cortex-M dùng SVC và PendSV?](#31-vì-sao-cortex-m-dùng-svc-và-pendsv)
+  - [3.2. `hr_port_start_first_task()` làm gì?](#32-hr_port_start_first_task-làm-gì)
+  - [3.3. `SVC_Handler` khởi động task đầu tiên](#33-svc_handler-khởi-động-task-đầu-tiên)
+  - [3.4. `EXC_RETURN = 0xFFFFFFFD`](#34-exc_return--0xfffffffd)
+  - [3.5. Khi nào yêu cầu Context Switch?](#35-khi-nào-yêu-cầu-context-switch)
+  - [3.6. `PendSV_Handler` lưu Task hiện tại](#36-pendsv_handler-lưu-task-hiện-tại)
+  - [3.7. Vì sao `stack_pointer` phải ở offset 0 của TCB?](#37-vì-sao-stack_pointer-phải-ở-offset-0-của-tcb)
+  - [3.8. Kernel chọn Task tiếp theo](#38-kernel-chọn-task-tiếp-theo)
+  - [3.9. Khôi phục Task mới](#39-khôi-phục-task-mới)
+  - [3.10. Vì sao PendSV có Priority thấp nhất?](#310-vì-sao-pendsv-có-priority-thấp-nhất)
+  - [3.11. SysTick / ISR và PendSV phối hợp thế nào?](#311-systick--isr-và-pendsv-phối-hợp-thế-nào)
+  - [3.12. Ví dụ Task A → Task B](#312-ví-dụ-task-a--task-b)
+  - [3.13. Mô hình tư duy cần nhớ](#313-mô-hình-tư-duy-cần-nhớ)
+  - [3.14. Trọng tâm cần thuộc](#314-trọng-tâm-cần-thuộc)
 - [4. Scheduler + Ready Queue + Bitmap](#4-scheduler-ready-queue-bitmap)
 - [5. Preemption + Round-Robin](#5-preemption-round-robin)
 - [6. SysTick + Delay + Timeout](#6-systick-delay-timeout)
@@ -1241,7 +1255,707 @@ R0-R3, R12, LR, PC, xPSR
 
 # 3. SVC + PendSV Context Switch
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Trong `hairtos`, context switch của Cortex-M3 dựa vào hai exception chính:
+
+```text
+SVC
+= bắt đầu task đầu tiên
+
+PendSV
+= chuyển giữa các task sau đó
+```
+
+Cortex-M3 tự lưu một phần CPU context khi vào exception, còn `hairtos` chỉ cần lưu phần còn lại và đổi PSP sang stack của task tiếp theo.
+
+```text
+Hardware save
++
+Software save
++
+Switch PSP
+=
+Context Switch
+```
+
+---
+
+## 3.1. Vì sao Cortex-M dùng SVC và PendSV?
+
+Nếu chỉ gọi trực tiếp một task như function bình thường:
+
+```text
+main()
+  ↓
+task_a()
+```
+
+thì kernel chưa có cơ chế để:
+
+```text
+dừng Task A
+khôi phục Task B
+quay lại đúng vị trí cũ của Task A
+```
+
+Cortex-M3 cung cấp exception mechanism để xử lý việc này.
+
+Trong `hairtos`:
+
+```text
+SVC
+→ chuyển từ startup dùng MSP sang task đầu tiên dùng PSP
+
+PendSV
+→ thực hiện các context switch tiếp theo
+```
+
+---
+
+## 3.2. `hr_port_start_first_task()` làm gì?
+
+Khi scheduler đã chọn task đầu tiên, `hairtos` gọi:
+
+```text
+hr_port_start_first_task()
+```
+
+Luồng chính:
+
+```text
+Disable interrupt
+      ↓
+MSP = _estack
+      ↓
+DSB / ISB
+      ↓
+Enable interrupt
+      ↓
+svc #0
+```
+
+Việc đặt lại MSP về `_estack` giúp Handler Mode bắt đầu từ stack kernel sạch trước khi SVC chạy.
+
+Sau lệnh:
+
+```asm
+svc #0
+```
+
+CPU vào:
+
+```text
+SVC_Handler
+```
+
+---
+
+## 3.3. `SVC_Handler` khởi động task đầu tiên
+
+`SVC_Handler` lấy:
+
+```text
+g_hr_current_task_control_block
+```
+
+tức TCB của task mà scheduler đã chọn.
+
+Vì `stack_pointer` nằm ở đầu TCB:
+
+```text
+TCB
++0x00 → stack_pointer
+```
+
+handler có thể lấy saved PSP trực tiếp.
+
+Luồng:
+
+```text
+Current TCB
+    ↓
+saved PSP
+    ↓
+Restore R4-R11
+    ↓
+PSP = vị trí hardware frame
+    ↓
+CONTROL.SPSEL = 1
+    ↓
+Thread Mode sẽ dùng PSP
+```
+
+Sau đó exception return sẽ khôi phục phần context còn lại và bắt đầu task.
+
+---
+
+## 3.4. `EXC_RETURN = 0xFFFFFFFD`
+
+Trong `SVC_Handler`, `hairtos` nạp:
+
+```text
+LR = 0xFFFFFFFD
+```
+
+rồi:
+
+```asm
+bx lr
+```
+
+Giá trị này không phải địa chỉ function thông thường. Nó là một mã:
+
+```text
+EXC_RETURN
+```
+
+Nó yêu cầu Cortex-M:
+
+```text
+return về Thread Mode
++
+dùng PSP
++
+khôi phục standard exception frame
+```
+
+Do đó CPU tự pop:
+
+```text
+R0-R3
+R12
+LR
+PC
+xPSR
+```
+
+từ stack của task.
+
+Kết quả:
+
+```text
+PC = task entry
+R0 = task argument
+```
+
+và task đầu tiên bắt đầu chạy.
+
+---
+
+## 3.5. Khi nào yêu cầu Context Switch?
+
+Khi kernel quyết định cần đổi task, nó không thực hiện toàn bộ context switch ngay tại chỗ.
+
+Port gọi:
+
+```text
+hr_port_request_context_switch()
+```
+
+Hàm này set bit:
+
+```text
+PENDSVSET
+```
+
+trong:
+
+```text
+SCB->ICSR
+```
+
+Mental model:
+
+```text
+Kernel:
+"Cần đổi task"
+      ↓
+Set PendSV Pending
+      ↓
+CPU chạy PendSV khi phù hợp
+```
+
+Điều này tách:
+
+```text
+quyết định scheduling
+```
+
+khỏi:
+
+```text
+cơ chế save / restore CPU context
+```
+
+---
+
+## 3.6. `PendSV_Handler` lưu Task hiện tại
+
+Khi CPU vào PendSV từ một task đang dùng PSP, hardware đã tự lưu:
+
+```text
+R0
+R1
+R2
+R3
+R12
+LR
+PC
+xPSR
+```
+
+lên stack của task.
+
+`PendSV_Handler` đọc:
+
+```asm
+mrs r0, psp
+```
+
+lấy PSP hiện tại.
+
+Sau đó `hairtos` tự lưu:
+
+```text
+R4-R11
+```
+
+bằng:
+
+```asm
+stmdb r0!, {r4-r11}
+```
+
+Lúc này toàn bộ CPU context cần thiết đã nằm trên stack task.
+
+Sau đó:
+
+```text
+saved PSP
+→ ghi vào TCB của task hiện tại
+```
+
+Có thể hình dung:
+
+```text
+Stack Task A
+
++----------------+
+| R4-R11         | ← software save
++----------------+
+| R0-R3          |
+| R12            |
+| LR             |
+| PC             |
+| xPSR           | ← hardware save
++----------------+
+        ↑
+saved PSP trong TCB A
+```
+
+---
+
+## 3.7. Vì sao `stack_pointer` phải ở offset 0 của TCB?
+
+Internal TCB của `hairtos` bắt đầu bằng:
+
+```c
+hr_stack_t *stack_pointer;
+```
+
+và repository còn dùng `_Static_assert` để bảo đảm:
+
+```text
+offsetof(stack_pointer) == 0
+```
+
+Lý do là assembly cần thao tác cực ngắn:
+
+```text
+TCB pointer
+    ↓
+[TCB + 0]
+    ↓
+saved PSP
+```
+
+PendSV không cần biết toàn bộ layout của struct C.
+
+Điều này tạo một hợp đồng rõ ràng:
+
+```text
+C kernel
+↔
+Assembly port
+```
+
+---
+
+## 3.8. Kernel chọn Task tiếp theo
+
+Sau khi lưu Task hiện tại, `PendSV_Handler` gọi:
+
+```text
+hr_kernel_select_next_from_pendsv()
+```
+
+Trước lời gọi C, port:
+
+```text
+disable interrupt
+```
+
+và giữ `EXC_RETURN` an toàn trên MSP.
+
+Kernel selector có nhiệm vụ chọn task tiếp theo và cập nhật:
+
+```text
+g_hr_current_task_control_block
+```
+
+Sau khi function C trả về:
+
+```text
+Current TCB
+= TCB của task mới
+```
+
+PendSV không tự triển khai thuật toán scheduler.
+
+Nó chỉ hỏi kernel:
+
+```text
+"Task tiếp theo là ai?"
+```
+
+Phần scheduler sẽ được học ở Chương 4.
+
+---
+
+## 3.9. Khôi phục Task mới
+
+Sau khi kernel chọn Task B:
+
+```text
+TCB B
+   ↓
+saved PSP
+```
+
+PendSV lấy saved PSP của Task B rồi:
+
+```asm
+ldmia r0!, {r4-r11}
+```
+
+để khôi phục:
+
+```text
+R4-R11
+```
+
+Sau đó:
+
+```text
+PSP = vị trí hardware frame của Task B
+```
+
+và:
+
+```asm
+bx lr
+```
+
+thực hiện exception return.
+
+Cortex-M tự khôi phục:
+
+```text
+R0-R3
+R12
+LR
+PC
+xPSR
+```
+
+Kết quả:
+
+```text
+Task B tiếp tục đúng vị trí
+mà nó từng bị dừng
+```
+
+---
+
+## 3.10. Vì sao PendSV có Priority thấp nhất?
+
+`hairtos` cấu hình:
+
+```text
+SVC     → priority cao
+SysTick → priority trung bình
+PendSV  → priority thấp nhất
+```
+
+PendSV thấp nhất để nó không chen ngang interrupt hoặc exception quan trọng hơn.
+
+Ví dụ:
+
+```text
+UART ISR đang chạy
+      ↓
+phát hiện Task High cần được đánh thức
+      ↓
+PendSV được set pending
+      ↓
+UART ISR vẫn hoàn thành
+      ↓
+CPU thoát ISR
+      ↓
+PendSV mới chạy
+      ↓
+Context Switch
+```
+
+Điều này rất quan trọng vì context switch cần được thực hiện tại thời điểm CPU context ổn định.
+
+---
+
+## 3.11. SysTick / ISR và PendSV phối hợp thế nào?
+
+SysTick hoặc một ISR có thể làm thay đổi trạng thái task.
+
+Ví dụ:
+
+```text
+SysTick
+   ↓
+timeout của Task B hết
+   ↓
+Task B chuyển BLOCKED → READY
+```
+
+Nếu Task B có priority cao hơn Task A:
+
+```text
+cần context switch
+```
+
+Nhưng ISR không cần tự save/restore toàn bộ task.
+
+Nó chỉ yêu cầu:
+
+```text
+PendSV pending
+```
+
+Sau khi ISR kết thúc:
+
+```text
+PendSV
+   ↓
+Save Task A
+   ↓
+Select Task B
+   ↓
+Restore Task B
+```
+
+Trong `hairtos`, API:
+
+```text
+hr_port_yield_from_isr(required)
+```
+
+sẽ request PendSV nếu:
+
+```text
+required = true
+```
+
+---
+
+## 3.12. Ví dụ Task A → Task B
+
+Giả sử:
+
+```text
+Task A
+priority = 5
+RUNNING
+
+Task B
+priority = 2
+BLOCKED
+```
+
+Một interrupt làm Task B trở thành READY.
+
+Luồng:
+
+```text
+Task A đang chạy bằng PSP_A
+        ↓
+IRQ xảy ra
+        ↓
+hardware save context Task A
+        ↓
+ISR đánh thức Task B
+        ↓
+Task B priority cao hơn
+        ↓
+PendSV pending
+        ↓
+ISR kết thúc
+        ↓
+PendSV_Handler
+        ↓
+save R4-R11 của Task A
+        ↓
+TCB A.stack_pointer = PSP_A
+        ↓
+hr_kernel_select_next_from_pendsv()
+        ↓
+Current TCB = Task B
+        ↓
+load PSP_B
+        ↓
+restore R4-R11 của Task B
+        ↓
+Exception Return
+        ↓
+hardware restore Task B
+        ↓
+Task B RUNNING
+```
+
+Task A không mất context.
+
+Khi được chọn lại sau này:
+
+```text
+TCB A
+→ saved PSP_A
+→ restore context
+→ Task A tiếp tục đúng instruction cũ
+```
+
+---
+
+## 3.13. Mô hình tư duy cần nhớ
+
+Khởi động task đầu tiên:
+
+```text
+main()
+  ↓
+MSP
+  ↓
+Scheduler chọn Task A
+  ↓
+hr_port_start_first_task()
+  ↓
+SVC
+  ↓
+Restore R4-R11
+  ↓
+PSP = Stack A
+  ↓
+EXC_RETURN
+  ↓
+Restore hardware frame
+  ↓
+Task A
+```
+
+Context switch bình thường:
+
+```text
+Task A
+  ↓
+PendSV Pending
+  ↓
+Hardware Save
+R0-R3, R12, LR, PC, xPSR
+  ↓
+PendSV Save
+R4-R11
+  ↓
+Save PSP → TCB A
+  ↓
+Select Task B
+  ↓
+Load PSP ← TCB B
+  ↓
+Restore R4-R11
+  ↓
+Exception Return
+  ↓
+Hardware Restore
+  ↓
+Task B
+```
+
+---
+
+## 3.14. Trọng tâm cần thuộc
+
+Chuỗi quan trọng nhất:
+
+```text
+SVC
+= start first task
+
+PendSV
+= switch task
+```
+
+Phải giải thích được:
+
+```text
+Hardware tự save:
+R0-R3, R12, LR, PC, xPSR
+
+PendSV tự save:
+R4-R11
+
+TCB:
+lưu saved PSP
+
+Scheduler:
+chọn next TCB
+
+EXC_RETURN:
+khôi phục Thread Mode bằng PSP
+```
+
+Các function quan trọng của `hairtos`:
+
+```text
+hr_port_start_first_task()
+SVC_Handler
+hr_port_request_context_switch()
+PendSV_Handler
+hr_kernel_select_next_from_pendsv()
+```
+
+Các điểm cần nhớ:
+
+- Task chạy Thread Mode bằng PSP.
+- Exception handler chạy bằng MSP.
+- `SVC` chỉ cần cho bước bắt đầu task đầu tiên.
+- Các context switch sau dùng `PendSV`.
+- `PendSV` có priority thấp nhất.
+- Assembly chỉ save/restore context; thuật toán chọn task nằm ở kernel.
+- `stack_pointer` là field đầu tiên của TCB để assembly truy cập trực tiếp.
+- `EXC_RETURN = 0xFFFFFFFD` đưa CPU về Thread Mode dùng PSP.
+- Cortex-M3 target không có FPU nên không có FPU context cần save/restore.
+
+Câu cần nhớ nhất:
+
+> **Context switch trên Cortex-M3 không phải copy toàn bộ register giữa hai TCB. CPU context được lưu trên stack riêng của từng task; TCB chỉ giữ saved PSP để kernel đổi từ stack task này sang stack task khác.**
+
+> **SVC đưa hệ thống từ `main()`/MSP sang task đầu tiên/PSP, còn PendSV thực hiện mọi context switch tiếp theo.**
+
 
 ---
 
