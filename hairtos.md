@@ -48,6 +48,21 @@
   - [3.13. Mô hình tư duy cần nhớ](#313-mô-hình-tư-duy-cần-nhớ)
   - [3.14. Trọng tâm cần thuộc](#314-trọng-tâm-cần-thuộc)
 - [4. Scheduler + Ready Queue + Bitmap](#4-scheduler-ready-queue-bitmap)
+  - [4.1. Scheduler có nhiệm vụ gì?](#41-scheduler-có-nhiệm-vụ-gì)
+  - [4.2. Fixed-Priority Preemptive Scheduling](#42-fixed-priority-preemptive-scheduling)
+  - [4.3. Priority trong `hairtos`](#43-priority-trong-hairtos)
+  - [4.4. Ready Set](#44-ready-set)
+  - [4.5. Ready Queue theo từng Priority](#45-ready-queue-theo-từng-priority)
+  - [4.6. Ready Bitmap](#46-ready-bitmap)
+  - [4.7. Scheduler chọn Task tiếp theo thế nào?](#47-scheduler-chọn-task-tiếp-theo-thế-nào)
+  - [4.8. Khi nào xảy ra Preemption?](#48-khi-nào-xảy-ra-preemption)
+  - [4.9. Task cùng Priority](#49-task-cùng-priority)
+  - [4.10. READY, RUNNING và BLOCKED](#410-ready-running-và-blocked)
+  - [4.11. `effective_priority` và Scheduler](#411-effective_priority-và-scheduler)
+  - [4.12. Scheduler và PendSV khác nhau](#412-scheduler-và-pendsv-khác-nhau)
+  - [4.13. Ví dụ cụ thể](#413-ví-dụ-cụ-thể)
+  - [4.14. Mô hình tư duy cần nhớ](#414-mô-hình-tư-duy-cần-nhớ)
+  - [4.15. Trọng tâm cần thuộc](#415-trọng-tâm-cần-thuộc)
 - [5. Preemption + Round-Robin](#5-preemption-round-robin)
 - [6. SysTick + Delay + Timeout](#6-systick-delay-timeout)
 - [7. Queue + Blocking IPC](#7-queue-blocking-ipc)
@@ -1961,7 +1976,714 @@ Câu cần nhớ nhất:
 
 # 4. Scheduler + Ready Queue + Bitmap
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Scheduler trả lời một câu hỏi cốt lõi:
+
+> **Trong các task đang sẵn sàng chạy, task nào phải được CPU chạy tiếp theo?**
+
+`hairtos` dùng **fixed-priority preemptive scheduler**. Mỗi priority có một FIFO ready queue riêng, còn bitmap cho biết priority nào hiện đang có task sẵn sàng.
+
+```text
+Task trở thành READY
+        ↓
+đưa vào Ready Queue
+        ↓
+cập nhật Bitmap
+        ↓
+Scheduler chọn Priority cao nhất
+        ↓
+chọn Task đầu queue
+        ↓
+PendSV thực hiện Context Switch
+```
+
+---
+
+## 4.1. Scheduler có nhiệm vụ gì?
+
+Scheduler không trực tiếp save/restore register. Việc đó thuộc Cortex-M3 port và `PendSV`.
+
+Scheduler chỉ quyết định:
+
+```text
+Task nào đang READY?
+Task nào có priority cao nhất?
+Task hiện tại có cần bị preempt không?
+Task tiếp theo là task nào?
+```
+
+Có thể phân biệt:
+
+```text
+Scheduler
+= quyết định chạy ai
+
+PendSV
+= thực hiện việc chuyển CPU sang task đó
+```
+
+---
+
+## 4.2. Fixed-Priority Preemptive Scheduling
+
+`hairtos` dùng:
+
+```text
+Fixed Priority
++
+Preemption
+```
+
+`Fixed Priority` nghĩa là mỗi task có một priority được cấu hình và scheduler luôn ưu tiên task có priority cao hơn.
+
+`Preemption` nghĩa là nếu một task priority cao hơn trở thành READY, nó có thể giành CPU từ task priority thấp hơn đang chạy.
+
+Ví dụ:
+
+```text
+Task A priority = 5
+Task B priority = 2
+```
+
+Nếu A đang chạy và B trở thành READY:
+
+```text
+B priority cao hơn
+        ↓
+Scheduler yêu cầu Context Switch
+        ↓
+Task B chạy
+```
+
+---
+
+## 4.3. Priority trong `hairtos`
+
+Cấu hình hiện tại có:
+
+```text
+HR_CFG_PRIORITY_COUNT = 8
+```
+
+tức:
+
+```text
+priority 0
+priority 1
+...
+priority 7
+```
+
+Quy tắc rất quan trọng:
+
+```text
+Số càng nhỏ
+=
+Priority càng cao
+```
+
+Do đó:
+
+```text
+0 = cao nhất
+7 = thấp nhất
+```
+
+Idle task chạy ở:
+
+```text
+priority 7
+```
+
+Nên khi không có application task nào cần CPU, idle task là phương án cuối cùng.
+
+---
+
+## 4.4. Ready Set
+
+Scheduler quản lý các task có khả năng được chạy thông qua:
+
+```text
+Ready Set
+```
+
+Trong `hairtos`, cấu trúc khái niệm là:
+
+```text
+Ready Set
+├── queues[0]
+├── queues[1]
+├── ...
+├── queues[7]
+├── bitmap
+└── count
+```
+
+Mỗi task có một:
+
+```text
+ready_node
+```
+
+được kernel dùng để đưa task vào ready set.
+
+Ready set không chứa bản copy của task; nó liên kết trực tiếp node nằm trong TCB.
+
+Đây là:
+
+```text
+intrusive list
+```
+
+---
+
+## 4.5. Ready Queue theo từng Priority
+
+Mỗi mức priority có một FIFO queue riêng.
+
+Ví dụ:
+
+```text
+Priority 0:
+[ Task A ] → [ Task B ]
+
+Priority 1:
+[ Task C ]
+
+Priority 2:
+empty
+
+Priority 3:
+[ Task D ] → [ Task E ]
+```
+
+Scheduler không cần so sánh tất cả task với nhau.
+
+Nó chỉ cần:
+
+```text
+1. tìm priority cao nhất đang có task
+2. lấy task đầu FIFO của priority đó
+```
+
+Task cùng priority giữ thứ tự FIFO.
+
+---
+
+## 4.6. Ready Bitmap
+
+Nếu chỉ có các queue, scheduler vẫn cần biết queue nào không rỗng.
+
+`hairtos` dùng:
+
+```text
+bitmap
+```
+
+Mỗi bit đại diện cho một priority.
+
+Ví dụ:
+
+```text
+priority 0 → empty
+priority 1 → có task
+priority 2 → empty
+priority 3 → có task
+```
+
+Bitmap có thể hình dung:
+
+```text
+bit 0 = 0
+bit 1 = 1
+bit 2 = 0
+bit 3 = 1
+```
+
+Khi queue của một priority từ rỗng thành có task:
+
+```text
+set bit tương ứng
+```
+
+Khi task cuối cùng của queue đó bị remove:
+
+```text
+clear bit
+```
+
+Nhờ bitmap, scheduler nhanh chóng biết priority nào đang hoạt động.
+
+---
+
+## 4.7. Scheduler chọn Task tiếp theo thế nào?
+
+Luồng lựa chọn:
+
+```text
+Ready Bitmap
+     ↓
+tìm priority nhỏ nhất có bit = 1
+     ↓
+Ready Queue của priority đó
+     ↓
+lấy node đầu FIFO
+     ↓
+Task được chọn
+```
+
+Ví dụ:
+
+```text
+P0: empty
+P1: Task B
+P2: Task C
+P3: Task D
+```
+
+Scheduler luôn chọn:
+
+```text
+Task B
+```
+
+vì:
+
+```text
+priority 1
+```
+
+cao hơn `2` và `3`.
+
+Thứ tự task được tạo không quan trọng nếu chúng có priority khác nhau.
+
+---
+
+## 4.8. Khi nào xảy ra Preemption?
+
+Giả sử task hiện tại:
+
+```text
+Task A
+effective_priority = 4
+RUNNING
+```
+
+Task B vừa được đánh thức:
+
+```text
+Task B
+effective_priority = 2
+READY
+```
+
+Vì:
+
+```text
+2 < 4
+```
+
+nên B có priority cao hơn.
+
+Scheduler xác định:
+
+```text
+should_preempt = true
+```
+
+sau đó yêu cầu:
+
+```text
+PendSV
+```
+
+để thực hiện context switch.
+
+Ngược lại:
+
+```text
+Task A priority = 2
+Task B priority = 4
+```
+
+B trở thành READY nhưng không được giành CPU ngay.
+
+Task A tiếp tục chạy cho tới khi:
+
+```text
+block
+yield
+hoặc có lý do scheduling khác
+```
+
+---
+
+## 4.9. Task cùng Priority
+
+Giả sử:
+
+```text
+Task A priority = 3
+Task B priority = 3
+```
+
+Task B trở thành READY trong khi A đang chạy.
+
+Vì hai task có cùng priority:
+
+```text
+không preempt chỉ vì B vừa READY
+```
+
+Các task cùng priority dùng FIFO và có thể đổi lượt khi:
+
+```text
+yield
+hoặc
+time slice hết
+```
+
+Khi đó ready queue có thể được rotate:
+
+```text
+[A][B][C]
+    ↓
+[B][C][A]
+```
+
+Chi tiết Round-Robin và Time Slicing sẽ học ở Chương 5.
+
+---
+
+## 4.10. READY, RUNNING và BLOCKED
+
+Ba state quan trọng nhất đối với scheduler:
+
+```text
+READY
+= có thể chạy
+
+RUNNING
+= đang dùng CPU
+
+BLOCKED
+= chưa thể chạy vì đang chờ
+```
+
+Ví dụ một task gọi delay:
+
+```text
+RUNNING
+   ↓
+hr_task_delay()
+   ↓
+BLOCKED
+```
+
+Task đó phải rời ready scheduling path.
+
+Khi timeout hết:
+
+```text
+BLOCKED
+   ↓
+READY
+   ↓
+đưa lại vào Ready Queue
+```
+
+Scheduler sau đó kiểm tra xem task vừa thức có cần preempt task hiện tại không.
+
+Các sự kiện có thể làm task trở lại READY gồm:
+
+```text
+timeout hết
+queue có dữ liệu
+semaphore được give
+mutex được unlock / handoff
+ISR đánh thức task
+```
+
+---
+
+## 4.11. `effective_priority` và Scheduler
+
+Scheduler không chỉ nhìn:
+
+```text
+base_priority
+```
+
+mà dùng:
+
+```text
+effective_priority
+```
+
+Điều này cần cho Priority Inheritance.
+
+Ví dụ:
+
+```text
+base_priority      = 5
+effective_priority = 2
+```
+
+Scheduler phải coi task này như priority `2`.
+
+Nếu một task đang READY mà `effective_priority` thay đổi:
+
+```text
+remove khỏi Ready Queue cũ
+        ↓
+cập nhật priority
+        ↓
+insert vào Ready Queue mới
+```
+
+Nếu không làm vậy, bitmap và queue sẽ không phản ánh đúng priority hiện tại.
+
+---
+
+## 4.12. Scheduler và PendSV khác nhau
+
+Đây là điểm rất hay bị nhầm.
+
+Scheduler:
+
+```text
+Ready Set
+   ↓
+chọn Task B
+   ↓
+Current TCB = Task B
+```
+
+PendSV:
+
+```text
+Save Context Task A
+   ↓
+gọi Scheduler
+   ↓
+Load Context Task B
+```
+
+Có thể nhớ:
+
+```text
+Scheduler
+= policy
+
+PendSV
+= mechanism
+```
+
+Hay nói cách khác:
+
+> Scheduler quyết định **ai được chạy**, PendSV quyết định **CPU được chuyển sang task đó như thế nào**.
+
+---
+
+## 4.13. Ví dụ cụ thể
+
+Giả sử ready set:
+
+```text
+Priority 0:
+empty
+
+Priority 1:
+Task B
+
+Priority 2:
+Task C → Task D
+
+Priority 3:
+Task A
+```
+
+Task A hiện đang chạy.
+
+Một sự kiện làm Task B READY.
+
+Bitmap:
+
+```text
+P0 P1 P2 P3
+ 0  1  1  1
+```
+
+Scheduler:
+
+```text
+tìm priority cao nhất
+        ↓
+priority 1
+        ↓
+Task B
+```
+
+Vì:
+
+```text
+Task B effective_priority = 1
+Task A effective_priority = 3
+```
+
+nên:
+
+```text
+1 < 3
+```
+
+Kết quả:
+
+```text
+Task B READY
+    ↓
+Preemption required
+    ↓
+PendSV pending
+    ↓
+Save Task A
+    ↓
+Scheduler chọn Task B
+    ↓
+Restore Task B
+    ↓
+Task B RUNNING
+```
+
+Nếu sau đó Task B block:
+
+```text
+Task B
+   ↓
+remove khỏi Ready Queue
+   ↓
+bitmap cập nhật nếu queue P1 rỗng
+   ↓
+Scheduler chọn priority cao nhất còn lại
+   ↓
+Task C
+```
+
+---
+
+## 4.14. Mô hình tư duy cần nhớ
+
+```text
+TASK READY
+    ↓
+Ready Queue theo Priority
+    ↓
+Ready Bitmap
+    ↓
+Highest Priority
+    ↓
+FIFO Head
+    ↓
+Next Task
+```
+
+Quy tắc priority:
+
+```text
+Số nhỏ hơn
+=
+Priority cao hơn
+```
+
+Preemption:
+
+```text
+New READY Task
+      ↓
+priority cao hơn Current?
+   /            \
+ YES            NO
+ ↓               ↓
+PendSV         tiếp tục
+ ↓
+Context Switch
+```
+
+Phân chia trách nhiệm:
+
+```text
+Scheduler
+= chọn task
+
+Ready Queue
+= giữ thứ tự task runnable
+
+Bitmap
+= cho biết priority nào đang có task
+
+PendSV
+= chuyển CPU sang task được chọn
+```
+
+---
+
+## 4.15. Trọng tâm cần thuộc
+
+Các giá trị chính:
+
+```text
+Priority Count = 8
+
+Priority 0
+= cao nhất
+
+Priority 7
+= thấp nhất / Idle
+```
+
+Các cấu trúc chính:
+
+```text
+Ready Set
+=
+FIFO Queue cho từng priority
++
+Bitmap
++
+Task Count
+```
+
+Các function khái niệm quan trọng:
+
+```text
+add_ready
+remove_ready
+select_highest
+should_preempt
+yield_current
+rotate_highest
+```
+
+Các nguyên tắc phải giải thích được:
+
+- Scheduler của `hairtos` là fixed-priority và preemptive.
+- Số priority nhỏ hơn nghĩa là priority cao hơn.
+- Mỗi priority có một FIFO ready queue.
+- Bitmap đánh dấu priority nào có task runnable.
+- Scheduler chọn priority cao nhất rồi lấy task đầu FIFO.
+- Task priority cao hơn có thể preempt task thấp hơn.
+- Task cùng priority không preempt nhau chỉ vì vừa READY.
+- `yield` hoặc time slicing mới rotate các task cùng priority.
+- Scheduler dùng `effective_priority`, không chỉ `base_priority`.
+- Task BLOCKED không được scheduler chọn.
+- Task được wake phải quay lại ready set trước khi có thể chạy.
+- Scheduler chỉ đưa ra quyết định; `PendSV` mới thực hiện context switch.
+
+Câu cần nhớ nhất:
+
+> **`hairtos` không tìm task tiếp theo bằng cách quét toàn bộ task. Nó tổ chức task theo từng FIFO ready queue của mỗi priority và dùng bitmap để biết priority cao nhất đang có task.**
+
+> **Preemption xảy ra khi một task READY có `effective_priority` cao hơn task hiện tại; việc chuyển CPU thực tế sau đó được thực hiện bằng `PendSV`.**
+
 
 ---
 
