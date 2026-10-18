@@ -16,6 +16,22 @@
   - [1.13. Mô hình tư duy cần nhớ](#113-mô-hình-tư-duy-cần-nhớ)
   - [1.14. Trọng tâm cần thuộc](#114-trọng-tâm-cần-thuộc)
 - [2. Task + TCB + Stack](#2-task-tcb-stack)
+  - [2.1. Task là gì?](#21-task-là-gì)
+  - [2.2. TCB là gì?](#22-tcb-là-gì)
+  - [2.3. Vì sao TCB cần lưu Stack Pointer?](#23-vì-sao-tcb-cần-lưu-stack-pointer)
+  - [2.4. Mỗi Task có Stack riêng](#24-mỗi-task-có-stack-riêng)
+  - [2.5. `stack_words` nghĩa là gì?](#25-stack_words-nghĩa-là-gì)
+  - [2.6. Task được tạo như thế nào?](#26-task-được-tạo-như-thế-nào)
+  - [2.7. Initial Stack Frame là gì?](#27-initial-stack-frame-là-gì)
+  - [2.8. Initial Stack Frame trong `hairtos`](#28-initial-stack-frame-trong-hairtos)
+  - [2.9. Vì sao `R0` chứa Task Argument?](#29-vì-sao-r0-chứa-task-argument)
+  - [2.10. `PC`, `LR` và `xPSR`](#210-pc-lr-và-xpsr)
+  - [2.11. Task State](#211-task-state)
+  - [2.12. Base Priority và Effective Priority](#212-base-priority-và-effective-priority)
+  - [2.13. Static Task Allocation](#213-static-task-allocation)
+  - [2.14. Quan hệ Task – TCB – Stack](#214-quan-hệ-task--tcb--stack)
+  - [2.15. Mô hình tư duy cần nhớ](#215-mô-hình-tư-duy-cần-nhớ)
+  - [2.16. Trọng tâm cần thuộc](#216-trọng-tâm-cần-thuộc)
 - [3. SVC + PendSV Context Switch](#3-svc-pendsv-context-switch)
 - [4. Scheduler + Ready Queue + Bitmap](#4-scheduler-ready-queue-bitmap)
 - [5. Preemption + Round-Robin](#5-preemption-round-robin)
@@ -660,7 +676,566 @@ thì bạn đã có nền tảng cần thiết để học `Task + TCB + Stack` 
 
 # 2. Task + TCB + Stack
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Trong RTOS, một `Task` không chỉ là một function. Để task có thể bị dừng giữa chừng rồi tiếp tục đúng vị trí cũ, kernel phải lưu được **trạng thái thực thi và thông tin quản lý của task**.
+
+```text
+Task
+=
+Task Function
++
+TCB
++
+Stack riêng
+```
+
+Trong `hairtos`, task được tạo tĩnh: application cung cấp sẵn `hr_task_t` và vùng stack, kernel không cần cấp phát động bộ nhớ cho task.
+
+---
+
+## 2.1. Task là gì?
+
+Task là một luồng thực thi độc lập. Một task thường có function dạng:
+
+```c
+void task(void *argument)
+{
+    while (1)
+    {
+        /* xử lý */
+    }
+}
+```
+
+Nhưng để scheduler quản lý được, task còn cần:
+
+```text
+stack riêng
+priority
+state
+CPU context
+thông tin scheduler
+```
+
+Nếu chỉ có function mà không có TCB và stack, kernel không thể dừng Task A rồi tiếp tục Task A tại đúng instruction trước đó.
+
+---
+
+## 2.2. TCB là gì?
+
+TCB là:
+
+```text
+Task Control Block
+```
+
+Có thể hiểu là hồ sơ quản lý của task.
+
+```text
+Task A
+ ├── Task Function
+ ├── Stack
+ └── TCB
+      ├── saved stack pointer
+      ├── priority
+      ├── state
+      └── scheduler information
+```
+
+Trong `hairtos`, `hr_task_t` là vùng storage do application sở hữu, còn cấu trúc quản lý chi tiết bên trong thuộc kernel.
+
+---
+
+## 2.3. Vì sao TCB cần lưu Stack Pointer?
+
+Giả sử Task A đang chạy bằng PSP:
+
+```text
+PSP
+ ↓
+Stack Task A
+```
+
+Khi context switch:
+
+```text
+Task A
+  ↓
+Save CPU Context
+  ↓
+lưu PSP hiện tại vào TCB A
+```
+
+Scheduler chọn Task B:
+
+```text
+TCB B
+  ↓
+lấy saved PSP
+  ↓
+PSP = Stack Task B
+  ↓
+Restore CPU Context
+```
+
+Điểm cần nhớ:
+
+> **Saved Stack Pointer trong TCB là điểm để kernel tìm lại context đã lưu của task.**
+
+---
+
+## 2.4. Mỗi Task có Stack riêng
+
+Các task không dùng chung một stack.
+
+```text
+Task A → Stack A
+Task B → Stack B
+Task C → Stack C
+```
+
+Stack của task chứa:
+
+```text
+local variables
+return address
+function call frame
+saved registers
+CPU context
+```
+
+Khi chuyển task, kernel đổi PSP từ stack của task hiện tại sang stack của task tiếp theo.
+
+---
+
+## 2.5. `stack_words` nghĩa là gì?
+
+Trong `hairtos`:
+
+```text
+hr_stack_t = uint32_t
+```
+
+nên:
+
+```text
+1 stack word = 4 byte
+```
+
+Ví dụ:
+
+```text
+stack_words = 256
+```
+
+thì stack có kích thước:
+
+```text
+256 × 4 = 1024 byte
+```
+
+`stack_words` là số word, không phải số byte.
+
+---
+
+## 2.6. Task được tạo như thế nào?
+
+API chính có dạng:
+
+```c
+hr_task_create_static(
+    task,
+    name,
+    entry,
+    argument,
+    stack,
+    stack_words,
+    priority
+);
+```
+
+Luồng khái niệm:
+
+```text
+Task Function
++
+Argument
++
+Stack Memory
++
+Priority
+      ↓
+Create Task
+      ↓
+Initialize TCB
+      ↓
+Build Initial Stack Frame
+      ↓
+Task sẵn sàng cho scheduler
+```
+
+---
+
+## 2.7. Initial Stack Frame là gì?
+
+Task mới chưa từng thực sự chạy nên chưa có CPU context thật để restore.
+
+Kernel giải quyết bằng cách dựng sẵn một context trên stack:
+
+```text
+Task chưa từng chạy
+        ↓
+Kernel dựng stack giống như
+task vừa bị exception
+        ↓
+Context Restore
+        ↓
+CPU bắt đầu tại task entry
+```
+
+Đây là kỹ thuật cốt lõi để khởi động một task mới trên Cortex-M.
+
+---
+
+## 2.8. Initial Stack Frame trong `hairtos`
+
+Có thể hình dung initial frame như sau:
+
+```text
+Saved PSP
+  ↓
++----------------+
+| R4             |
+| R5             |
+| R6             |
+| R7             |
+| R8             |
+| R9             |
+| R10            |
+| R11            |
++----------------+
+| R0             |
+| R1             |
+| R2             |
+| R3             |
+| R12            |
+| LR             |
+| PC             |
+| xPSR           |
++----------------+
+```
+
+Phần:
+
+```text
+R4-R11
+```
+
+là context mà phần mềm phải lưu/khôi phục.
+
+Phần:
+
+```text
+R0-R3, R12, LR, PC, xPSR
+```
+
+có hình dạng giống hardware exception frame của Cortex-M3.
+
+---
+
+## 2.9. Vì sao `R0` chứa Task Argument?
+
+Theo ARM calling convention, argument đầu tiên của function nằm trong:
+
+```text
+R0
+```
+
+Task entry có dạng:
+
+```c
+void task(void *argument);
+```
+
+nên initial frame được dựng:
+
+```text
+R0 = argument
+PC = task entry
+```
+
+Khi task được restore lần đầu, CPU bắt đầu tại task entry và nhận đúng argument.
+
+---
+
+## 2.10. `PC`, `LR` và `xPSR`
+
+Initial frame cần chuẩn bị:
+
+```text
+PC
+= task entry
+
+R0
+= task argument
+
+LR
+= task exit handler
+
+xPSR
+= Thumb state
+```
+
+Cortex-M3 chỉ chạy Thumb/Thumb-2 nên bit Thumb trong xPSR phải hợp lệ.
+
+Nếu task function vô tình return, `LR` phải dẫn tới một handler hợp lệ thay vì địa chỉ ngẫu nhiên.
+
+---
+
+## 2.11. Task State
+
+Các trạng thái cần hiểu:
+
+```text
+CREATED
+READY
+RUNNING
+BLOCKED
+SUSPENDED
+```
+
+Ý nghĩa:
+
+```text
+CREATED
+= đã tạo
+
+READY
+= sẵn sàng chạy
+
+RUNNING
+= đang dùng CPU
+
+BLOCKED
+= đang chờ timeout / queue / semaphore / sự kiện
+
+SUSPENDED
+= bị chủ động loại khỏi scheduler
+```
+
+Luồng thường gặp:
+
+```text
+CREATED
+   ↓
+READY
+   ↓
+RUNNING
+   ↓
+READY
+```
+
+hoặc:
+
+```text
+RUNNING
+   ↓
+BLOCKED
+   ↓
+READY
+```
+
+---
+
+## 2.12. Base Priority và Effective Priority
+
+Để hỗ trợ Priority Inheritance, kernel cần phân biệt:
+
+```text
+base_priority
+effective_priority
+```
+
+Bình thường:
+
+```text
+base_priority
+=
+effective_priority
+```
+
+Khi một task priority thấp giữ mutex mà task priority cao đang chờ, `effective_priority` có thể được nâng tạm thời.
+
+Phần này sẽ được học kỹ ở chương Mutex + Priority Inheritance.
+
+---
+
+## 2.13. Static Task Allocation
+
+`hairtos` dùng:
+
+```text
+caller-owned TCB storage
++
+caller-owned stack
+```
+
+Ví dụ:
+
+```c
+static hr_task_t task_a;
+static hr_stack_t task_a_stack[256];
+```
+
+Ưu điểm:
+
+```text
+RAM xác định trước
+không phụ thuộc heap
+không fragmentation runtime
+dễ tính bộ nhớ
+hành vi dễ dự đoán
+```
+
+Đây là thiết kế phù hợp với embedded RTOS cần tính xác định cao.
+
+---
+
+## 2.14. Quan hệ Task – TCB – Stack
+
+```text
+                 TASK A
+
+       +----------------------+
+       | Task Function        |
+       +----------------------+
+
+       +----------------------+
+       | TCB A                |
+       | saved PSP -----------+------+
+       | priority             |      |
+       | state                |      |
+       | scheduler info       |      |
+       +----------------------+      |
+                                     |
+                                     ↓
+       +-----------------------------+
+       | Stack A                     |
+       | local variables             |
+       | function frames             |
+       | saved CPU context           |
+       +-----------------------------+
+```
+
+Context switch về bản chất là:
+
+```text
+Save PSP → TCB Task A
+        ↓
+Scheduler chọn Task B
+        ↓
+Load PSP ← TCB Task B
+```
+
+---
+
+## 2.15. Mô hình tư duy cần nhớ
+
+```text
+TASK
+= code muốn chạy
+
+TCB
+= hồ sơ quản lý task
+
+STACK
+= nơi giữ trạng thái thực thi của task
+```
+
+Khi tạo task:
+
+```text
+Task Function
++
+Argument
++
+Stack
++
+Priority
+      ↓
+Initialize TCB
+      ↓
+Build Initial Stack Frame
+      ↓
+Saved PSP
+```
+
+Khi context switch:
+
+```text
+Task A
+  ↓
+Save Context vào Stack A
+  ↓
+Save PSP vào TCB A
+  ↓
+Select Task B
+  ↓
+Load PSP từ TCB B
+  ↓
+Restore Context từ Stack B
+  ↓
+Task B
+```
+
+---
+
+## 2.16. Trọng tâm cần thuộc
+
+```text
+Task
+↓
+TCB
+↓
+Private Stack
+↓
+Initial Stack Frame
+↓
+PSP
+↓
+Context Save / Restore
+```
+
+Các ý quan trọng:
+
+```text
+Task
+= function + TCB + stack
+
+TCB
+= quản lý task + saved PSP
+
+Stack
+= call frame + CPU context
+
+R0
+= argument đầu tiên
+
+PC
+= task entry
+
+R4-R11
+= software context
+
+R0-R3, R12, LR, PC, xPSR
+= hardware-style exception frame
+```
+
+Điểm quan trọng nhất:
+
+> **TCB không cần chứa toàn bộ register của task; phần lớn CPU context nằm trên stack của task. TCB giữ thông tin quản lý và saved PSP để kernel tìm lại stack đó.**
+
+> **Task mới được khởi động bằng cách dựng sẵn Initial Stack Frame, sau đó Cortex-M restore context và bắt đầu chạy tại task entry.**
+
 
 ---
 
