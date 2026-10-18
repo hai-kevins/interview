@@ -80,6 +80,23 @@
   - [5.14. Mô hình tư duy cần nhớ](#514-mô-hình-tư-duy-cần-nhớ)
   - [5.15. Trọng tâm cần thuộc](#515-trọng-tâm-cần-thuộc)
 - [6. SysTick + Delay + Timeout](#6-systick-delay-timeout)
+  - [6.1. Kernel Tick là gì?](#61-kernel-tick-là-gì)
+  - [6.2. SysTick 1 kHz trong `hairtos`](#62-systick-1-khz-trong-hairtos)
+  - [6.3. Tick Counter 32-bit](#63-tick-counter-32-bit)
+  - [6.4. `hr_time_now()`](#64-hr_time_now)
+  - [6.5. `hr_task_delay()`](#65-hr_task_delay)
+  - [6.6. Delay không phải Busy-Wait](#66-delay-không-phải-busy-wait)
+  - [6.7. `hr_task_delay_until()`](#67-hr_task_delay_until)
+  - [6.8. Timeout List](#68-timeout-list)
+  - [6.9. Vì sao cần Current List và Overflow List?](#69-vì-sao-cần-current-list-và-overflow-list)
+  - [6.10. Chèn một Timeout](#610-chèn-một-timeout)
+  - [6.11. SysTick đánh thức Task như thế nào?](#611-systick-đánh-thức-task-như-thế-nào)
+  - [6.12. Timeout của IPC](#612-timeout-của-ipc)
+  - [6.13. Race giữa Event Wakeup và Timeout](#613-race-giữa-event-wakeup-và-timeout)
+  - [6.14. Timeout và Preemption](#614-timeout-và-preemption)
+  - [6.15. Ví dụ Tick Wrap-Around](#615-ví-dụ-tick-wrap-around)
+  - [6.16. Mô hình tư duy cần nhớ](#616-mô-hình-tư-duy-cần-nhớ)
+  - [6.17. Trọng tâm cần thuộc](#617-trọng-tâm-cần-thuộc)
 - [7. Queue + Blocking IPC](#7-queue-blocking-ipc)
 - [8. Semaphore + ISR Synchronization](#8-semaphore-isr-synchronization)
 - [9. Mutex + Priority Inversion + Priority Inheritance](#9-mutex-priority-inversion-priority-inheritance)
@@ -3233,7 +3250,771 @@ Các điểm cần nhớ:
 
 # 6. SysTick + Delay + Timeout
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Trong `hairtos`, SysTick tạo nhịp thời gian cho kernel. Mỗi tick, kernel tăng bộ đếm thời gian, kiểm tra timeout, đánh thức các task đã hết thời gian chờ, rồi quyết định có cần preempt task hiện tại hay không.
+
+```text
+SysTick
+   ↓
+Kernel Tick++
+   ↓
+kiểm tra Timeout List
+   ↓
+Task hết hạn?
+   ↓
+BLOCKED → READY
+   ↓
+cần Preemption?
+   ↓
+PendSV
+```
+
+Target STM32F103 tham chiếu dùng SysTick mặc định ở `1 kHz`, tức một tick tương đương khoảng `1 ms`.
+
+---
+
+## 6.1. Kernel Tick là gì?
+
+Kernel Tick là đơn vị thời gian cơ bản của RTOS.
+
+Trong `hairtos`, các cơ chế như:
+
+```text
+task delay
+IPC timeout
+time slicing
+software timer
+```
+
+đều dựa trên tick.
+
+Có thể hiểu:
+
+```text
+Tick
+= nhịp đồng hồ logic của kernel
+```
+
+Không nên nhầm với cycle CPU. Một tick có thể tương ứng với rất nhiều CPU cycle.
+
+---
+
+## 6.2. SysTick 1 kHz trong `hairtos`
+
+Target tham chiếu dùng:
+
+```text
+SysTick = 1 kHz
+```
+
+nên:
+
+```text
+1 tick ≈ 1 ms
+```
+
+Ví dụ:
+
+```c
+hr_task_delay(500);
+```
+
+tương đương chờ khoảng:
+
+```text
+500 tick
+≈
+500 ms
+```
+
+Kernel v1 hiện dùng periodic tick, chưa có tickless idle.
+
+---
+
+## 6.3. Tick Counter 32-bit
+
+`hairtos` dùng:
+
+```text
+uint32_t
+```
+
+cho tick counter.
+
+Bộ đếm tăng:
+
+```text
+0
+1
+2
+3
+...
+0xFFFFFFFF
+0
+1
+...
+```
+
+Do đó tick cuối cùng sẽ wrap-around.
+
+Với `1 kHz`, một vòng `uint32_t` kéo dài khoảng:
+
+```text
+49.7 ngày
+```
+
+Kernel phải xử lý đúng timeout ngay cả khi deadline nằm qua điểm wrap.
+
+---
+
+## 6.4. `hr_time_now()`
+
+API:
+
+```c
+hr_tick_t hr_time_now(void);
+```
+
+trả về kernel tick hiện tại.
+
+Về ý tưởng:
+
+```text
+hr_time_now()
+      ↓
+g_kernel_tick
+```
+
+API này cung cấp mốc thời gian logic của RTOS cho application.
+
+---
+
+## 6.5. `hr_task_delay()`
+
+Task có thể block trong một số tick:
+
+```c
+hr_task_delay(ticks);
+```
+
+Ví dụ:
+
+```c
+hr_task_delay(100);
+```
+
+Luồng:
+
+```text
+Task RUNNING
+     ↓
+remove khỏi Ready Set
+     ↓
+đưa timeout node vào Timeout List
+     ↓
+RUNNING → BLOCKED
+     ↓
+request Context Switch
+```
+
+Khi timeout hết:
+
+```text
+BLOCKED → READY
+```
+
+và task lại có thể được scheduler chọn.
+
+Trong `hairtos`:
+
+```text
+hr_task_delay(0)
+```
+
+tương đương `yield`, còn `HR_WAIT_FOREVER` không phải giá trị hợp lệ cho `hr_task_delay()`.
+
+---
+
+## 6.6. Delay không phải Busy-Wait
+
+Điểm rất quan trọng:
+
+```text
+hr_task_delay()
+≠
+vòng lặp chờ CPU
+```
+
+Task bị đưa sang:
+
+```text
+BLOCKED
+```
+
+nên CPU có thể chạy task khác.
+
+Ví dụ:
+
+```text
+Task A
+  ↓
+delay 100 ms
+  ↓
+BLOCKED
+
+CPU
+  ↓
+Task B / Task C / Idle
+```
+
+Đây là khác biệt lớn so với delay kiểu bare-metal làm CPU chờ tại chỗ.
+
+---
+
+## 6.7. `hr_task_delay_until()`
+
+`hr_task_delay_until()` dùng một mốc tuyệt đối lặp lại:
+
+```c
+hr_task_delay_until(&last_wake_tick, period);
+```
+
+Thay vì:
+
+```text
+thức dậy
+↓
+làm việc
+↓
+delay(period)
+```
+
+nó tính:
+
+```text
+next_wake
+=
+last_wake_tick + period
+```
+
+rồi cập nhật lại:
+
+```text
+last_wake_tick = next_wake
+```
+
+Cách này giảm phase drift cho task tuần hoàn.
+
+Ví dụ task muốn chạy mỗi `10 tick`:
+
+```text
+10
+20
+30
+40
+...
+```
+
+thay vì cộng thêm thời gian xử lý của chính task vào từng chu kỳ.
+
+Trong implementation hiện tại, `period` phải lớn hơn `0` và không vượt quá `INT32_MAX` tick.
+
+---
+
+## 6.8. Timeout List
+
+Mỗi task có một:
+
+```text
+timeout_node
+```
+
+Khi task block với timeout hữu hạn, node này được đưa vào Timeout List.
+
+`hairtos` dùng:
+
+```text
+2 sorted intrusive lists
+```
+
+gồm:
+
+```text
+current
+overflow
+```
+
+Các node được sắp theo deadline để kernel có thể xử lý task hết hạn theo thứ tự.
+
+Một task chỉ có tối đa một timeout node đang hoạt động tại một thời điểm.
+
+---
+
+## 6.9. Vì sao cần Current List và Overflow List?
+
+Giả sử:
+
+```text
+now = 0xFFFFFFFE
+```
+
+Task muốn chờ:
+
+```text
+5 tick
+```
+
+thì:
+
+```text
+wake_tick
+=
+0xFFFFFFFE + 5
+=
+0x00000003
+```
+
+Deadline có giá trị số nhỏ hơn `now`, nhưng thực tế nằm ở tương lai sau khi tick wrap.
+
+Nếu chỉ dùng một sorted list và so sánh trực tiếp:
+
+```text
+3 < 0xFFFFFFFE
+```
+
+thì rất dễ hiểu sai thứ tự thời gian.
+
+Vì vậy `hairtos` tách:
+
+```text
+current list
+= deadline trước lần wrap kế tiếp
+
+overflow list
+= deadline sau lần wrap kế tiếp
+```
+
+Khi tick wrap:
+
+```text
+current ↔ overflow
+```
+
+sau đó tiếp tục xử lý bình thường.
+
+---
+
+## 6.10. Chèn một Timeout
+
+Khi task delay hoặc block có timeout:
+
+```text
+now
++
+timeout
+=
+wake_tick
+```
+
+Kernel xác định deadline có wrap hay không.
+
+```text
+Finite Timeout
+      ↓
+tính wake_tick
+      ↓
+deadline qua wrap?
+   /             \
+ NO              YES
+ ↓                ↓
+Current List   Overflow List
+```
+
+Sau đó task chuyển:
+
+```text
+RUNNING
+→
+BLOCKED
+```
+
+và bị remove khỏi Ready Set.
+
+---
+
+## 6.11. SysTick đánh thức Task như thế nào?
+
+Mỗi SysTick:
+
+```text
+g_kernel_tick++
+```
+
+sau đó kernel gọi timeout subsystem để lấy các node đã hết hạn.
+
+Luồng:
+
+```text
+SysTick
+  ↓
+Tick++
+  ↓
+Tick wrap?
+  ↓ nếu có
+swap Current / Overflow
+  ↓
+lấy các timeout đã hết hạn
+  ↓
+Task BLOCKED → READY
+  ↓
+add vào Ready Set
+```
+
+Với một task đang chờ `hr_task_delay()`:
+
+```text
+timeout hết
+→ wait result = HR_OK
+```
+
+Sau đó task có thể được scheduler chọn lại.
+
+---
+
+## 6.12. Timeout của IPC
+
+Timeout không chỉ dùng cho delay.
+
+Các operation như:
+
+```text
+Queue Send
+Queue Receive
+Semaphore Take
+Mutex Lock
+```
+
+có thể block với timeout hữu hạn.
+
+Khi đó task đồng thời thuộc:
+
+```text
+Wait List của object
++
+Timeout List
+```
+
+Ví dụ:
+
+```text
+Queue Receive
+      ↓
+queue rỗng
+      ↓
+Task BLOCKED
+      ↓
+Wait List của Queue
++
+Timeout List
+```
+
+Nếu dữ liệu đến trước:
+
+```text
+wake bởi Queue
+```
+
+Nếu thời gian hết trước:
+
+```text
+wake bởi Timeout
+→ HR_ERROR_TIMEOUT
+```
+
+`HR_WAIT_FOREVER` không cần timeout node, còn `HR_NO_WAIT` không block.
+
+---
+
+## 6.13. Race giữa Event Wakeup và Timeout
+
+Một task có thể đang chờ:
+
+```text
+Queue / Semaphore / Mutex
+```
+
+đồng thời có timeout.
+
+Hai sự kiện có thể gần như cùng lúc:
+
+```text
+object trở nên sẵn sàng
+```
+
+và:
+
+```text
+timeout hết
+```
+
+Chỉ một đường được phép thắng.
+
+Đường thắng phải cleanup nhất quán:
+
+```text
+remove Wait Node
++
+remove Timeout Node nếu còn
++
+đặt wait result
++
+BLOCKED → READY
+```
+
+Điểm cần nhớ:
+
+> **Task không được còn sót node trong Wait List hoặc Timeout List sau khi đã được đánh thức.**
+
+---
+
+## 6.14. Timeout và Preemption
+
+Giả sử:
+
+```text
+Task A
+priority = 4
+RUNNING
+
+Task B
+priority = 1
+BLOCKED vì delay
+```
+
+SysTick làm timeout của B hết:
+
+```text
+Task B
+BLOCKED → READY
+```
+
+Sau khi xử lý timeout, kernel kiểm tra scheduler.
+
+Vì:
+
+```text
+1 < 4
+```
+
+nên:
+
+```text
+Preemption Required
+      ↓
+PendSV
+      ↓
+Task B RUNNING
+```
+
+SysTick không trực tiếp restore Task B. Nó chỉ làm task READY và yêu cầu PendSV nếu cần.
+
+---
+
+## 6.15. Ví dụ Tick Wrap-Around
+
+Giả sử:
+
+```text
+now = 0xFFFFFFFC
+```
+
+Task A delay:
+
+```text
+2 tick
+```
+
+nên deadline:
+
+```text
+0xFFFFFFFE
+```
+
+Task B delay:
+
+```text
+6 tick
+```
+
+nên deadline:
+
+```text
+0x00000002
+```
+
+Ta có:
+
+```text
+Current List:
+Task A @ 0xFFFFFFFE
+
+Overflow List:
+Task B @ 0x00000002
+```
+
+Khi tick chạy:
+
+```text
+0xFFFFFFFD
+0xFFFFFFFE  → Task A hết hạn
+0xFFFFFFFF
+0x00000000  → wrap
+```
+
+Kernel swap hai timeout lists.
+
+Sau đó:
+
+```text
+Current List:
+Task B @ 0x00000002
+```
+
+Khi tick tới:
+
+```text
+0x00000002
+```
+
+Task B được đánh thức.
+
+---
+
+## 6.16. Mô hình tư duy cần nhớ
+
+Task delay:
+
+```text
+RUNNING
+  ↓
+hr_task_delay()
+  ↓
+Remove Ready
+  ↓
+Insert Timeout
+  ↓
+BLOCKED
+  ↓
+PendSV
+```
+
+Mỗi SysTick:
+
+```text
+SysTick
+  ↓
+Tick++
+  ↓
+Wrap?
+  ↓
+Swap Timeout Lists nếu cần
+  ↓
+Expire due nodes
+  ↓
+BLOCKED → READY
+  ↓
+Scheduler
+  ↓
+Preempt?
+  ↓
+PendSV
+```
+
+Timeout wrap:
+
+```text
+Current List
+= trước wrap
+
+Overflow List
+= sau wrap
+
+Tick wrap
+→ swap hai list
+```
+
+---
+
+## 6.17. Trọng tâm cần thuộc
+
+Các giá trị chính:
+
+```text
+Tick type
+= uint32_t
+
+Reference Tick
+= 1 kHz
+
+1 tick
+≈ 1 ms
+
+uint32_t wrap
+≈ 49.7 ngày ở 1 kHz
+```
+
+Các API chính:
+
+```text
+hr_time_now()
+
+hr_task_delay()
+
+hr_task_delay_until()
+```
+
+Các quy tắc:
+
+```text
+hr_task_delay(0)
+= yield
+
+HR_NO_WAIT
+= không block
+
+HR_WAIT_FOREVER
+= block vô hạn ở các API hỗ trợ
+= không cần timeout node
+```
+
+Timeout subsystem:
+
+```text
+Current Sorted List
++
+Overflow Sorted List
+```
+
+Các điểm cần giải thích được:
+
+- SysTick tăng kernel tick và xử lý timeout.
+- Delay làm task `BLOCKED`, không busy-wait.
+- Task `BLOCKED` bị remove khỏi Ready Set.
+- Timeout hết thì task trở lại `READY`.
+- `delay_until()` dùng mốc tuyệt đối để giảm phase drift.
+- Tick 32-bit sẽ wrap nên kernel dùng hai timeout list.
+- Deadline trước wrap nằm ở `current`, deadline sau wrap nằm ở `overflow`.
+- Khi tick wrap, hai list được swap.
+- Task chờ IPC với timeout có thể nằm đồng thời trong Wait List và Timeout List.
+- Event wakeup và timeout phải cleanup cùng một wait state một cách nhất quán.
+- SysTick chỉ làm task READY và yêu cầu PendSV; context switch vẫn do PendSV thực hiện.
+- Kernel v1 chưa có tickless idle.
+
+Điểm quan trọng nhất:
+
+> **`hairtos` không xử lý tick wrap bằng các phép so sánh deadline phức tạp ở mọi nơi; nó tách timeout thành `current` và `overflow` list, rồi swap hai list khi `uint32_t` tick wrap.**
+
+> **`hr_task_delay()` không giữ CPU đứng chờ. Task được đưa sang `BLOCKED`, còn CPU được scheduler dùng cho task khác cho tới khi timeout hết.**
+
 
 ---
 
