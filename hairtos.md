@@ -241,6 +241,32 @@
   - [13.20. Mô hình tư duy cần nhớ](#1320-mô-hình-tư-duy-cần-nhớ)
   - [13.21. Trọng tâm cần thuộc](#1321-trọng-tâm-cần-thuộc)
 - [14. Architecture Port + Testing + Benchmark](#14-architecture-port-testing-benchmark)
+  - [14.1. Vì sao phải tách Kernel và Port?](#141-vì-sao-phải-tách-kernel-và-port)
+  - [14.2. Các lớp Portability trong `hairtos`](#142-các-lớp-portability-trong-hairtos)
+  - [14.3. Architecture Port chịu trách nhiệm gì?](#143-architecture-port-chịu-trách-nhiệm-gì)
+  - [14.4. SoC, Board và Driver khác nhau thế nào?](#144-soc-board-và-driver-khác-nhau-thế-nào)
+  - [14.5. Target Manifest](#145-target-manifest)
+  - [14.6. Porting sang một Cortex-M Target mới](#146-porting-sang-một-cortex-m-target-mới)
+  - [14.7. Những thông số CPU phải xác minh khi Port](#147-những-thông-số-cpu-phải-xác-minh-khi-port)
+  - [14.8. Những gì không nên sửa khi Port Target](#148-những-gì-không-nên-sửa-khi-port-target)
+  - [14.9. Test Pyramid của `hairtos`](#149-test-pyramid-của-hairtos)
+  - [14.10. Host Tests](#1410-host-tests)
+  - [14.11. Sanitizer giúp bắt lỗi gì?](#1411-sanitizer-giúp-bắt-lỗi-gì)
+  - [14.12. Portability Probe](#1412-portability-probe)
+  - [14.13. Scheduler Stress Test](#1413-scheduler-stress-test)
+  - [14.14. Target Validation](#1414-target-validation)
+  - [14.15. Host PASS không chứng minh điều gì?](#1415-host-pass-không-chứng-minh-điều-gì)
+  - [14.16. Benchmark đo bằng gì?](#1416-benchmark-đo-bằng-gì)
+  - [14.17. Benchmark đo những Path nào?](#1417-benchmark-đo-những-path-nào)
+  - [14.18. Measurement Overhead](#1418-measurement-overhead)
+  - [14.19. Vì sao không `printf` trong Hot Path?](#1419-vì-sao-không-printf-trong-hot-path)
+  - [14.20. DWT CYCCNT và PB0 Marker](#1420-dwt-cyccnt-và-pb0-marker)
+  - [14.21. Benchmark Result phải ghi kèm gì?](#1421-benchmark-result-phải-ghi-kèm-gì)
+  - [14.22. Microbenchmark không phải WCET Proof](#1422-microbenchmark-không-phải-wcet-proof)
+  - [14.23. Current Validation Baseline](#1423-current-validation-baseline)
+  - [14.24. Giới hạn hiện tại của `hairtos v1`](#1424-giới-hạn-hiện-tại-của-hairtos-v1)
+  - [14.25. Mô hình tư duy cần nhớ](#1425-mô-hình-tư-duy-cần-nhớ)
+  - [14.26. Trọng tâm cần thuộc](#1426-trọng-tâm-cần-thuộc)
 
 ---
 
@@ -7360,4 +7386,1222 @@ Các nguyên tắc:
 
 # 14. Architecture Port + Testing + Benchmark
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Chương cuối cùng nối ba câu hỏi quan trọng khi tự viết RTOS:
+
+```text
+Kernel portable tới đâu?
+
+Làm sao chứng minh implementation đúng?
+
+Làm sao đo chi phí thực tế trên MCU?
+```
+
+Trong `hairtos`, ba câu hỏi đó được tách thành:
+
+```text
+Architecture / Platform Port
++
+Host / Target Validation
++
+Kernel Benchmark
+```
+
+Điểm quan trọng là:
+
+> **Build được không có nghĩa là Port đúng. Test host PASS không có nghĩa là target runtime đúng. Benchmark nhanh không có nghĩa là application đã đáp ứng deadline.**
+
+---
+
+## 14.1. Vì sao phải tách Kernel và Port?
+
+Kernel generic nên chứa:
+
+```text
+scheduler policy
+ready / wait / timeout logic
+queue
+semaphore
+mutex
+software timer
+haievent
+```
+
+mà không phụ thuộc trực tiếp vào:
+
+```text
+Cortex-M register
+STM32 clock register
+GPIO address
+vector table
+linker script
+```
+
+Nếu kernel gọi thẳng register STM32:
+
+```text
+kernel
+=
+kernel policy
++
+hardware detail
+```
+
+thì khi port sang MCU khác sẽ phải sửa logic kernel.
+
+`hairtos` tránh điều này bằng một port contract rõ ràng.
+
+---
+
+## 14.2. Các lớp Portability trong `hairtos`
+
+Portability không chỉ có một thư mục `port`.
+
+Repo tách:
+
+```text
+Generic Kernel
+      ↓
+Architecture Port
+      ↓
+SoC Layer
+      ↓
+Board Layer
+      ↓
+Driver Backend
+      ↓
+Target Manifest
+```
+
+Có thể hiểu:
+
+```text
+Architecture
+= CPU / ISA behavior
+
+SoC
+= chip-family behavior
+
+Board
+= board wiring / pin binding
+
+Driver
+= peripheral contract + implementation
+
+Target Manifest
+= chọn tất cả thành phần đúng cho một target
+```
+
+Reference target hiện tại:
+
+```text
+bluepill_f103c8
+```
+
+---
+
+## 14.3. Architecture Port chịu trách nhiệm gì?
+
+Architecture port hiện tại sở hữu các việc như:
+
+```text
+Critical Section
+
+ISR Context Detection
+
+Initial Stack Construction
+
+Start First Task
+
+Request Context Switch
+
+Context Save / Restore
+
+Wait For Interrupt
+
+Fault Capture
+
+Benchmark Clock Backend
+```
+
+Với Cortex-M3:
+
+```text
+hr_port.c
+hr_port_stack.c
+hr_portasm.S
+```
+
+là các source quan trọng.
+
+Có thể nhớ:
+
+```text
+Kernel hỏi:
+"hãy tạo context"
+"hãy switch task"
+"hãy vào critical section"
+
+Port quyết định:
+CPU cụ thể phải làm thế nào
+```
+
+---
+
+## 14.4. SoC, Board và Driver khác nhau thế nào?
+
+### SoC Layer
+
+SoC chịu trách nhiệm:
+
+```text
+startup
+register definition
+clock tree
+chip-family IRQ / fault backend
+```
+
+Ví dụ hiện tại:
+
+```text
+soc/stm32f1/
+```
+
+### Board Layer
+
+Board chịu trách nhiệm:
+
+```text
+pin binding
+UART binding
+LED binding
+benchmark marker
+human-readable board identity
+```
+
+Ví dụ Blue Pill:
+
+```text
+LED
+= PC13 active-low
+
+UART
+= USART1 PA9 / PA10
+
+Benchmark Marker
+= PB0
+```
+
+### Driver Layer
+
+Driver cung cấp:
+
+```text
+public peripheral contract
+```
+
+còn backend SoC thực hiện register access.
+
+Điều này giúp application không cần biết layout register STM32F1.
+
+---
+
+## 14.5. Target Manifest
+
+`hairtos` dùng CMake target manifest làm source of truth cho target.
+
+Manifest chọn:
+
+```text
+Architecture
+
+SoC
+
+Board
+
+Driver Backend
+
+C / ASM Sources
+
+Compiler Flags
+
+Compile Definitions
+
+Include Paths
+
+Linker Script
+
+OpenOCD Configuration
+
+Benchmark Backend
+```
+
+Mental model:
+
+```text
+Target Name
+    ↓
+Manifest
+    ↓
+đúng Architecture
++
+đúng SoC
++
+đúng Board
++
+đúng Linker
++
+đúng Debug Config
+```
+
+Build metadata không nên chứa scheduler policy.
+
+---
+
+## 14.6. Porting sang một Cortex-M Target mới
+
+Một port mới không chỉ là đổi:
+
+```text
+-mcpu
+```
+
+Một workflow đúng nên gồm:
+
+```text
+1. Xác định CPU Architecture
+2. Xác định SoC startup / clock / IRQ
+3. Xác định Board pin binding
+4. Chọn / viết Driver backend
+5. Xác định Linker Script
+6. Xác định Tick IRQ source
+7. Xác định Fault backend
+8. Xác định Benchmark clock nếu có
+9. Tạo Target Manifest
+10. Cross-build
+11. Flash
+12. Verify runtime
+13. Measure timing
+```
+
+Nếu target mới vẫn là Cortex-M3 tương thích với port contract hiện tại:
+
+```text
+có thể reuse phần lớn architecture port
+```
+
+nhưng SoC/board/linker vẫn phải được kiểm chứng riêng.
+
+---
+
+## 14.7. Những thông số CPU phải xác minh khi Port
+
+Porting guide nhấn mạnh phải kiểm tra các đặc tính architecture như:
+
+```text
+register width
+
+stack alignment
+
+callee-saved registers
+
+exception frame
+
+interrupt masking
+
+ISR nesting
+
+atomicity
+```
+
+Nếu CPU có FPU còn phải xem:
+
+```text
+FPU context
+lazy stacking
+```
+
+Nếu target có cơ chế low-power khác:
+
+```text
+tick source
+wake source
+```
+
+cũng phải được thiết kế lại phù hợp.
+
+Với Cortex-M3 reference target:
+
+```text
+No FPU
+```
+
+nên current port không save FPU context.
+
+---
+
+## 14.8. Những gì không nên sửa khi Port Target
+
+Một nguyên tắc rất đáng nhớ:
+
+> **Không nên sửa `kernel/` hoặc `haievent/` chỉ để làm một target mới build được.**
+
+Nếu cần sửa generic scheduler để target mới compile:
+
+```text
+boundary có thể đang sai
+```
+
+Port target nên chủ yếu thêm / thay:
+
+```text
+arch
+soc
+board
+driver backend
+linker
+manifest
+debug config
+```
+
+Generic example cũng không nên phải include trực tiếp SoC register header.
+
+---
+
+## 14.9. Test Pyramid của `hairtos`
+
+Testing guide mô tả test theo nhiều lớp:
+
+```text
+Host Unit Tests
+      ↓
+Host Examples
+      ↓
+Scheduler Stress
+      ↓
+Portability Probes
+      ↓
+Target Tests
+      ↓
+Hardware Measurements
+```
+
+Không có một loại test duy nhất chứng minh toàn bộ RTOS.
+
+Ví dụ:
+
+```text
+Host test
+→ tốt cho policy / data structure
+
+Target test
+→ cần cho exception / timing / hardware
+
+Benchmark
+→ cần cho performance evidence
+```
+
+---
+
+## 14.10. Host Tests
+
+Command chuẩn:
+
+```bash
+make TARGET=bluepill_f103c8 host-tests
+```
+
+Host suite hiện được build bằng:
+
+```text
+GCC
+-O0
+-g3
+strict warnings
+AddressSanitizer
+UndefinedBehaviorSanitizer
+ctest
+```
+
+Coverage logic hiện có bao gồm:
+
+```text
+intrusive list
+
+ready queue / scheduler
+
+wait list
+
+timeout + tick wrap
+
+task / stack guard / high-watermark
+
+initial Cortex-M stack frame builder
+
+preemption / round-robin / delay race
+
+queue / semaphore / mutex / timer
+
+diagnostics / fault record
+
+haievent
+
+benchmark helpers
+
+allocator lab
+
+scheduler stress
+```
+
+---
+
+## 14.11. Sanitizer giúp bắt lỗi gì?
+
+### AddressSanitizer
+
+ASan hữu ích để phát hiện các lỗi memory như:
+
+```text
+out-of-bounds
+use-after-free
+invalid memory access
+```
+
+trong các path C chạy trên host.
+
+### UndefinedBehaviorSanitizer
+
+UBSan giúp phát hiện:
+
+```text
+undefined behavior
+```
+
+trong C.
+
+Nhưng sanitizer host không chạy:
+
+```text
+Cortex-M PendSV assembly
+real NVIC
+real SysTick
+real MSP / PSP exception return
+```
+
+Do đó:
+
+```text
+Sanitizer PASS
+≠
+Target Runtime PASS
+```
+
+---
+
+## 14.12. Portability Probe
+
+Một số phần architecture có thể kiểm tra trên host mà không cần chạy thật CPU.
+
+Ví dụ hiện tại:
+
+```text
+Initial Stack Frame Builder
+```
+
+host test xác minh:
+
+```text
+frame layout đúng
+stack top align 8-byte
+invalid storage bị reject
+```
+
+Đây là portability probe tốt vì:
+
+```text
+logic dựng frame
+```
+
+có thể kiểm tra deterministic trên host.
+
+Nhưng phần:
+
+```text
+SVC / PendSV exception return
+```
+
+vẫn cần target.
+
+---
+
+## 14.13. Scheduler Stress Test
+
+Repo có deterministic scheduler stress với:
+
+```text
+500,000 iterations
+```
+
+Observed baseline hiện tại:
+
+```text
+iterations  = 500000
+insertions  = 83266
+removals    = 83262
+rotations   = 164652
+validations = 500000
+```
+
+Stress test giúp tạo nhiều chuỗi operation:
+
+```text
+insert
+remove
+rotate
+validate
+```
+
+để tìm corruption hoặc invariant violation khó xuất hiện trong unit test nhỏ.
+
+Điểm quan trọng:
+
+```text
+Stress Test
+≠
+proof
+```
+
+Nó chỉ tăng mức evidence cho workload đã chạy.
+
+---
+
+## 14.14. Target Validation
+
+Target test phải tách nhiều mức:
+
+```text
+1. Build / Link
+
+2. Flash / Verify / Reset
+
+3. UART PASS / FAIL
+
+4. GDB inspect state
+
+5. Fault behavior
+
+6. Timing measurement
+
+7. Reset cycle cho retained record
+```
+
+Một binary build thành công chỉ chứng minh:
+
+```text
+compiler + linker chấp nhận source
+```
+
+Nó chưa chứng minh:
+
+```text
+CPU context switch đúng
+Clock đúng
+IRQ priority đúng
+Pin binding đúng
+Fault retention đúng
+Timing đúng
+```
+
+---
+
+## 14.15. Host PASS không chứng minh điều gì?
+
+Repo nhấn mạnh host evidence không chứng minh:
+
+```text
+real SVC behavior
+
+real PendSV behavior
+
+exception priority
+
+interrupt latency
+
+PLL / clock correctness
+
+UART / GPIO electrical behavior
+
+WCET
+
+retained fault record qua physical reset
+```
+
+Có thể nhớ:
+
+```text
+Host
+= policy evidence
+
+Target
+= architecture + hardware evidence
+```
+
+Đây là cách diễn đạt rất tốt khi phỏng vấn.
+
+---
+
+## 14.16. Benchmark đo bằng gì?
+
+Reference target dùng:
+
+```text
+DWT CYCCNT
+```
+
+làm cycle counter.
+
+Flow:
+
+```text
+DWT CYCCNT
+   ↓
+Cycle Timestamp
+   ↓
+Sample
+   ↓
+Statistics
+```
+
+Benchmark clock backend nằm ở architecture layer:
+
+```text
+arch/arm/cortex-m3/hr_benchmark_clock_dwt.c
+```
+
+DWT frequency phải khớp core clock.
+
+Reference target nominal:
+
+```text
+72 MHz
+```
+
+---
+
+## 14.17. Benchmark đo những Path nào?
+
+Example:
+
+```text
+15-kernel-benchmark
+```
+
+đo các path như:
+
+```text
+Timestamp Read Overhead
+
+Critical Section Latency
+
+Scheduler Selection
+
+Queue Primitive
+
+Semaphore Primitive
+
+Mutex Primitive
+
+Yield Round-Trip
+
+Queue Wakeup
+
+haievent Dispatch
+
+Timer Jitter
+```
+
+Footprint được lấy từ linker symbols qua board helpers.
+
+Điểm cần nhớ:
+
+> Không chỉ đo một con số “context switch time”; benchmark nên tách từng primitive/path có ý nghĩa.
+
+---
+
+## 14.18. Measurement Overhead
+
+Bản thân thao tác đọc timestamp cũng mất cycle.
+
+Nếu đo:
+
+```text
+start = now()
+operation()
+end = now()
+```
+
+thì kết quả gồm:
+
+```text
+Operation Cost
++
+Timestamp Cost
+```
+
+Do đó benchmark đo riêng:
+
+```text
+timestamp read overhead
+```
+
+rồi chỉ dùng adjusted result khi sample lớn hơn overhead.
+
+Mental model:
+
+```text
+Measured
+=
+Real Operation
++
+Measurement Cost
+```
+
+Muốn số đo có ý nghĩa phải biết:
+
+```text
+Measurement Cost
+```
+
+---
+
+## 14.19. Vì sao không `printf` trong Hot Path?
+
+Nếu benchmark làm:
+
+```text
+start
+operation
+printf(...)
+end
+```
+
+thì số đo chủ yếu phản ánh:
+
+```text
+UART / formatting
+```
+
+chứ không còn là primitive kernel.
+
+Repo vì vậy:
+
+```text
+collect sample trước
+↓
+report UART sau
+```
+
+UART output được deferred khỏi hot measurement path.
+
+Đây là nguyên tắc benchmark embedded rất quan trọng:
+
+> Instrumentation không được phá path đang đo.
+
+---
+
+## 14.20. DWT CYCCNT và PB0 Marker
+
+Repo có hai kiểu quan sát benchmark:
+
+```text
+DWT CYCCNT
++
+PB0 Marker
+```
+
+### DWT CYCCNT
+
+Cho:
+
+```text
+cycle count bên trong CPU
+```
+
+### PB0 Marker
+
+Board có benchmark marker:
+
+```text
+PB0 active-high
+```
+
+Có thể quan sát bằng:
+
+```text
+Logic Analyzer
+Oscilloscope
+```
+
+Flow:
+
+```text
+PB0 HIGH
+↓
+Path cần đo
+↓
+PB0 LOW
+```
+
+Ngoại vi đo pulse width giúp có evidence độc lập với UART logging.
+
+---
+
+## 14.21. Benchmark Result phải ghi kèm gì?
+
+Một con số cycle không có context rất khó so sánh.
+
+Repo yêu cầu ghi lại:
+
+```text
+Target
+
+Core Clock
+
+Toolchain
+
+Optimization Level
+
+Kernel Configuration
+
+Benchmark Marker Setup
+
+Sampling Method
+```
+
+Methodology hiện dùng:
+
+```text
+-Og
+```
+
+cho benchmark target được mô tả trong docs.
+
+Nếu hai benchmark khác:
+
+```text
+MCU
+Clock
+Compiler
+Optimization
+Config
+```
+
+thì không nên so trực tiếp như cùng điều kiện.
+
+---
+
+## 14.22. Microbenchmark không phải WCET Proof
+
+Microbenchmark đo:
+
+```text
+một primitive
+trong một workload được kiểm soát
+```
+
+Ví dụ:
+
+```text
+Queue Send = X cycles
+```
+
+không chứng minh:
+
+```text
+Application deadline = chắc chắn đạt
+```
+
+Vì application còn có:
+
+```text
+interrupt interference
+cache / bus effects trên target khác
+critical sections
+task interaction
+driver latency
+worst-case path
+```
+
+Repo nói rõ benchmark là:
+
+```text
+engineering evidence
+```
+
+không phải:
+
+```text
+hard real-time certification
+```
+
+---
+
+## 14.23. Current Validation Baseline
+
+Baseline `1.0.0` hiện được ghi nhận:
+
+```text
+CMake host configure/build
+= PASS
+
+GCC strict warnings
+= PASS
+
+AddressSanitizer / UBSan
+= PASS
+
+ctest
+= PASS
+
+Host test functions
+= 64
+
+Example 02 host
+= PASS
+
+Example 14 allocator host
+= PASS
+
+Example 16 stress host
+= PASS
+
+Scheduler stress
+= 500,000 iterations
+```
+
+Target cross-build và physical hardware validation là evidence riêng.
+
+Không được suy ra:
+
+```text
+Host PASS
+→ Hardware PASS
+```
+
+---
+
+## 14.24. Giới hạn hiện tại của `hairtos v1`
+
+Current v1 limitations gồm:
+
+```text
+single-core only
+
+no SMP
+
+no FPU context management
+
+no MPU isolation
+
+PRIMASK critical section
+
+no BASEPRI application interrupt ceiling
+
+no tickless idle
+
+no general-purpose dynamic kernel heap
+
+flat FSM
+
+one Task per Active Object
+
+only complete target:
+STM32F103C8T6 Blue Pill
+```
+
+Ngoài ra benchmark:
+
+```text
+không phải certification evidence
+```
+
+Project hiện được mô tả là:
+
+```text
+educational / experimental RTOS
+```
+
+không phải:
+
+```text
+safety-certified production kernel
+```
+
+---
+
+## 14.25. Mô hình tư duy cần nhớ
+
+Portability:
+
+```text
+Application
+    ↓
+Public API
+    ↓
+Generic Kernel
+    ↓
+Port Contract
+    ↓
+Architecture
+    ↓
+SoC
+    ↓
+Board / Driver
+    ↓
+Hardware
+```
+
+Testing:
+
+```text
+Unit / Sanitizer
+      ↓
+Policy Correctness
+
+Stress
+      ↓
+Longer State Sequences
+
+Target
+      ↓
+Real Exception + Hardware
+
+Benchmark
+      ↓
+Timing Evidence
+```
+
+Benchmark:
+
+```text
+Cycle Clock
+   ↓
+Measure Overhead
+   ↓
+Measure Primitive
+   ↓
+Collect Samples
+   ↓
+Statistics
+   ↓
+Deferred Report
+```
+
+---
+
+## 14.26. Trọng tâm cần thuộc
+
+Port layers:
+
+```text
+Architecture Port
+= CPU-specific mechanism
+
+SoC
+= chip-family startup / clock / IRQ
+
+Board
+= physical binding
+
+Driver
+= peripheral abstraction/backend
+
+Target Manifest
+= build binding của tất cả layer
+```
+
+Architecture port chịu trách nhiệm:
+
+```text
+critical enter / exit
+
+ISR detection
+
+initial stack frame
+
+first-task start
+
+context-switch request
+
+context save / restore
+
+fault capture
+
+optional benchmark clock
+```
+
+Testing cần nhớ:
+
+```text
+Host Test
+≠
+Target Test
+
+Build PASS
+≠
+Runtime PASS
+
+Stress PASS
+≠
+Proof
+
+Benchmark
+≠
+WCET Certification
+```
+
+Current host baseline:
+
+```text
+64 test functions
+
+ASan / UBSan PASS
+
+500k scheduler stress PASS
+```
+
+Benchmark:
+
+```text
+DWT CYCCNT
+= internal cycle timing
+
+PB0
+= external timing marker
+
+UART
+= deferred reporting
+```
+
+Các nguyên tắc:
+
+- Kernel generic không nên phụ thuộc trực tiếp hardware register.
+- Porting target mới không nên sửa `kernel/` hay `haievent/` chỉ để compile.
+- Target manifest phải là source of truth cho architecture/platform/linker/debug selection.
+- Initial stack frame có thể host-test, nhưng SVC/PendSV thực tế phải target-test.
+- Host sanitizer chỉ bao phủ generic C paths được thực thi.
+- Target test phải kiểm tra build, flash, reset, UART semantics, GDB state, fault retention và timing.
+- Benchmark phải đo timestamp overhead riêng.
+- Không log UART trong hot path.
+- So sánh benchmark chỉ có ý nghĩa khi target/toolchain/config/method tương đương.
+- Microbenchmark chỉ là engineering evidence cho path được đo.
+- Current complete target là STM32F103C8T6 Blue Pill.
+- `hairtos v1` hiện là educational/experimental RTOS, chưa phải production/safety-certified kernel.
+
+Điểm quan trọng nhất:
+
+> **Portability tốt không có nghĩa là “mọi thứ nằm trong một file port”. Nó đến từ việc tách đúng ranh giới: generic kernel giữ policy, architecture port giữ CPU mechanism, SoC/board/driver giữ hardware binding, còn target manifest ghép chúng lại.**
+
+> **Validation cũng phải chia lớp: host test chứng minh logic portable, target test chứng minh behavior thật của architecture/hardware, còn benchmark chỉ cung cấp timing evidence cho workload và cấu hình cụ thể.**
+
+> **Nếu đi phỏng vấn và được hỏi “RTOS này đã được chứng minh đúng chưa?”, câu trả lời tốt không phải chỉ nói “tests pass”, mà phải nói rõ loại evidence nào đã có, evidence nào chỉ ở host, và phần nào vẫn cần on-target validation.**
+
