@@ -1374,7 +1374,7 @@ int max = (a > b) ? a : b;
 | Toán tử | Ý nghĩa |
 |---|---|
 | `&` | AND bit |
-| `|` | OR bit |
+| `\|` | OR bit |
 | `^` | XOR bit |
 | `~` | Đảo bit |
 | `<<` | Dịch trái |
