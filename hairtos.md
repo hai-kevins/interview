@@ -174,6 +174,25 @@
   - [10.18. Mô hình tư duy cần nhớ](#1018-mô-hình-tư-duy-cần-nhớ)
   - [10.19. Trọng tâm cần thuộc](#1019-trọng-tâm-cần-thuộc)
 - [11. haievent + Event Ownership + Reference Counting](#11-haievent-event-ownership-reference-counting)
+  - [11.1. `haievent` là gì?](#111-haievent-là-gì)
+  - [11.2. Event và Signal](#112-event-và-signal)
+  - [11.3. `he_event_t` chứa gì?](#113-he_event_t-chứa-gì)
+  - [11.4. Static Event](#114-static-event)
+  - [11.5. Dynamic Event](#115-dynamic-event)
+  - [11.6. Fixed-Block Event Pool](#116-fixed-block-event-pool)
+  - [11.7. Reference Counting](#117-reference-counting)
+  - [11.8. `he_event_retain()`](#118-he_event_retain)
+  - [11.9. `he_event_release()`](#119-he_event_release)
+  - [11.10. Ownership khi `he_active_post()`](#1110-ownership-khi-he_active_post)
+  - [11.11. `he_active_post_shared()`](#1111-he_active_post_shared)
+  - [11.12. Event được release sau Dispatch](#1112-event-được-release-sau-dispatch)
+  - [11.13. Publish/Subscribe và nhiều Owner](#1113-publishsubscribe-và-nhiều-owner)
+  - [11.14. Ownership khi Post thất bại](#1114-ownership-khi-post-thất-bại)
+  - [11.15. Static Event Lifetime](#1115-static-event-lifetime)
+  - [11.16. Thread Safety của Event Pool](#1116-thread-safety-của-event-pool)
+  - [11.17. Các lỗi Ownership thường gặp](#1117-các-lỗi-ownership-thường-gặp)
+  - [11.18. Mô hình tư duy cần nhớ](#1118-mô-hình-tư-duy-cần-nhớ)
+  - [11.19. Trọng tâm cần thuộc](#1119-trọng-tâm-cần-thuộc)
 - [12. Active Object + FSM + Publish / Subscribe](#12-active-object-fsm-publish-subscribe)
 - [13. Diagnostics + Fault + Stack Safety](#13-diagnostics-fault-stack-safety)
 - [14. Architecture Port + Testing + Benchmark](#14-architecture-port-testing-benchmark)
@@ -3980,7 +3999,999 @@ Các nguyên tắc:
 
 # 11. haievent + Event Ownership + Reference Counting
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+`haievent` là event-driven framework nằm phía trên kernel `hairtos`.
+
+Nó không tạo scheduler riêng mà dùng các primitive đã học:
+
+```text
+Task
+Queue
+Software Timer
+Critical Section
+```
+
+để xây dựng:
+
+```text
+Event
+Active Object
+State Machine
+Time Event
+Publish / Subscribe
+```
+
+Chương này tập trung vào nền tảng quan trọng nhất trước khi học Active Object và FSM:
+
+```text
+Event là gì?
+Ai sở hữu Event?
+Event sống tới khi nào?
+Khi nào Event được trả lại Pool?
+```
+
+---
+
+## 11.1. `haievent` là gì?
+
+Có thể hình dung kiến trúc:
+
+```text
+Application
+    ↓
+ haievent
+    ↓
+ hairtos
+    ↓
+Cortex-M3
+```
+
+`haievent` không thay thế RTOS.
+
+Nó cung cấp mô hình:
+
+```text
+Event
+  ↓
+Queue
+  ↓
+Active Object
+  ↓
+State Machine
+```
+
+thay vì application tự viết nhiều vòng lặp task và cờ trạng thái rời rạc.
+
+---
+
+## 11.2. Event và Signal
+
+Mỗi event có một:
+
+```text
+signal
+```
+
+để mô tả loại sự kiện.
+
+Trong `hairtos`:
+
+```text
+he_signal_t = uint16_t
+```
+
+Các signal framework dành riêng:
+
+```text
+HE_SIG_NONE    = 0
+HE_SIG_ENTRY   = 1
+HE_SIG_EXIT    = 2
+HE_SIG_INIT    = 3
+HE_SIG_TIMEOUT = 4
+```
+
+Application-defined signal bắt đầu từ:
+
+```text
+HE_SIG_USER = 32
+```
+
+Ví dụ:
+
+```c
+enum
+{
+    SIG_BUTTON_PRESSED = HE_SIG_USER,
+    SIG_SENSOR_READY,
+    SIG_UART_FRAME
+};
+```
+
+---
+
+## 11.3. `he_event_t` chứa gì?
+
+Header event hiện tại có dạng khái niệm:
+
+```text
+he_event_t
+├── pool
+├── magic
+├── size
+├── reference_count
+├── signal
+└── flags
+```
+
+Các field quan trọng:
+
+```text
+pool
+= event thuộc pool nào
+
+size
+= kích thước event
+
+reference_count
+= số reference đang giữ dynamic event
+
+signal
+= loại event
+
+flags
+= static hay dynamic
+```
+
+Application có thể mở rộng event:
+
+```c
+typedef struct
+{
+    he_event_t super;
+
+    uint16_t adc_value;
+    uint8_t channel;
+} sensor_event_t;
+```
+
+Điểm quan trọng:
+
+```text
+he_event_t
+```
+
+thường nằm ở đầu struct mở rộng.
+
+---
+
+## 11.4. Static Event
+
+Static event được khởi tạo bằng:
+
+```c
+he_event_init_static();
+```
+
+Đặc điểm:
+
+```text
+pool = NULL
+reference_count = 0
+flag = STATIC
+```
+
+Framework không trả static event về pool.
+
+Lifetime do application chịu trách nhiệm.
+
+Ví dụ phù hợp:
+
+```text
+event không payload thay đổi
++
+được dùng lặp lại nhiều lần
++
+storage tồn tại lâu dài
+```
+
+Ví dụ:
+
+```c
+static he_event_t button_pressed_event;
+```
+
+---
+
+## 11.5. Dynamic Event
+
+Dynamic event được tạo bằng:
+
+```c
+he_event_new();
+```
+
+Nó lấy một block từ:
+
+```text
+Event Pool
+```
+
+Khi tạo thành công:
+
+```text
+reference_count = 1
+flag = DYNAMIC
+pool = owning pool
+```
+
+Mental model:
+
+```text
+Pool
+ ↓ allocate
+Dynamic Event
+ref = 1
+```
+
+Reference đầu tiên thuộc code vừa gọi `he_event_new()`.
+
+---
+
+## 11.6. Fixed-Block Event Pool
+
+`haievent` không dùng general-purpose heap để cấp phát event.
+
+Pool được tạo bằng:
+
+```c
+he_event_pool_init(
+    pool,
+    storage,
+    block_size,
+    block_count
+);
+```
+
+Storage do application cung cấp.
+
+Ví dụ khái niệm:
+
+```text
+Event Pool
+
++---------+
+| Block 0 |
++---------+
+| Block 1 |
++---------+
+| Block 2 |
++---------+
+| Block 3 |
++---------+
+```
+
+Mỗi block có cùng kích thước.
+
+Ưu điểm:
+
+```text
+bounded memory
+không external fragmentation
+allocation / free đơn giản
+memory usage dễ dự đoán
+```
+
+Nhược điểm:
+
+```text
+event nhỏ vẫn chiếm nguyên block
+```
+
+nên có thể có internal fragmentation.
+
+Dynamic event chỉ được tạo nếu:
+
+```text
+event_size <= block_size
+```
+
+và pool còn free block.
+
+---
+
+## 11.7. Reference Counting
+
+Reference Counting trả lời:
+
+> **Hiện còn bao nhiêu nơi có quyền giữ dynamic event này sống?**
+
+Ví dụ:
+
+```text
+Event E
+ref = 1
+```
+
+Nếu một consumer khác cũng cần giữ E:
+
+```text
+retain
+↓
+ref = 2
+```
+
+Khi một owner dùng xong:
+
+```text
+release
+↓
+ref = 1
+```
+
+Owner cuối cùng release:
+
+```text
+ref = 0
+↓
+Event trả về Pool
+```
+
+Flow:
+
+```text
+FREE
+ ↓ he_event_new()
+OWNED
+ref = 1
+ ↓ retain
+SHARED
+ref > 1
+ ↓ release
+OWNED
+ref = 1
+ ↓ final release
+FREE
+```
+
+---
+
+## 11.8. `he_event_retain()`
+
+API:
+
+```c
+he_event_retain(event);
+```
+
+Với dynamic event:
+
+```text
+reference_count++
+```
+
+Với static event:
+
+```text
+không thay đổi lifetime
+→ HR_OK
+```
+
+Refcount là:
+
+```text
+uint16_t
+```
+
+nên implementation kiểm tra overflow.
+
+Nếu:
+
+```text
+reference_count == UINT16_MAX
+```
+
+thì retain thất bại với lỗi overflow thay vì wrap về `0`.
+
+---
+
+## 11.9. `he_event_release()`
+
+API:
+
+```c
+he_event_release(event);
+```
+
+Với dynamic event:
+
+```text
+reference_count--
+```
+
+Nếu sau decrement:
+
+```text
+reference_count > 0
+```
+
+event vẫn còn owner.
+
+Nếu:
+
+```text
+reference_count == 0
+```
+
+kernel/framework:
+
+```text
+invalidate event metadata
+      ↓
+đưa block trở lại free list
+      ↓
+pool.free_count++
+```
+
+Với static event:
+
+```text
+release()
+```
+
+không reclaim storage.
+
+---
+
+## 11.10. Ownership khi `he_active_post()`
+
+Đây là quy tắc rất quan trọng.
+
+```c
+he_active_post(
+    active,
+    event,
+    timeout
+);
+```
+
+implementation hiện tại đưa:
+
+```text
+event pointer
+```
+
+vào queue của Active Object mà không tự `retain()`.
+
+Do đó với dynamic event, cách hiểu đúng là:
+
+```text
+Caller đang giữ 1 reference
+        ↓
+he_active_post() thành công
+        ↓
+reference đó được chuyển cho AO queue
+```
+
+Sau post thành công:
+
+> Caller không được tiếp tục coi reference đó là reference riêng của mình trừ khi đã retain thêm trước đó.
+
+Mental model:
+
+```text
+Caller owns E
+ref = 1
+      ↓ post success
+AO Queue owns E
+ref = 1
+```
+
+---
+
+## 11.11. `he_active_post_shared()`
+
+Nếu caller muốn:
+
+```text
+vẫn giữ event
++
+đồng thời đưa event cho AO
+```
+
+thì dùng:
+
+```c
+he_active_post_shared();
+```
+
+Flow:
+
+```text
+Caller owns E
+ref = 1
+      ↓
+retain()
+      ↓
+ref = 2
+      ↓
+enqueue vào AO
+```
+
+Sau post:
+
+```text
+Caller reference
++
+AO reference
+```
+
+Nếu enqueue thất bại:
+
+```text
+retain
+↓
+post fail
+↓
+release rollback
+```
+
+nên refcount quay về giá trị trước đó.
+
+---
+
+## 11.12. Event được release sau Dispatch
+
+Active Object task lấy event pointer từ queue:
+
+```text
+AO Queue
+   ↓
+receive Event
+   ↓
+State Machine Dispatch
+```
+
+Sau khi dispatch hoàn tất, `he_active` gọi:
+
+```c
+he_event_release(event);
+```
+
+Do đó với dynamic event:
+
+```text
+Queue ownership
+      ↓
+Dispatch
+      ↓
+release
+```
+
+Nếu đó là reference cuối cùng:
+
+```text
+ref = 0
+→ block trả về Event Pool
+```
+
+Điều này tạo ownership flow rõ ràng:
+
+```text
+Producer
+   ↓ post
+AO Queue
+   ↓ receive
+State Machine
+   ↓ dispatch done
+release
+```
+
+---
+
+## 11.13. Publish/Subscribe và nhiều Owner
+
+Publish/Subscribe là trường hợp reference counting đặc biệt quan trọng.
+
+Giả sử một dynamic event được publish tới:
+
+```text
+AO A
+AO B
+AO C
+```
+
+Mỗi subscriber nhận cùng một event pointer.
+
+Framework phải giữ event sống cho tới khi tất cả consumer dùng xong.
+
+Flow khái niệm:
+
+```text
+Publisher
+ref = 1
+   ↓
+post_shared → A
+ref = 2
+   ↓
+post_shared → B
+ref = 3
+   ↓
+post_shared → C
+ref = 4
+```
+
+Sau khi publish hoàn tất, publisher release reference của mình:
+
+```text
+ref = 3
+```
+
+Mỗi AO dispatch xong:
+
+```text
+A release → 2
+B release → 1
+C release → 0
+```
+
+Cuối cùng:
+
+```text
+Event → Pool
+```
+
+Trong implementation hiện tại, publish còn snapshot subscriber list trước rồi mới post ra ngoài critical section.
+
+Chi tiết Pub/Sub sẽ học sâu ở Chương 12.
+
+---
+
+## 11.14. Ownership khi Post thất bại
+
+Giả sử:
+
+```text
+dynamic event
+ref = 1
+```
+
+Caller dùng:
+
+```text
+he_active_post_shared()
+```
+
+Implementation:
+
+```text
+retain
+↓
+ref = 2
+↓
+enqueue
+```
+
+Nếu queue full hoặc post thất bại:
+
+```text
+release reference vừa retain
+↓
+ref = 1
+```
+
+Caller vẫn giữ reference gốc.
+
+Đây là invariant quan trọng:
+
+> **Operation thất bại không được làm rò rỉ reference mà nó vừa tạo.**
+
+Với `he_active_post()` thông thường, chỉ khi post thành công thì caller mới coi ownership đã chuyển sang AO.
+
+---
+
+## 11.15. Static Event Lifetime
+
+Reference counting không quản lý lifetime của static event.
+
+Ví dụ nguy hiểm:
+
+```c
+void send_event(void)
+{
+    he_event_t event;
+
+    he_event_init_static(&event, SIG_DATA, sizeof(event));
+
+    he_active_post(&ao, &event, 0);
+
+}   // stack variable chết ở đây
+```
+
+AO có thể xử lý event sau khi function đã return.
+
+Khi đó pointer trong queue không còn hợp lệ.
+
+Do đó static event phải có lifetime dài hơn mọi consumer còn giữ pointer tới nó.
+
+Phù hợp:
+
+```text
+global static storage
+static const-like event
+application-owned object có lifetime đủ dài
+```
+
+Không phù hợp:
+
+```text
+automatic local variable
+rồi post asynchronous
+```
+
+---
+
+## 11.16. Thread Safety của Event Pool
+
+Các operation như:
+
+```text
+allocate block
+return block
+retain
+release
+```
+
+có thể được gọi từ các execution context khác nhau.
+
+Implementation bảo vệ các cập nhật:
+
+```text
+free list
+free_count
+reference_count
+```
+
+bằng critical section.
+
+Trên Cortex-M3 hiện tại:
+
+```text
+critical section
+→ PRIMASK
+```
+
+Nguyên tắc vẫn giống kernel:
+
+```text
+critical section phải ngắn
+không block bên trong
+```
+
+---
+
+## 11.17. Các lỗi Ownership thường gặp
+
+### Release quá sớm
+
+```text
+new()
+ref = 1
+↓
+post()
+↓
+caller release ngay dù ownership đã transfer
+↓
+AO giữ pointer tới block đã free
+```
+
+Có thể dẫn đến:
+
+```text
+use-after-free
+```
+
+### Quên Release
+
+```text
+new()
+ref = 1
+↓
+retain
+ref = 2
+↓
+chỉ release một lần
+```
+
+Kết quả:
+
+```text
+ref = 1 mãi
+→ block không về pool
+→ event leak
+```
+
+### Double Release
+
+```text
+ref = 1
+↓
+release
+ref = 0
+→ free
+↓
+release lần nữa
+```
+
+Pointer không còn là một event dynamic hợp lệ.
+
+### Static Event chết quá sớm
+
+```text
+local static-style event trên stack
+↓
+post asynchronous
+↓
+function return
+↓
+AO dùng dangling pointer
+```
+
+### Dùng chung Dynamic Event nhưng không Retain
+
+```text
+Producer
+ ├→ AO A
+ └→ AO B
+```
+
+Nếu chỉ có một reference mà hai consumer cùng nghĩ mình sở hữu:
+
+```text
+consumer đầu release
+→ event có thể free
+→ consumer sau dùng invalid event
+```
+
+Khi cùng event được chia sẻ:
+
+```text
+mỗi lifetime owner
+→ cần một reference
+```
+
+---
+
+## 11.18. Mô hình tư duy cần nhớ
+
+Static Event:
+
+```text
+Application Storage
+      ↓
+init_static
+      ↓
+post / dispatch
+      ↓
+Framework không free
+      ↓
+Application chịu trách nhiệm lifetime
+```
+
+Dynamic Event:
+
+```text
+Fixed-Block Pool
+      ↓
+he_event_new()
+      ↓
+ref = 1
+      ↓
+retain khi có thêm owner
+      ↓
+release khi owner dùng xong
+      ↓
+ref = 0
+      ↓
+return block to Pool
+```
+
+Ownership transfer:
+
+```text
+he_active_post()
+= chuyển reference hiện tại cho AO
+
+he_active_post_shared()
+= giữ reference caller
+  + tạo thêm reference cho AO
+```
+
+AO execution:
+
+```text
+Queue
+ ↓
+receive Event
+ ↓
+Dispatch
+ ↓
+Release
+```
+
+---
+
+## 11.19. Trọng tâm cần thuộc
+
+Các signal:
+
+```text
+HE_SIG_NONE    = 0
+HE_SIG_ENTRY   = 1
+HE_SIG_EXIT    = 2
+HE_SIG_INIT    = 3
+HE_SIG_TIMEOUT = 4
+
+HE_SIG_USER
+= 32
+```
+
+Event header:
+
+```text
+pool
+magic
+size
+reference_count
+signal
+flags
+```
+
+API chính:
+
+```text
+he_event_pool_init()
+
+he_event_new()
+
+he_event_init_static()
+
+he_event_retain()
+
+he_event_release()
+
+he_event_is_valid()
+
+he_event_is_dynamic()
+
+he_event_get_reference_count()
+```
+
+Các nguyên tắc:
+
+- `haievent` nằm trên `hairtos`, không có scheduler riêng.
+- Static event không được framework reclaim.
+- Static event có `reference_count = 0`.
+- Dynamic event được cấp từ fixed-block pool.
+- Dynamic event mới có `reference_count = 1`.
+- Mỗi owner giữ dynamic event phải tương ứng với một reference.
+- `retain()` tăng refcount của dynamic event.
+- `release()` giảm refcount.
+- Final release đưa block trở lại pool.
+- Refcount là `uint16_t` và có overflow protection.
+- `he_active_post()` không tự retain; post thành công chuyển reference hiện tại sang AO.
+- `he_active_post_shared()` retain trước khi enqueue.
+- Shared post thất bại phải rollback reference vừa retain.
+- AO release event sau khi state machine dispatch xong.
+- Publish giữ một reference cho mỗi subscriber được post thành công rồi consume publisher reference.
+- Static event phải có storage sống đủ lâu cho mọi asynchronous consumer.
+- Pool/free-list/refcount update được bảo vệ bằng critical section.
+- Sai ownership dễ gây use-after-free, double release hoặc leak pool block.
+
+Điểm quan trọng nhất:
+
+> **Dynamic event không thuộc về một function hay một task cố định; ownership được biểu diễn bằng `reference_count`. Mỗi nơi cần giữ event sống phải có một reference, và owner cuối cùng `release()` sẽ trả block về fixed-block pool.**
+
+> **`he_active_post()` là ownership transfer, còn `he_active_post_shared()` là ownership sharing. Phân biệt hai semantics này là chìa khóa để tránh use-after-free và memory leak trong `haievent`.**
+
 
 ---
 
