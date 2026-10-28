@@ -135,6 +135,24 @@
   - [8.17. Mô hình tư duy cần nhớ](#817-mô-hình-tư-duy-cần-nhớ)
   - [8.18. Trọng tâm cần thuộc](#818-trọng-tâm-cần-thuộc)
 - [9. Mutex + Priority Inversion + Priority Inheritance](#9-mutex-priority-inversion-priority-inheritance)
+  - [9.1. Mutex là gì?](#91-mutex-là-gì)
+  - [9.2. Mutex có Ownership](#92-mutex-có-ownership)
+  - [9.3. Normal Mutex và Recursive Mutex](#93-normal-mutex-và-recursive-mutex)
+  - [9.4. `hr_mutex_lock()`](#94-hr_mutex_lock)
+  - [9.5. `hr_mutex_unlock()`](#95-hr_mutex_unlock)
+  - [9.6. Priority Inversion là gì?](#96-priority-inversion-là-gì)
+  - [9.7. Priority Inheritance giải quyết thế nào?](#97-priority-inheritance-giải-quyết-thế-nào)
+  - [9.8. `base_priority` và `effective_priority`](#98-base_priority-và-effective_priority)
+  - [9.9. Owner READY phải được Requeue](#99-owner-ready-phải-được-requeue)
+  - [9.10. Một Task giữ nhiều Mutex](#910-một-task-giữ-nhiều-mutex)
+  - [9.11. Chained Priority Inheritance](#911-chained-priority-inheritance)
+  - [9.12. Direct Ownership Handoff khi Unlock](#912-direct-ownership-handoff-khi-unlock)
+  - [9.13. Timeout khi chờ Mutex](#913-timeout-khi-chờ-mutex)
+  - [9.14. Mutex không dùng trong ISR](#914-mutex-không-dùng-trong-isr)
+  - [9.15. Semaphore và Mutex khác nhau](#915-semaphore-và-mutex-khác-nhau)
+  - [9.16. Ví dụ đầy đủ L / M / H](#916-ví-dụ-đầy-đủ-l--m--h)
+  - [9.17. Mô hình tư duy cần nhớ](#917-mô-hình-tư-duy-cần-nhớ)
+  - [9.18. Trọng tâm cần thuộc](#918-trọng-tâm-cần-thuộc)
 - [10. Suspend / Resume + Software Timer](#10-suspend-resume-software-timer)
 - [11. haievent + Event Ownership + Reference Counting](#11-haievent-event-ownership-reference-counting)
 - [12. Active Object + FSM + Publish / Subscribe](#12-active-object-fsm-publish-subscribe)
@@ -2168,7 +2186,958 @@ Các quy tắc:
 
 # 9. Mutex + Priority Inversion + Priority Inheritance
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Mutex dùng để bảo vệ shared resource sao cho tại một thời điểm chỉ một task được sở hữu resource đó.
+
+Khác semaphore, mutex có:
+
+```text
+owner
++
+recursion policy
++
+waiter list
++
+Priority Inheritance
+```
+
+Trong `hairtos`, mỗi task còn theo dõi danh sách các mutex mà nó đang sở hữu để kernel có thể tính đúng `effective_priority`.
+
+---
+
+## 9.1. Mutex là gì?
+
+Mutex là:
+
+```text
+Mutual Exclusion
+```
+
+Mục tiêu:
+
+```text
+Task A
+Task B
+Task C
+   ↓
+Shared Resource
+```
+
+chỉ cho phép:
+
+```text
+1 owner tại một thời điểm
+```
+
+Ví dụ shared resource:
+
+```text
+SPI peripheral
+I2C bus
+shared data structure
+driver state
+```
+
+Luồng cơ bản:
+
+```text
+Lock Mutex
+   ↓
+Critical Resource
+   ↓
+Unlock Mutex
+```
+
+---
+
+## 9.2. Mutex có Ownership
+
+Điểm quan trọng nhất khác semaphore:
+
+```text
+Mutex
+= có owner
+```
+
+Khi Task A lock thành công:
+
+```text
+mutex.owner = Task A
+```
+
+Chỉ owner mới được unlock.
+
+```text
+Task B unlock mutex của Task A
+→ không hợp lệ
+```
+
+Trong `hairtos`, status enum có:
+
+```text
+HR_ERROR_NOT_OWNER
+```
+
+để biểu diễn lỗi ownership.
+
+---
+
+## 9.3. Normal Mutex và Recursive Mutex
+
+`hairtos` có hai kiểu:
+
+```c
+hr_mutex_create()
+
+hr_mutex_create_recursive()
+```
+
+### Normal Mutex
+
+Nếu owner hiện tại lock lại chính mutex đó:
+
+```text
+Task A owns M
+Task A lock M lần nữa
+→ bị từ chối
+```
+
+### Recursive Mutex
+
+Recursive mutex cho phép cùng owner lock nhiều lần.
+
+```text
+Task A lock
+recursion_count = 1
+
+Task A lock lần nữa
+recursion_count = 2
+```
+
+Unlock:
+
+```text
+2 → 1
+```
+
+mutex vẫn thuộc Task A.
+
+Chỉ khi:
+
+```text
+recursion_count
+→ 0
+```
+
+ownership mới thực sự được nhả.
+
+---
+
+## 9.4. `hr_mutex_lock()`
+
+API:
+
+```c
+hr_mutex_lock(
+    mutex,
+    timeout
+);
+```
+
+Nếu mutex đang free:
+
+```text
+Lock
+ ↓
+owner = current task
+ ↓
+recursion_count = 1
+ ↓
+link mutex vào owned_mutexes của task
+ ↓
+HR_OK
+```
+
+Nếu mutex đang thuộc task khác:
+
+```text
+Mutex Busy
+   ↓
+HR_NO_WAIT?
+ /          \
+YES          NO
+↓             ↓
+BUSY       đưa task vào Wait List
+            ↓
+          BLOCKED
+```
+
+Waiter được quản lý theo `effective_priority`.
+
+---
+
+## 9.5. `hr_mutex_unlock()`
+
+Chỉ owner mới được unlock.
+
+Với recursive mutex:
+
+```text
+recursion_count > 1
+        ↓
+recursion_count--
+        ↓
+owner vẫn giữ mutex
+```
+
+Khi recursion count về `0`:
+
+```text
+release ownership
+```
+
+Nếu không có waiter:
+
+```text
+owner = NULL
+```
+
+Nếu có waiter:
+
+```text
+ownership có thể được handoff trực tiếp
+cho waiter được chọn
+```
+
+Sau đó priority của owner cũ phải được tính lại.
+
+---
+
+## 9.6. Priority Inversion là gì?
+
+Giả sử ba task:
+
+```text
+H = High Priority
+M = Medium Priority
+L = Low Priority
+```
+
+L đang giữ mutex:
+
+```text
+L owns Mutex X
+```
+
+Sau đó H chạy và cần Mutex X:
+
+```text
+H lock X
+   ↓
+X đang thuộc L
+   ↓
+H BLOCKED
+```
+
+Nếu M trở thành READY:
+
+```text
+M priority > L
+```
+
+thì M có thể preempt L.
+
+Kết quả:
+
+```text
+H chờ L
+L lại không chạy được vì M
+```
+
+Luồng:
+
+```text
+L giữ Mutex
+   ↓
+H cần Mutex
+   ↓
+H BLOCKED
+   ↓
+M chạy
+   ↓
+L không được CPU
+   ↓
+H bị trì hoãn bởi M
+```
+
+Đây là:
+
+```text
+Priority Inversion
+```
+
+---
+
+## 9.7. Priority Inheritance giải quyết thế nào?
+
+Khi H block trên mutex thuộc L:
+
+```text
+H priority cao hơn L
+```
+
+kernel tạm boost L:
+
+```text
+L.base_priority      = 5
+L.effective_priority = 1
+```
+
+nếu H có priority `1`.
+
+Lúc này M priority `3` không còn preempt được L:
+
+```text
+L effective = 1
+M effective = 3
+```
+
+L có cơ hội chạy nhanh để:
+
+```text
+hoàn thành critical section
+↓
+unlock mutex
+```
+
+Sau đó H nhận mutex và tiếp tục.
+
+---
+
+## 9.8. `base_priority` và `effective_priority`
+
+Mỗi TCB trong `hairtos` lưu riêng:
+
+```text
+base_priority
+effective_priority
+```
+
+`base_priority`:
+
+```text
+priority được cấu hình cho task
+```
+
+`effective_priority`:
+
+```text
+priority scheduler thực sự sử dụng
+```
+
+Bình thường:
+
+```text
+base = effective
+```
+
+Khi Priority Inheritance:
+
+```text
+effective
+→ được boost
+```
+
+nhưng:
+
+```text
+base
+→ không thay đổi
+```
+
+Scheduler và wait policy sử dụng:
+
+```text
+effective_priority
+```
+
+---
+
+## 9.9. Owner READY phải được Requeue
+
+Giả sử Task L đang READY tại:
+
+```text
+Priority 5 Queue
+```
+
+Sau khi H chờ mutex của L:
+
+```text
+L.effective_priority
+5 → 1
+```
+
+Không thể chỉ đổi một field trong TCB.
+
+Nếu vẫn để L trong queue priority 5:
+
+```text
+Ready Set
+→ sai
+```
+
+Do đó `hairtos` phải:
+
+```text
+remove L khỏi Ready Queue cũ
+      ↓
+update effective_priority
+      ↓
+insert L vào Ready Queue mới
+```
+
+Mental model:
+
+```text
+Priority thay đổi
+=
+Ready Queue membership cũng phải thay đổi
+```
+
+---
+
+## 9.10. Một Task giữ nhiều Mutex
+
+Một task có thể sở hữu nhiều mutex.
+
+TCB có:
+
+```text
+owned_mutexes
+owned_mutex_count
+```
+
+Ví dụ:
+
+```text
+Task L owns M1
+Task L owns M2
+```
+
+M1 có waiter priority `1`.
+
+M2 có waiter priority `3`.
+
+L có:
+
+```text
+base_priority = 5
+```
+
+thì effective priority phải dựa trên waiter cao nhất:
+
+```text
+effective_priority = 1
+```
+
+Nếu L unlock M1 nhưng vẫn giữ M2:
+
+```text
+không được restore ngay về 5
+```
+
+vì waiter priority `3` trên M2 vẫn còn.
+
+Kernel phải tính lại:
+
+```text
+effective_priority
+=
+min(
+    base_priority,
+    highest-priority waiter
+    trên mọi mutex đang sở hữu
+)
+```
+
+Với quy ước:
+
+```text
+số nhỏ hơn = priority cao hơn
+```
+
+---
+
+## 9.11. Chained Priority Inheritance
+
+Priority Inheritance có thể lan qua nhiều mutex.
+
+Ví dụ:
+
+```text
+Task A priority 1
+Task B priority 3
+Task C priority 5
+```
+
+Quan hệ:
+
+```text
+C owns M1
+
+B owns M2
+B đang chờ M1
+
+A đang chờ M2
+```
+
+Chuỗi:
+
+```text
+A
+ ↓ waits
+M2
+ ↓ owned by
+B
+ ↓ waits
+M1
+ ↓ owned by
+C
+```
+
+Khi A priority `1` chờ B:
+
+```text
+B effective → 1
+```
+
+Nhưng B đang chờ mutex của C, nên inheritance phải lan tiếp:
+
+```text
+C effective → 1
+```
+
+Có thể nhớ:
+
+```text
+A → M2 → B → M1 → C
+```
+
+`hairtos` hỗ trợ chained inheritance bằng quá trình recompute/propagate có giới hạn để tránh recursion bất thường hoặc chuỗi bệnh lý.
+
+---
+
+## 9.12. Direct Ownership Handoff khi Unlock
+
+Giả sử:
+
+```text
+L owns Mutex
+H BLOCKED chờ Mutex
+```
+
+Khi L unlock, thay vì:
+
+```text
+owner = NULL
+↓
+wake H
+↓
+H chạy
+↓
+H lock lại Mutex
+```
+
+kernel có thể:
+
+```text
+L unlock
+   ↓
+chọn waiter H
+   ↓
+owner = H
+   ↓
+wake H
+```
+
+Đây là:
+
+```text
+Direct Ownership Handoff
+```
+
+Nó giữ trạng thái mutex nhất quán và tránh khoảng trống không cần thiết giữa unlock và lock lại.
+
+Sau handoff:
+
+```text
+H trở thành owner
+```
+
+và priority của owner cũ được recompute.
+
+---
+
+## 9.13. Timeout khi chờ Mutex
+
+Nếu task lock mutex với timeout hữu hạn:
+
+```c
+hr_mutex_lock(&mutex, 100);
+```
+
+khi mutex đang bận:
+
+```text
+Mutex Wait List
++
+Timeout List
+```
+
+Hai khả năng:
+
+```text
+Mutex được unlock trước
+→ task nhận ownership
+→ HR_OK
+
+Timeout trước
+→ task rời Wait List
+→ HR_ERROR_TIMEOUT
+```
+
+Điểm quan trọng:
+
+Khi waiter timeout, owner có thể không còn cần boost mạnh như trước.
+
+Do đó kernel phải:
+
+```text
+remove waiter
+      ↓
+recompute owner effective_priority
+```
+
+và nếu owner nằm trong dependency chain thì việc recompute có thể cần lan tiếp.
+
+---
+
+## 9.14. Mutex không dùng trong ISR
+
+Public mutex API:
+
+```text
+hr_mutex_lock()
+hr_mutex_unlock()
+```
+
+không được dùng từ ISR context.
+
+Nếu gọi trong ISR:
+
+```text
+HR_ERROR_FROM_ISR
+```
+
+Lý do:
+
+```text
+Mutex có ownership theo task
++
+lock có thể block
++
+Priority Inheritance phụ thuộc TCB
+```
+
+ISR không phải task và không được ngủ chờ mutex.
+
+Nếu ISR cần báo sự kiện cho task:
+
+```text
+Semaphore
+hoặc
+Queue _from_isr
+```
+
+phù hợp hơn.
+
+---
+
+## 9.15. Semaphore và Mutex khác nhau
+
+Semaphore:
+
+```text
+không owner
+có count
+có thể signal từ ISR
+không Priority Inheritance
+```
+
+Mutex:
+
+```text
+có owner
+bảo vệ shared resource
+có recursion policy
+có Priority Inheritance
+không dùng từ ISR
+```
+
+Mental model:
+
+```text
+Semaphore
+= "có bao nhiêu token / event?"
+
+Mutex
+= "task nào đang sở hữu resource?"
+```
+
+---
+
+## 9.16. Ví dụ đầy đủ L / M / H
+
+Giả sử:
+
+```text
+H priority = 1
+M priority = 3
+L priority = 5
+```
+
+### Bước 1
+
+L chạy và lock mutex:
+
+```text
+L
+↓
+Lock X
+↓
+owner = L
+```
+
+### Bước 2
+
+H trở thành READY và preempt L:
+
+```text
+H
+↓
+Lock X
+↓
+X owned by L
+↓
+H BLOCKED
+```
+
+### Nếu không có Priority Inheritance
+
+M có thể chạy:
+
+```text
+M READY
+↓
+M priority 3 > L priority 5
+↓
+M preempt L
+```
+
+H tiếp tục phải chờ.
+
+### Với Priority Inheritance
+
+Khi H block:
+
+```text
+L.base_priority      = 5
+L.effective_priority = 1
+```
+
+L trở thành task ưu tiên cao:
+
+```text
+L chạy
+↓
+hoàn thành critical section
+↓
+Unlock X
+```
+
+Kernel:
+
+```text
+ownership X
+L → H
+```
+
+Sau đó:
+
+```text
+recompute L priority
+→ 5
+```
+
+H trở thành READY và chạy:
+
+```text
+H owns X
+↓
+H RUNNING
+```
+
+Flow:
+
+```text
+L owns X
+   ↓
+H waits X
+   ↓
+Boost L
+5 → 1
+   ↓
+L finishes
+   ↓
+Unlock
+   ↓
+Handoff X → H
+   ↓
+Restore / Recompute L
+   ↓
+H runs
+```
+
+---
+
+## 9.17. Mô hình tư duy cần nhớ
+
+Lock:
+
+```text
+LOCK
+ ↓
+Mutex free?
+ /       \
+YES       NO
+↓          ↓
+Become    Current owner?
+Owner      /         \
+         YES         NO
+         ↓            ↓
+      Recursive?    NO_WAIT?
+       /    \        /     \
+     YES    NO     YES     NO
+     ↓       ↓      ↓       ↓
+ count++   reject  BUSY    BLOCK
+                              ↓
+                         Wait List
+                              ↓
+                    Priority Inheritance
+```
+
+Unlock:
+
+```text
+UNLOCK
+  ↓
+Caller == Owner?
+ /           \
+NO           YES
+↓             ↓
+NOT_OWNER   Recursive count > 1?
+              /          \
+            YES          NO
+            ↓             ↓
+         count--      Waiter?
+                     /      \
+                   YES      NO
+                   ↓         ↓
+               Handoff     Free
+                   ↓
+          Recompute old owner
+```
+
+Priority Inheritance:
+
+```text
+High waits on Mutex
+      ↓
+Low owns Mutex
+      ↓
+Boost Low effective_priority
+      ↓
+Low completes sooner
+      ↓
+Unlock / Handoff
+      ↓
+Recompute Low priority
+```
+
+---
+
+## 9.18. Trọng tâm cần thuộc
+
+API chính:
+
+```text
+hr_mutex_create()
+
+hr_mutex_create_recursive()
+
+hr_mutex_lock()
+
+hr_mutex_unlock()
+```
+
+Thông tin quan trọng trong mutex:
+
+```text
+owner
+recursion_count
+recursive
+waiters
+owner_node
+```
+
+Thông tin quan trọng trong TCB:
+
+```text
+base_priority
+effective_priority
+
+owned_mutexes
+owned_mutex_count
+```
+
+Các quy tắc:
+
+- Mutex có ownership.
+- Chỉ owner được unlock.
+- Normal mutex không cho owner lock lại chính nó.
+- Recursive mutex tăng `recursion_count`.
+- Mutex bận + `HR_NO_WAIT` trả busy.
+- Lock có timeout có thể đưa task vào `BLOCKED`.
+- Waiter được quản lý theo `effective_priority`.
+- Task priority cao hơn chờ mutex có thể boost owner.
+- Scheduler sử dụng `effective_priority`.
+- READY owner đổi priority phải được requeue.
+- Owner giữ nhiều mutex phải recompute priority từ tất cả mutex đang sở hữu.
+- Unlock một mutex chưa chắc làm owner trở lại `base_priority`.
+- Priority Inheritance có thể lan theo chuỗi mutex.
+- Unlock có thể direct handoff ownership cho waiter được chọn.
+- Waiter timeout phải làm owner recompute lại priority.
+- Mutex API không dùng trong ISR.
+- Mutex khác semaphore vì có owner và Priority Inheritance.
+
+Điểm quan trọng nhất:
+
+> **Priority Inheritance không làm task Low trở thành High vĩnh viễn. Nó chỉ tạm nâng `effective_priority` của owner để owner có CPU hoàn thành critical section và nhả resource mà task High đang cần.**
+
+> **Trong `hairtos`, effective priority phải được tính từ `base_priority` và waiter ưu tiên cao nhất trên tất cả mutex mà task đang sở hữu; vì vậy unlock một mutex không có nghĩa priority lập tức trở về base.**
+
+> **Nếu owner đang block trên mutex khác, việc boost có thể lan theo chuỗi, tạo Chained Priority Inheritance.**
+
 
 ---
 
