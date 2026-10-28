@@ -219,6 +219,27 @@
   - [12.23. Mô hình tư duy cần nhớ](#1223-mô-hình-tư-duy-cần-nhớ)
   - [12.24. Trọng tâm cần thuộc](#1224-trọng-tâm-cần-thuộc)
 - [13. Diagnostics + Fault + Stack Safety](#13-diagnostics-fault-stack-safety)
+  - [13.1. Vì sao RTOS cần Diagnostics?](#131-vì-sao-rtos-cần-diagnostics)
+  - [13.2. Cấu hình Diagnostics hiện tại](#132-cấu-hình-diagnostics-hiện-tại)
+  - [13.3. Stack Fill Pattern](#133-stack-fill-pattern)
+  - [13.4. Stack High-Watermark](#134-stack-high-watermark)
+  - [13.5. Stack Guard](#135-stack-guard)
+  - [13.6. API kiểm tra Stack](#136-api-kiểm-tra-stack)
+  - [13.7. Task Diagnostics Snapshot](#137-task-diagnostics-snapshot)
+  - [13.8. Runtime Statistics](#138-runtime-statistics)
+  - [13.9. Health Check](#139-health-check)
+  - [13.10. Kernel Invariant](#1310-kernel-invariant)
+  - [13.11. Panic Reason](#1311-panic-reason)
+  - [13.12. Retained Panic Record và `.noinit`](#1312-retained-panic-record-và-noinit)
+  - [13.13. Fault Context trên Cortex-M3](#1313-fault-context-trên-cortex-m3)
+  - [13.14. MSP hay PSP khi Fault xảy ra?](#1314-msp-hay-psp-khi-fault-xảy-ra)
+  - [13.15. Các Fault Status Register cần đọc](#1315-các-fault-status-register-cần-đọc)
+  - [13.16. MemManage / BusFault / UsageFault](#1316-memmanage--busfault--usagefault)
+  - [13.17. Fault Capture Flow](#1317-fault-capture-flow)
+  - [13.18. Debug một HardFault theo thứ tự nào?](#1318-debug-một-hardfault-theo-thứ-tự-nào)
+  - [13.19. Example 16 và Health Monitor](#1319-example-16-và-health-monitor)
+  - [13.20. Mô hình tư duy cần nhớ](#1320-mô-hình-tư-duy-cần-nhớ)
+  - [13.21. Trọng tâm cần thuộc](#1321-trọng-tâm-cần-thuộc)
 - [14. Architecture Port + Testing + Benchmark](#14-architecture-port-testing-benchmark)
 
 ---
@@ -6236,7 +6257,1104 @@ Các nguyên tắc:
 
 # 13. Diagnostics + Fault + Stack Safety
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Một RTOS có thể chạy đúng trong demo nhưng vẫn tồn tại các lỗi khó phát hiện như:
+
+```text
+Stack gần tràn
+Kernel list bị corrupt
+Task bị starvation
+Timeout không tiến triển
+HardFault chỉ xuất hiện sau nhiều giờ
+```
+
+Vì vậy `hairtos` có một lớp diagnostics để trả lời các câu hỏi:
+
+```text
+Task nào đang dùng nhiều Stack?
+Stack Guard còn nguyên không?
+Kernel invariant còn hợp lệ không?
+Scheduler đã switch bao nhiêu lần?
+Fault xảy ra tại PC nào?
+Fault xảy ra trong Task nào?
+Sau reset có đọc lại crash record được không?
+```
+
+---
+
+## 13.1. Vì sao RTOS cần Diagnostics?
+
+Lỗi RTOS thường có tính:
+
+```text
+timing-dependent
++
+state-dependent
++
+khó tái hiện
+```
+
+Ví dụ:
+
+```text
+Task A ghi quá Stack
+   ↓
+ghi đè TCB B
+   ↓
+Scheduler chạy thêm 1000 tick
+   ↓
+Ready List bị corrupt
+   ↓
+HardFault ở vị trí hoàn toàn khác
+```
+
+Nếu chỉ nhìn nơi CPU crash:
+
+```text
+có thể không thấy nguyên nhân gốc
+```
+
+Diagnostics giúp giữ lại:
+
+```text
+runtime state
+stack state
+scheduler counters
+fault registers
+current task
+```
+
+để debug có hệ thống hơn.
+
+---
+
+## 13.2. Cấu hình Diagnostics hiện tại
+
+Config mặc định của repo:
+
+```text
+HR_CFG_ENABLE_ASSERT        = 1
+HR_CFG_ENABLE_STACK_CHECK   = 1
+
+HR_CFG_ENABLE_RUNTIME_STATS = 0
+HR_CFG_ENABLE_DIAGNOSTICS   = 0
+```
+
+Ngoài ra:
+
+```text
+HR_CFG_DIAGNOSTICS_STACK_MARGIN_WORDS = 16
+HR_CFG_STACK_FILL_BYTE                 = 0xA5
+HR_CFG_STACK_GUARD_VALUE               = 0xDEADBEEF
+```
+
+Điểm cần phân biệt:
+
+```text
+Stack Check
+```
+
+được bật mặc định, nhưng diagnostics mở rộng và runtime statistics có thể được bật/tắt bằng config.
+
+Do đó khi đọc source phải luôn hỏi:
+
+```text
+Feature này có được compile/configure bật không?
+```
+
+---
+
+## 13.3. Stack Fill Pattern
+
+Khi task được tạo, vùng stack chưa sử dụng được fill bằng một pattern cố định:
+
+```text
+0xA5
+```
+
+Có thể hình dung:
+
+```text
+Stack vừa tạo
+
+[A5][A5][A5][A5][A5][A5][A5]...
+```
+
+Khi task chạy:
+
+```text
+function call
+local variable
+saved register
+exception frame
+```
+
+sẽ ghi đè dần pattern này.
+
+Ví dụ:
+
+```text
+Sau một thời gian
+
+[USED][USED][USED][A5][A5][A5]...
+```
+
+Nhìn phần pattern còn nguyên có thể ước lượng:
+
+```text
+Stack tối đa đã từng sử dụng
+```
+
+---
+
+## 13.4. Stack High-Watermark
+
+High-watermark không chỉ nhìn:
+
+```text
+Stack đang dùng tại thời điểm hiện tại
+```
+
+mà muốn biết:
+
+```text
+mức sử dụng Stack lớn nhất từng xảy ra
+```
+
+Ví dụ:
+
+```text
+Task Stack = 256 words
+
+Minimum free từng quan sát = 80 words
+```
+
+thì peak used khoảng:
+
+```text
+256 - 80
+=
+176 words
+```
+
+Điều này hữu ích vì task có thể:
+
+```text
+bình thường dùng ít Stack
+```
+
+nhưng thỉnh thoảng đi qua:
+
+```text
+deep call chain
+large local variable
+nested processing
+```
+
+và đạt peak cao hơn nhiều.
+
+---
+
+## 13.5. Stack Guard
+
+Ngoài fill pattern, `hairtos` dùng guard value:
+
+```text
+0xDEADBEEF
+```
+
+đặt ở vùng bảo vệ của stack.
+
+Mental model:
+
+```text
+Stack Low Address
+
++------------------+
+| Guard            |
+| 0xDEADBEEF       |
++------------------+
+| Stack payload    |
+|                  |
+|                  |
++------------------+
+
+Stack High Address
+```
+
+Nếu stack phát triển quá xa và ghi đè guard:
+
+```text
+guard != expected value
+```
+
+kernel có bằng chứng rõ ràng rằng stack đã vượt vùng an toàn.
+
+Khác biệt:
+
+```text
+Fill Pattern
+= đo mức sử dụng Stack
+
+Guard
+= phát hiện Stack đã chạm / phá biên bảo vệ
+```
+
+---
+
+## 13.6. API kiểm tra Stack
+
+Public task API có:
+
+```c
+size_t hr_task_get_stack_words(
+    const hr_task_t *task
+);
+
+size_t hr_task_get_stack_high_watermark(
+    const hr_task_t *task
+);
+
+bool hr_task_stack_guard_is_valid(
+    const hr_task_t *task
+);
+```
+
+Có thể dùng:
+
+```text
+stack size
++
+high-watermark
++
+guard status
+```
+
+để đánh giá Stack của từng task.
+
+Mental model:
+
+```text
+Guard còn tốt?
+       +
+Free Stack còn đủ?
+       ↓
+Stack Health
+```
+
+Chỉ nhìn guard thôi chưa đủ.
+
+Một task có thể:
+
+```text
+guard vẫn valid
+```
+
+nhưng free margin đã rất thấp.
+
+---
+
+## 13.7. Task Diagnostics Snapshot
+
+Diagnostics API có:
+
+```c
+hr_diagnostics_get_task(
+    task,
+    &diagnostics
+);
+```
+
+`hr_task_diagnostics_t` snapshot các thông tin:
+
+```text
+task
+name
+state
+
+base_priority
+effective_priority
+
+stack_words
+stack_free_words
+stack_used_words
+
+runtime_ticks
+
+stack_guard_valid
+```
+
+Đây là một view rất hữu ích khi cần hỏi:
+
+```text
+Task đang ở state nào?
+Priority có đang inherit không?
+Stack còn bao nhiêu?
+Task đã chạy bao nhiêu tick?
+Guard còn hợp lệ không?
+```
+
+---
+
+## 13.8. Runtime Statistics
+
+`hr_runtime_statistics_t` theo dõi các counter như:
+
+```text
+systick_count
+pendsv_count
+task_switch_count
+
+yield_count
+block_count
+preemption_count
+time_slice_count
+
+timeout_wakeup_count
+
+invariant_check_count
+invariant_failure_count
+
+stack_check_count
+stack_failure_count
+
+panic_count
+```
+
+API:
+
+```c
+hr_diagnostics_get_runtime_statistics();
+
+hr_diagnostics_reset_runtime_statistics();
+```
+
+Các counter này không nói chính xác:
+
+```text
+"bug nằm ở dòng nào"
+```
+
+nhưng giúp thấy behavior toàn hệ thống.
+
+Ví dụ:
+
+```text
+SysTick vẫn tăng
+nhưng task_switch_count đứng yên
+```
+
+có thể gợi ý scheduler không còn chuyển task như mong đợi.
+
+---
+
+## 13.9. Health Check
+
+API:
+
+```c
+hr_diagnostics_run_health_check(
+    &report
+);
+```
+
+`hr_health_report_t` gồm:
+
+```text
+kernel_invariants_valid
+all_stack_guards_valid
+
+task_count
+ready_task_count
+timeout_task_count
+
+ready_bitmap
+
+minimum_stack_free_words
+low_stack_task_count
+
+current_task
+current_task_name
+```
+
+Health check thực hiện hai nhóm việc chính:
+
+```text
+validate Kernel Internal State
++
+scan Task Stack Safety
+```
+
+Nếu task có:
+
+```text
+stack_free_words
+<
+HR_CFG_DIAGNOSTICS_STACK_MARGIN_WORDS
+```
+
+thì task được tính vào:
+
+```text
+low_stack_task_count
+```
+
+Margin mặc định:
+
+```text
+16 words
+```
+
+---
+
+## 13.10. Kernel Invariant
+
+Invariant là điều:
+
+```text
+luôn phải đúng
+```
+
+nếu kernel state không bị corrupt.
+
+Ví dụ khái niệm:
+
+```text
+Ready Bitmap
+phải khớp Ready Queue
+
+Task RUNNING
+phải phù hợp Current Task
+
+Wait Node
+không được nằm sai list
+
+Task Count
+không vượt cấu hình
+```
+
+Diagnostics gọi internal validator:
+
+```text
+hr_kernel_validate_internal()
+```
+
+và ghi nhận:
+
+```text
+invariant_check_count
+invariant_failure_count
+```
+
+Điểm quan trọng:
+
+> Invariant check giúp phát hiện corruption gần thời điểm nó xuất hiện hơn, thay vì đợi tới khi CPU HardFault ở một nơi xa nguyên nhân gốc.
+
+---
+
+## 13.11. Panic Reason
+
+`hairtos` định nghĩa các panic reason:
+
+```text
+HR_PANIC_NONE
+
+HR_PANIC_ASSERT
+HR_PANIC_KERNEL_INVARIANT
+HR_PANIC_STACK_OVERFLOW
+
+HR_PANIC_NMI
+HR_PANIC_HARDFAULT
+HR_PANIC_MEMMANAGE
+HR_PANIC_BUSFAULT
+HR_PANIC_USAGEFAULT
+
+HR_PANIC_USER
+```
+
+Điều này giúp crash record phân biệt:
+
+```text
+software assertion
+kernel corruption
+stack failure
+processor fault
+user-requested panic
+```
+
+thay vì chỉ lưu một cờ:
+
+```text
+"system crashed"
+```
+
+---
+
+## 13.12. Retained Panic Record và `.noinit`
+
+`hr_panic_record_t` lưu các metadata như:
+
+```text
+signature
+version
+
+boot_count
+sequence
+
+reason
+tick
+
+task_address
+task_name
+
+source_line
+source_hash
+
+fault context
+```
+
+Record được đặt trong:
+
+```text
+.noinit
+```
+
+Khác `.bss`:
+
+```text
+.bss
+→ startup zero hóa
+
+.noinit
+→ startup không zero
+```
+
+Do đó crash record có thể tồn tại qua reset phù hợp.
+
+Luồng:
+
+```text
+Fault / Panic
+     ↓
+store record vào .noinit
+     ↓
+reset / restart
+     ↓
+next boot
+     ↓
+hr_diagnostics_initialize()
+     ↓
+validate retained record
+     ↓
+application có thể đọc crash trước
+```
+
+API:
+
+```c
+hr_diagnostics_get_last_panic();
+
+hr_diagnostics_clear_last_panic();
+```
+
+---
+
+## 13.13. Fault Context trên Cortex-M3
+
+Khi exception/fault xảy ra, hardware stack frame chứa:
+
+```text
+R0
+R1
+R2
+R3
+R12
+LR
+PC
+xPSR
+```
+
+`hairtos` lưu các register này vào:
+
+```text
+hr_fault_context_t
+```
+
+Ngoài ra còn lưu:
+
+```text
+exception_return
+exception_number
+
+CFSR
+HFSR
+DFSR
+AFSR
+MMFAR
+BFAR
+SHCSR
+```
+
+Hai register đặc biệt quan trọng khi debug:
+
+```text
+PC
+= instruction liên quan tới nơi fault
+
+LR
+= return / call context
+```
+
+---
+
+## 13.14. MSP hay PSP khi Fault xảy ra?
+
+Fault handler phải lấy đúng stack frame.
+
+Nếu fault xảy ra trong:
+
+```text
+Task / Thread Mode dùng PSP
+```
+
+thì stacked frame nằm trên:
+
+```text
+PSP
+```
+
+Nếu fault xảy ra trong context dùng MSP:
+
+```text
+frame nằm trên MSP
+```
+
+Assembly handler của `hairtos` kiểm tra bit trong `EXC_RETURN`:
+
+```asm
+tst lr, #4
+ite eq
+mrseq r0, msp
+mrsne r0, psp
+```
+
+Mental model:
+
+```text
+EXC_RETURN
+   ↓
+Stack Frame ở đâu?
+ /             \
+MSP             PSP
+```
+
+Sau đó pointer đúng được truyền vào:
+
+```text
+hr_port_fault_capture()
+```
+
+---
+
+## 13.15. Các Fault Status Register cần đọc
+
+Fault capture hiện tại giữ:
+
+```text
+CFSR
+HFSR
+DFSR
+AFSR
+MMFAR
+BFAR
+SHCSR
+```
+
+Có thể nhớ:
+
+### `CFSR`
+
+```text
+Configurable Fault Status Register
+```
+
+gộp thông tin của:
+
+```text
+MemManage
+BusFault
+UsageFault
+```
+
+### `HFSR`
+
+```text
+HardFault Status Register
+```
+
+giúp biết HardFault có phải fault bị escalate hay không.
+
+### `MMFAR`
+
+```text
+MemManage Fault Address Register
+```
+
+có thể chứa địa chỉ gây memory-management fault khi valid.
+
+### `BFAR`
+
+```text
+BusFault Address Register
+```
+
+có thể chứa địa chỉ gây BusFault khi valid.
+
+### `SHCSR`
+
+```text
+System Handler Control and State Register
+```
+
+cho biết trạng thái các system exception/fault.
+
+Điểm cần nhớ:
+
+> Không nên debug HardFault chỉ bằng `PC`; phải đọc thêm fault status registers.
+
+---
+
+## 13.16. MemManage / BusFault / UsageFault
+
+Khi diagnostics được bật, tài liệu v1 mô tả Cortex-M port bật riêng:
+
+```text
+MemManage
+BusFault
+UsageFault
+```
+
+thay vì để mọi lỗi đều escalate thành HardFault.
+
+Ngoài ra port bật trap cho:
+
+```text
+unaligned access
+divide-by-zero
+```
+
+khi diagnostics được enable.
+
+Lợi ích:
+
+```text
+lỗi được phân loại sớm hơn
+```
+
+Ví dụ:
+
+```text
+divide by zero
+→ UsageFault
+```
+
+thay vì behavior khó nhận biết hơn.
+
+Nếu diagnostics không bật, fault handling của target có thể đơn giản hơn và dừng tại fault loop.
+
+---
+
+## 13.17. Fault Capture Flow
+
+Luồng Cortex-M3 trong `hairtos`:
+
+```text
+Illegal Access / Undefined Instruction / Fault
+             ↓
+NMI / HardFault / MemManage /
+BusFault / UsageFault Handler
+             ↓
+Assembly kiểm tra EXC_RETURN
+             ↓
+chọn MSP hoặc PSP
+             ↓
+hr_port_fault_capture()
+             ↓
+disable interrupt
+             ↓
+copy Hardware Stack Frame
+             ↓
+read SCB Fault Registers
+             ↓
+hr_diagnostics_record_fault()
+             ↓
+Retained Panic Record
+             ↓
+platform halt
+```
+
+`hr_diagnostics_platform_halt()` hiện:
+
+```text
+disable interrupt
+↓
+loop
+↓
+bkpt #0
+```
+
+để debugger có thể dừng tại fault path.
+
+---
+
+## 13.18. Debug một HardFault theo thứ tự nào?
+
+Một workflow hợp lý:
+
+```text
+1. Xem panic reason
+2. Xem task_name
+3. Xem tick
+4. Xem PC
+5. Xem LR
+6. Xem xPSR
+7. Xem CFSR
+8. Xem HFSR
+9. Nếu valid, xem MMFAR / BFAR
+10. Kiểm tra Stack Guard / High-Watermark
+11. Kiểm tra Kernel Invariant
+```
+
+Ví dụ:
+
+```text
+reason = HR_PANIC_USAGEFAULT
+task   = parser
+PC     = 0x08001234
+CFSR   = ...
+```
+
+Ta có thể dùng:
+
+```text
+ELF symbol / map / addr2line
+```
+
+để ánh xạ PC về source.
+
+Nếu stack guard hỏng:
+
+```text
+không nên chỉ sửa instruction tại PC
+```
+
+vì fault có thể là hậu quả của stack corruption xảy ra trước đó.
+
+---
+
+## 13.19. Example 16 và Health Monitor
+
+Repo có workload:
+
+```text
+16-diagnostics-stress-stabilization
+```
+
+Example này kết hợp:
+
+```text
+Queue
+Semaphore
+Mutex
+Periodic Timer
+Health Monitor Task
+```
+
+Health monitor kiểm tra:
+
+```text
+ordering
+progress
+kernel invariants
+stack guards
+```
+
+Ngoài ra có optional UsageFault injection bằng instruction:
+
+```text
+udf
+```
+
+để kiểm tra:
+
+```text
+Fault Capture
++
+Retained Panic Record
+```
+
+sau khi reset.
+
+Đây là ví dụ tốt để hiểu diagnostics không phải API đứng riêng lẻ mà phải chạy trong workload có concurrency thật.
+
+---
+
+## 13.20. Mô hình tư duy cần nhớ
+
+Stack Safety:
+
+```text
+Task Stack
+   ↓
+Fill Pattern
+→ đo Peak Usage
+
+Guard
+→ phát hiện vượt biên
+```
+
+Health:
+
+```text
+All Tasks
+   ↓
+Task Diagnostics
+   ↓
+Stack Check
++
+Kernel Invariant
+   ↓
+Health Report
+```
+
+Fault:
+
+```text
+CPU Fault
+   ↓
+Hardware Stack Frame
+   ↓
+MSP / PSP?
+   ↓
+PC + LR + xPSR
++
+SCB Fault Status
+   ↓
+Panic Record
+   ↓
+.noinit
+   ↓
+Next-Boot Inspection
+```
+
+---
+
+## 13.21. Trọng tâm cần thuộc
+
+Config mặc định:
+
+```text
+HR_CFG_ENABLE_ASSERT        = 1
+
+HR_CFG_ENABLE_STACK_CHECK   = 1
+
+HR_CFG_ENABLE_RUNTIME_STATS = 0
+
+HR_CFG_ENABLE_DIAGNOSTICS   = 0
+```
+
+Stack config:
+
+```text
+Fill Pattern
+= 0xA5
+
+Guard
+= 0xDEADBEEF
+
+Low-Stack Margin
+= 16 words
+```
+
+Task stack API:
+
+```text
+hr_task_get_stack_words()
+
+hr_task_get_stack_high_watermark()
+
+hr_task_stack_guard_is_valid()
+```
+
+Diagnostics API:
+
+```text
+hr_diagnostics_initialize()
+
+hr_diagnostics_get_task()
+
+hr_diagnostics_get_runtime_statistics()
+
+hr_diagnostics_reset_runtime_statistics()
+
+hr_diagnostics_run_health_check()
+
+hr_diagnostics_get_last_panic()
+
+hr_diagnostics_clear_last_panic()
+
+hr_diagnostics_record_panic()
+
+hr_diagnostics_record_fault()
+```
+
+Fault context cần nhớ:
+
+```text
+Hardware-stacked:
+R0-R3
+R12
+LR
+PC
+xPSR
+
+Metadata:
+EXC_RETURN
+Exception Number
+
+Fault Registers:
+CFSR
+HFSR
+DFSR
+AFSR
+MMFAR
+BFAR
+SHCSR
+```
+
+Các nguyên tắc:
+
+- Fill pattern dùng để ước lượng Stack peak usage.
+- Guard dùng để phát hiện Stack phá biên.
+- Guard còn nguyên không có nghĩa Stack margin đang đủ lớn.
+- Health check gom kernel invariant và stack diagnostics.
+- Runtime stats giúp nhìn hành vi scheduler/timeouts theo thời gian.
+- Panic record lưu reason, tick, current task và fault context.
+- `.noinit` giúp retained panic record không bị startup zero như `.bss`.
+- Fault handler phải chọn đúng MSP hoặc PSP dựa trên `EXC_RETURN`.
+- PC/LR quan trọng nhưng không đủ; phải đọc thêm CFSR/HFSR và address registers.
+- Khi diagnostics bật, MemManage/BusFault/UsageFault được dùng để phân loại lỗi rõ hơn.
+- Fault capture cuối cùng đi vào halt loop có `bkpt` để debugger bắt được.
+- Example 16 stress cả synchronization lẫn diagnostics.
+- Host tests xác minh logic diagnostics, nhưng retained context qua hardware reset vẫn cần target validation.
+
+Điểm quan trọng nhất:
+
+> **Stack high-watermark giúp trả lời “đã từng dùng Stack nhiều nhất bao nhiêu”, còn Stack Guard giúp trả lời “đã phá biên Stack hay chưa”. Hai cơ chế bổ sung cho nhau, không thay thế nhau.**
+
+> **Một HardFault tốt để debug không chỉ cần PC. `hairtos` giữ cả hardware exception frame, `EXC_RETURN`, exception number và các SCB fault-status register trong retained panic record để có thể điều tra nguyên nhân sau crash.**
+
+> **Diagnostics chỉ thực sự hữu ích khi phân biệt rõ dữ liệu runtime, invariant, stack health và fault context; mỗi lớp trả lời một loại câu hỏi khác nhau.**
+
 
 ---
 
