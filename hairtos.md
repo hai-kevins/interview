@@ -194,6 +194,30 @@
   - [11.18. Mô hình tư duy cần nhớ](#1118-mô-hình-tư-duy-cần-nhớ)
   - [11.19. Trọng tâm cần thuộc](#1119-trọng-tâm-cần-thuộc)
 - [12. Active Object + FSM + Publish / Subscribe](#12-active-object-fsm-publish-subscribe)
+  - [12.1. Active Object là gì?](#121-active-object-là-gì)
+  - [12.2. Cấu trúc một Active Object trong `haievent`](#122-cấu-trúc-một-active-object-trong-haievent)
+  - [12.3. `he_active_create_static()`](#123-he_active_create_static)
+  - [12.4. Event Queue của Active Object](#124-event-queue-của-active-object)
+  - [12.5. Run-to-Completion](#125-run-to-completion)
+  - [12.6. Flat State Machine](#126-flat-state-machine)
+  - [12.7. State Handler trả về gì?](#127-state-handler-trả-về-gì)
+  - [12.8. `HE_SIG_ENTRY`, `HE_SIG_EXIT`, `HE_SIG_INIT`](#128-he_sig_entry-he_sig_exit-he_sig_init)
+  - [12.9. State Transition diễn ra thế nào?](#129-state-transition-diễn-ra-thế-nào)
+  - [12.10. Initial Transition Chain](#1210-initial-transition-chain)
+  - [12.11. Context của State Machine](#1211-context-của-state-machine)
+  - [12.12. Post Event vào Active Object](#1212-post-event-vào-active-object)
+  - [12.13. Post Event từ ISR](#1213-post-event-từ-isr)
+  - [12.14. Publish / Subscribe là gì?](#1214-publish--subscribe-là-gì)
+  - [12.15. Subscriber Table](#1215-subscriber-table)
+  - [12.16. `subscribe()` và `unsubscribe()`](#1216-subscribe-và-unsubscribe)
+  - [12.17. `publish()` hoạt động thế nào?](#1217-publish-hoạt-động-thế-nào)
+  - [12.18. Ownership khi Publish Dynamic Event](#1218-ownership-khi-publish-dynamic-event)
+  - [12.19. Vì sao Publish phải Snapshot Subscriber?](#1219-vì-sao-publish-phải-snapshot-subscriber)
+  - [12.20. Giới hạn của `haievent v1`](#1220-giới-hạn-của-haievent-v1)
+  - [12.21. Ví dụ Active Object + FSM](#1221-ví-dụ-active-object--fsm)
+  - [12.22. Ví dụ Publish / Subscribe](#1222-ví-dụ-publish--subscribe)
+  - [12.23. Mô hình tư duy cần nhớ](#1223-mô-hình-tư-duy-cần-nhớ)
+  - [12.24. Trọng tâm cần thuộc](#1224-trọng-tâm-cần-thuộc)
 - [13. Diagnostics + Fault + Stack Safety](#13-diagnostics-fault-stack-safety)
 - [14. Architecture Port + Testing + Benchmark](#14-architecture-port-testing-benchmark)
 
@@ -4997,7 +5021,1216 @@ Các nguyên tắc:
 
 # 12. Active Object + FSM + Publish / Subscribe
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Sau Chương 11, ta đã có:
+
+```text
+Event
++
+Ownership
++
+Reference Counting
+```
+
+Chương này ghép các thành phần đó thành kiến trúc event-driven hoàn chỉnh:
+
+```text
+Producer / ISR
+      ↓
+Event
+      ↓
+Active Object Queue
+      ↓
+Dedicated Task
+      ↓
+State Machine
+      ↓
+State Transition
+```
+
+và khi một event cần gửi tới nhiều thành phần:
+
+```text
+Publisher
+   ↓
+Publish / Subscribe
+   ↓
+AO A
+AO B
+AO C
+```
+
+---
+
+## 12.1. Active Object là gì?
+
+Active Object có thể hiểu là:
+
+```text
+State Machine
++
+Event Queue
++
+Task riêng
+```
+
+Trong `haievent v1`, mỗi Active Object có đúng một RTOS task riêng.
+
+Do đó:
+
+```text
+AO Priority
+=
+Priority của Task bên dưới
+```
+
+Active Object không thay scheduler của `hairtos`.
+
+Nó vẫn được scheduler xử lý như một task bình thường:
+
+```text
+READY
+RUNNING
+BLOCKED
+```
+
+---
+
+## 12.2. Cấu trúc một Active Object trong `haievent`
+
+Một AO hiện tại là sự kết hợp của:
+
+```text
+he_active_t
+   +
+Kernel Task
+   +
+Kernel Queue<he_event_t *>
+   +
+Flat State Machine
+   +
+Caller-owned Queue Storage
+   +
+Caller-owned Task Stack
+```
+
+Có thể hình dung:
+
+```text
+             Active Object
+        +----------------------+
+        | State Machine        |
+        +----------------------+
+        | Event Queue          |
+        +----------------------+
+        | Dedicated Task       |
+        +----------------------+
+                ↓
+            Scheduler
+```
+
+Queue chứa:
+
+```text
+he_event_t *
+```
+
+chứ không copy toàn bộ event object.
+
+---
+
+## 12.3. `he_active_create_static()`
+
+API public:
+
+```c
+he_active_create_static(
+    active,
+    name,
+    initial_state,
+    context,
+    queue_storage,
+    queue_capacity,
+    stack,
+    stack_words,
+    priority
+);
+```
+
+Application phải cung cấp:
+
+```text
+AO storage
+State Machine initial state
+Context
+Queue storage
+Queue capacity
+Task stack
+Stack size
+Priority
+```
+
+Điều này tiếp tục triết lý static-first của `hairtos`:
+
+```text
+memory được xác định trước
++
+không cần general-purpose heap
+```
+
+AO task được tạo trong quá trình create.
+
+---
+
+## 12.4. Event Queue của Active Object
+
+Mỗi AO có một queue riêng chứa:
+
+```text
+he_event_t *
+```
+
+Producer chỉ cần post event:
+
+```text
+Producer
+   ↓
+AO Queue
+```
+
+AO task:
+
+```text
+Receive Event
+    ↓
+Dispatch FSM
+```
+
+Nếu queue rỗng:
+
+```text
+AO Task
+→ BLOCKED trên Queue Receive
+```
+
+Khi event được post:
+
+```text
+BLOCKED
+→ READY
+```
+
+và scheduler quyết định khi nào AO được chạy.
+
+---
+
+## 12.5. Run-to-Completion
+
+Đây là nguyên tắc quan trọng nhất của Active Object.
+
+Một AO xử lý:
+
+```text
+một event
+```
+
+cho tới khi toàn bộ xử lý event đó hoàn tất trước khi lấy event tiếp theo.
+
+Luồng:
+
+```text
+Receive Event A
+      ↓
+Dispatch
+      ↓
+State Handler
+      ↓
+Transition nếu có
+      ↓
+EXIT / ENTRY / INIT hoàn tất
+      ↓
+Release Dynamic Event
+      ↓
+Receive Event B
+```
+
+Đây gọi là:
+
+```text
+Run-to-Completion
+```
+
+Viết tắt:
+
+```text
+RTC
+```
+
+Điều này làm state machine dễ suy luận hơn vì một AO không xử lý hai event của chính nó đồng thời.
+
+---
+
+## 12.6. Flat State Machine
+
+`haievent v1` dùng:
+
+```text
+Flat State Machine
+```
+
+không phải:
+
+```text
+Hierarchical State Machine
+```
+
+Ví dụ:
+
+```text
+OFF
+ON
+ERROR
+```
+
+tất cả là các state ngang hàng.
+
+Version hiện tại chưa có:
+
+```text
+parent / superstate
+event bubbling
+history
+orthogonal region
+deferred event
+```
+
+Những tính năng đó thuộc thiết kế tương lai chứ không phải behavior v1 hiện tại.
+
+---
+
+## 12.7. State Handler trả về gì?
+
+State handler có type:
+
+```c
+he_state_result_t (*he_state_handler_t)(
+    he_state_machine_t *machine,
+    const he_event_t *event
+);
+```
+
+Có ba kết quả:
+
+```text
+HE_STATE_HANDLED
+HE_STATE_IGNORED
+HE_STATE_TRANSITION
+```
+
+### `HE_STATE_HANDLED`
+
+```text
+Event đã được xử lý
+→ giữ nguyên State hiện tại
+```
+
+### `HE_STATE_IGNORED`
+
+```text
+State không xử lý Event này
+→ vẫn giữ nguyên State
+```
+
+### `HE_STATE_TRANSITION`
+
+```text
+State yêu cầu chuyển sang State khác
+```
+
+Transition phải được request thông qua:
+
+```c
+he_state_transition(
+    machine,
+    target_state
+);
+```
+
+---
+
+## 12.8. `HE_SIG_ENTRY`, `HE_SIG_EXIT`, `HE_SIG_INIT`
+
+Framework có các reserved signal:
+
+```text
+HE_SIG_ENTRY = 1
+HE_SIG_EXIT  = 2
+HE_SIG_INIT  = 3
+```
+
+Chúng không phải event application bình thường.
+
+Framework tự dispatch chúng khi state machine:
+
+```text
+start
+hoặc
+transition
+```
+
+Ví dụ:
+
+```text
+State A
+   ↓ transition
+HE_SIG_EXIT(A)
+   ↓
+State B
+   ↓
+HE_SIG_ENTRY(B)
+   ↓
+HE_SIG_INIT(B)
+```
+
+Application signal bắt đầu từ:
+
+```text
+HE_SIG_USER = 32
+```
+
+---
+
+## 12.9. State Transition diễn ra thế nào?
+
+Giả sử State A đang active.
+
+Event yêu cầu:
+
+```text
+A → B
+```
+
+Handler gọi:
+
+```c
+return he_state_transition(
+    machine,
+    state_b
+);
+```
+
+Framework thực hiện:
+
+```text
+State A
+  ↓
+HE_SIG_EXIT
+  ↓
+current = State B
+  ↓
+HE_SIG_ENTRY
+  ↓
+HE_SIG_INIT
+```
+
+Điểm quan trọng:
+
+> State handler chỉ request transition; framework mới là nơi thực hiện transition protocol.
+
+Nhờ vậy logic transition được tập trung và nhất quán.
+
+---
+
+## 12.10. Initial Transition Chain
+
+`HE_SIG_INIT` có thể tiếp tục request một transition khác.
+
+Ví dụ:
+
+```text
+State A
+   ↓ ENTRY
+   ↓ INIT
+State B
+   ↓ ENTRY
+   ↓ INIT
+State C
+```
+
+Framework tiếp tục follow chain cho tới khi:
+
+```text
+không còn target mới
+```
+
+Để tránh vòng lặp vô hạn:
+
+```text
+HE_CFG_MAX_INIT_TRANSITIONS = 8
+```
+
+Nếu vượt giới hạn:
+
+```text
+HR_ERROR_OVERFLOW
+```
+
+Mental model:
+
+```text
+ENTRY
+ ↓
+INIT
+ ↓ transition?
+YES → EXIT / ENTRY / INIT
+NO  → Stable State
+```
+
+---
+
+## 12.11. Context của State Machine
+
+Khi init state machine:
+
+```c
+he_state_machine_init(
+    machine,
+    initial_state,
+    context
+);
+```
+
+framework giữ:
+
+```text
+void *context
+```
+
+State handler có thể lấy lại context qua:
+
+```c
+he_state_machine_context(machine);
+```
+
+Điều này giúp tách:
+
+```text
+State Machine Engine
+```
+
+khỏi:
+
+```text
+Application Data
+```
+
+Ví dụ context có thể chứa:
+
+```text
+LED state
+driver handle
+counter
+sensor values
+application configuration
+```
+
+---
+
+## 12.12. Post Event vào Active Object
+
+Thread context dùng:
+
+```c
+he_active_post(
+    active,
+    event,
+    timeout
+);
+```
+
+Flow:
+
+```text
+Producer
+   ↓
+he_active_post()
+   ↓
+AO Queue
+   ↓
+AO Task READY
+   ↓
+Receive
+   ↓
+FSM Dispatch
+```
+
+AO task xử lý lần lượt từng event theo FIFO của queue.
+
+Dynamic-event ownership phải tuân theo quy tắc Chương 11:
+
+```text
+post thành công
+→ reference được chuyển sang AO
+```
+
+Sau dispatch:
+
+```text
+AO release dynamic event
+```
+
+---
+
+## 12.13. Post Event từ ISR
+
+Public API có:
+
+```c
+he_active_post_from_isr(
+    active,
+    event,
+    &higher_priority_task_woken
+);
+```
+
+ISR path phải:
+
+```text
+non-blocking
+```
+
+Nếu post làm AO task priority cao hơn trở thành READY:
+
+```text
+higher_priority_task_woken = true
+```
+
+Sau đó:
+
+```text
+ISR exit
+   ↓
+PendSV
+   ↓
+AO Task có thể RUNNING
+```
+
+Nguyên tắc vẫn giống Queue/Semaphore:
+
+> ISR chỉ enqueue/signal tối thiểu; state machine chạy trong task context.
+
+---
+
+## 12.14. Publish / Subscribe là gì?
+
+Direct post yêu cầu producer biết destination:
+
+```text
+Producer
+→ AO A
+```
+
+Publish/Subscribe tách producer khỏi consumer:
+
+```text
+Publisher
+   ↓
+Signal X
+   ↓
+PubSub
+ ┌─┼─┐
+ ↓ ↓ ↓
+A  B  C
+```
+
+Publisher chỉ biết:
+
+```text
+Event Signal
+```
+
+không cần biết cụ thể subscriber nào sẽ nhận.
+
+---
+
+## 12.15. Subscriber Table
+
+`haievent v1` dùng bảng subscriber tĩnh:
+
+```text
+signal_count
+×
+max_subscribers_per_signal
+```
+
+Ví dụ:
+
+```text
+SIG_BUTTON
+→ AO_UI
+→ AO_LOG
+
+SIG_SENSOR
+→ AO_CONTROL
+→ AO_LOG
+→ AO_TELEMETRY
+```
+
+Storage cho bảng subscriber do application cung cấp khi:
+
+```c
+he_pubsub_init();
+```
+
+Không có dynamic subscriber allocation.
+
+---
+
+## 12.16. `subscribe()` và `unsubscribe()`
+
+Subscribe:
+
+```c
+he_pubsub_subscribe(
+    pubsub,
+    signal,
+    active
+);
+```
+
+Chỉ application signal hợp lệ:
+
+```text
+signal >= HE_SIG_USER
+```
+
+Một AO không được subscribe trùng hai lần vào cùng signal.
+
+Nếu toàn bộ slot của signal đã đầy:
+
+```text
+HR_ERROR_NO_MEMORY
+```
+
+Unsubscribe:
+
+```c
+he_pubsub_unsubscribe();
+```
+
+Sau khi remove subscriber, implementation compact array:
+
+```text
+[A][B][C][NULL]
+```
+
+remove B:
+
+```text
+[A][C][NULL][NULL]
+```
+
+giữ các active slot liên tục.
+
+---
+
+## 12.17. `publish()` hoạt động thế nào?
+
+API:
+
+```c
+he_pubsub_publish(
+    pubsub,
+    event,
+    timeout,
+    &delivered_count
+);
+```
+
+Luồng:
+
+```text
+Publish Event
+    ↓
+xác định Signal
+    ↓
+Critical Section
+    ↓
+Snapshot Subscriber pointers
+    ↓
+Exit Critical Section
+    ↓
+Post Event tới từng AO
+    ↓
+đếm số post thành công
+```
+
+`delivered_count` cho biết:
+
+```text
+bao nhiêu subscriber nhận post thành công
+```
+
+Nếu một destination post thất bại, các destination khác vẫn có thể đã nhận event.
+
+Do đó publish có thể:
+
+```text
+partial delivery
+```
+
+---
+
+## 12.18. Ownership khi Publish Dynamic Event
+
+Đây là phần rất quan trọng nối với Chương 11.
+
+Với dynamic event:
+
+```text
+Publisher owns E
+ref = 1
+```
+
+Publish tới từng subscriber bằng semantics shared reference.
+
+Ví dụ ba subscriber post thành công:
+
+```text
+Publisher ref
++
+AO A ref
++
+AO B ref
++
+AO C ref
+```
+
+Sau khi hoàn thành publish:
+
+```text
+PubSub release publisher reference
+```
+
+Kết quả:
+
+```text
+chỉ còn các AO reference
+```
+
+Mỗi AO dispatch xong:
+
+```text
+release()
+```
+
+AO cuối cùng release:
+
+```text
+ref = 0
+→ Event trở lại Pool
+```
+
+Một quy tắc đặc biệt của API hiện tại:
+
+> **Publish dynamic event tiêu thụ reference của publisher kể cả khi không subscriber nào nhận event.**
+
+Static event thì vẫn thuộc application.
+
+---
+
+## 12.19. Vì sao Publish phải Snapshot Subscriber?
+
+Subscribe/unsubscribe cần critical section để bảo vệ bảng subscriber.
+
+Nhưng post event có thể:
+
+```text
+block
+```
+
+nếu dùng timeout thread API.
+
+Không được giữ critical section trong lúc có operation có thể block.
+
+Do đó implementation làm:
+
+```text
+Enter Critical
+     ↓
+copy subscriber pointers
+vào local snapshot
+     ↓
+Exit Critical
+     ↓
+post tới từng AO
+```
+
+Đây là thiết kế rất đáng nhớ:
+
+```text
+Critical Section
+= chỉ bảo vệ metadata ngắn
+
+Blocking Operation
+= chạy ngoài Critical Section
+```
+
+Snapshot tối đa dựa trên:
+
+```text
+HE_CFG_MAX_ACTIVE_OBJECTS
+```
+
+---
+
+## 12.20. Giới hạn của `haievent v1`
+
+Version hiện tại có chủ ý đơn giản.
+
+Active Object:
+
+```text
+1 AO
+=
+1 Task
++
+1 Queue
++
+1 Flat FSM
+```
+
+Chưa có:
+
+```text
+shared executor
+AO migration
+per-event priority
+queue resize / AO delete
+```
+
+State Machine chưa có:
+
+```text
+HSM
+superstate
+event bubbling
+history
+defer
+orthogonal regions
+```
+
+Publish/Subscribe chưa có:
+
+```text
+wildcard topic
+topic string
+retained value
+dynamic subscriber table
+event priority
+```
+
+Điểm quan trọng khi phỏng vấn:
+
+> Phải phân biệt rõ feature hiện có trong v1 với roadmap/version tương lai.
+
+---
+
+## 12.21. Ví dụ Active Object + FSM
+
+Giả sử có:
+
+```text
+LED Active Object
+```
+
+State:
+
+```text
+OFF
+ON
+```
+
+Signal:
+
+```text
+SIG_TOGGLE
+```
+
+State OFF:
+
+```c
+static he_state_result_t state_off(
+    he_state_machine_t *machine,
+    const he_event_t *event)
+{
+    switch (event->signal)
+    {
+        case HE_SIG_ENTRY:
+            led_off();
+            return HE_STATE_HANDLED;
+
+        case SIG_TOGGLE:
+            return he_state_transition(
+                machine,
+                state_on
+            );
+
+        default:
+            return HE_STATE_IGNORED;
+    }
+}
+```
+
+Luồng:
+
+```text
+AO Queue
+   ↓
+SIG_TOGGLE
+   ↓
+state_off()
+   ↓
+TRANSITION
+   ↓
+EXIT OFF
+   ↓
+ENTRY ON
+   ↓
+ON becomes current
+```
+
+Event tiếp theo chỉ được lấy sau khi transition này hoàn tất.
+
+---
+
+## 12.22. Ví dụ Publish / Subscribe
+
+Giả sử event:
+
+```text
+SIG_SENSOR_READY
+```
+
+Subscriber:
+
+```text
+Control AO
+Logger AO
+Telemetry AO
+```
+
+Publisher:
+
+```text
+Sensor Producer
+      ↓
+Dynamic Event
+      ↓
+he_pubsub_publish()
+```
+
+PubSub:
+
+```text
+Snapshot:
+[Control, Logger, Telemetry]
+```
+
+Sau đó:
+
+```text
+post_shared → Control
+post_shared → Logger
+post_shared → Telemetry
+```
+
+Mỗi AO nhận cùng pointer nhưng có reference riêng.
+
+```text
+Control dispatch → release
+Logger dispatch → release
+Telemetry dispatch → release
+```
+
+Owner cuối cùng release:
+
+```text
+Event → Pool
+```
+
+Publisher không cần biết:
+
+```text
+Control
+Logger
+Telemetry
+```
+
+Nó chỉ publish:
+
+```text
+SIG_SENSOR_READY
+```
+
+---
+
+## 12.23. Mô hình tư duy cần nhớ
+
+Active Object:
+
+```text
+AO
+=
+Task
++
+Event Queue
++
+State Machine
+```
+
+Execution:
+
+```text
+Event
+ ↓
+Queue
+ ↓
+AO Task
+ ↓
+Dispatch
+ ↓
+Handled / Ignored / Transition
+ ↓
+EXIT → ENTRY → INIT nếu transition
+ ↓
+Release Event
+ ↓
+Next Event
+```
+
+Publish/Subscribe:
+
+```text
+Publisher
+   ↓
+Signal
+   ↓
+Snapshot Subscribers
+   ↓
+Shared Post
+ ┌─┼─┐
+ ↓ ↓ ↓
+AO AO AO
+```
+
+Quan hệ với RTOS:
+
+```text
+haievent
+= event-driven architecture
+
+hairtos
+= scheduling + IPC + timing + synchronization
+```
+
+---
+
+## 12.24. Trọng tâm cần thuộc
+
+Active Object:
+
+```text
+1 AO
+=
+1 RTOS Task
++
+1 Queue<he_event_t *>
++
+1 Flat State Machine
+```
+
+API chính:
+
+```text
+he_active_create_static()
+
+he_active_post()
+
+he_active_post_from_isr()
+
+he_state_machine_init()
+
+he_state_machine_start()
+
+he_state_machine_dispatch()
+
+he_state_transition()
+```
+
+State result:
+
+```text
+HE_STATE_HANDLED
+
+HE_STATE_IGNORED
+
+HE_STATE_TRANSITION
+```
+
+Transition protocol:
+
+```text
+EXIT old
+↓
+current = target
+↓
+ENTRY target
+↓
+INIT chain
+```
+
+Pub/Sub API:
+
+```text
+he_pubsub_init()
+
+he_pubsub_subscribe()
+
+he_pubsub_unsubscribe()
+
+he_pubsub_publish()
+```
+
+Các nguyên tắc:
+
+- AO không thay scheduler; priority AO là priority của task bên dưới.
+- Mỗi AO v1 có một task riêng và một queue riêng.
+- Queue chứa pointer `he_event_t *`.
+- AO xử lý event theo Run-to-Completion.
+- Event tiếp theo chỉ được nhận sau khi dispatch/transition event hiện tại hoàn tất.
+- FSM v1 là flat FSM, không phải HSM.
+- State handler trả `HANDLED`, `IGNORED` hoặc `TRANSITION`.
+- Framework tự phát `ENTRY`, `EXIT`, `INIT`.
+- Transition được request bằng `he_state_transition()`.
+- INIT transition chain được giới hạn bởi `HE_CFG_MAX_INIT_TRANSITIONS = 8`.
+- ISR chỉ post event bằng API `_from_isr`; FSM vẫn chạy trong task context.
+- Pub/Sub dùng static subscriber table.
+- Application signal phải từ `HE_SIG_USER` trở lên.
+- Subscriber không được đăng ký trùng trên cùng signal.
+- Publish snapshot subscriber list trong critical section.
+- Post tới các AO diễn ra ngoài critical section.
+- Publish có thể partial-deliver nếu một số queue nhận được và một số post thất bại.
+- Dynamic event publish tiêu thụ publisher reference.
+- Mỗi subscriber post thành công giữ reference riêng.
+- Static event vẫn do application quản lý lifetime.
+- v1 chưa có HSM, shared executor, defer, history, wildcard topics hay dynamic subscriber table.
+
+Điểm quan trọng nhất:
+
+> **Active Object biến một State Machine thụ động thành một thành phần thực thi độc lập bằng cách ghép nó với một Event Queue và một RTOS Task. Mỗi event được xử lý Run-to-Completion trước khi event tiếp theo được lấy khỏi queue.**
+
+> **Publish/Subscribe tách publisher khỏi destination cụ thể: publisher chỉ phát event theo signal, framework snapshot danh sách subscriber rồi post shared reference tới từng Active Object.**
+
 
 ---
 
