@@ -1318,14 +1318,14 @@ free()
 
 | Nhóm toán tử | Ký hiệu phổ biến | Mục đích | Ví dụ |
 |---|---|---|---|
-| Số học | `+`, `-`, `*`, `/`, `%` | Tính toán số học. | `a + b` |
-| Quan hệ | `==`, `!=`, `>`, `<` | So sánh hai giá trị. | `a > b` |
-| Logic | `&&`, `||`, `!` | Kết hợp hoặc đảo điều kiện. | `(a > 0) && (b < 5)` |
-| Gán | `=`, `+=`, `-=` | Gán hoặc cập nhật giá trị. | `x += 5` |
-| Tăng giảm | `++`, `--` | Tăng hoặc giảm 1. | `i++`, `--i` |
-| Thao tác bit | `&`, `|`, `<<`, `>>` | Xử lý dữ liệu theo bit. | `value << 1` |
-| Điều kiện | `?:` | Viết biểu thức điều kiện ngắn. | `(a > b) ? a : b` |
-| Kích thước | `sizeof` | Lấy kích thước theo byte. | `sizeof(int)` |
+| **Số học** | `+`, `-`, `*`, `/`, `%` | Thực hiện các phép tính số học. | `a + b` |
+| **Quan hệ** | `==`, `!=`, `>`, `<`, `>=`, `<=` | So sánh hai giá trị. | `a > b` |
+| **Logic** | `&&`, `\|\|`, `!` | Kết hợp hoặc đảo điều kiện. | `(a > 0) && (b < 5)` |
+| **Gán** | `=`, `+=`, `-=`, `*=`, `/=`, `%=` | Gán hoặc cập nhật giá trị. | `x += 5` |
+| **Tăng giảm** | `++`, `--` | Tăng hoặc giảm giá trị đi 1. | `i++`, `--i` |
+| **Thao tác bit** | `&`, `\|`, `^`, `~`, `<<`, `>>` | Thực hiện các phép toán trên từng bit. | `value << 1` |
+| **Điều kiện** | `?:` | Lựa chọn giá trị dựa trên điều kiện. | `(a > b) ? a : b` |
+| **Kích thước** | `sizeof` | Lấy kích thước dữ liệu theo byte. | `sizeof(int)` |
 
 #### `++i` và `i++`
 
