@@ -154,6 +154,25 @@
   - [9.17. Mô hình tư duy cần nhớ](#917-mô-hình-tư-duy-cần-nhớ)
   - [9.18. Trọng tâm cần thuộc](#918-trọng-tâm-cần-thuộc)
 - [10. Suspend / Resume + Software Timer](#10-suspend-resume-software-timer)
+  - [10.1. Suspend khác BLOCKED như thế nào?](#101-suspend-khác-blocked-như-thế-nào)
+  - [10.2. `hr_task_suspend()`](#102-hr_task_suspend)
+  - [10.3. Suspend một Task đang BLOCKED](#103-suspend-một-task-đang-blocked)
+  - [10.4. Deferred Wakeup khi đang SUSPENDED](#104-deferred-wakeup-khi-đang-suspended)
+  - [10.5. `hr_task_resume()`](#105-hr_task_resume)
+  - [10.6. Self-Suspend](#106-self-suspend)
+  - [10.7. Idle Task không được Suspend](#107-idle-task-không-được-suspend)
+  - [10.8. Software Timer là gì?](#108-software-timer-là-gì)
+  - [10.9. Timer Object trong `hairtos`](#109-timer-object-trong-hairtos)
+  - [10.10. Timer-Service Task](#1010-timer-service-task)
+  - [10.11. Timer Expiry Flow](#1011-timer-expiry-flow)
+  - [10.12. One-Shot và Periodic Timer](#1012-one-shot-và-periodic-timer)
+  - [10.13. `start`, `reset`, `change_period`, `stop`](#1013-start-reset-change_period-stop)
+  - [10.14. `pending_count`](#1014-pending_count)
+  - [10.15. Vì sao Callback không chạy trong SysTick ISR?](#1015-vì-sao-callback-không-chạy-trong-systick-isr)
+  - [10.16. Ví dụ Suspend / Resume](#1016-ví-dụ-suspend--resume)
+  - [10.17. Ví dụ Software Timer](#1017-ví-dụ-software-timer)
+  - [10.18. Mô hình tư duy cần nhớ](#1018-mô-hình-tư-duy-cần-nhớ)
+  - [10.19. Trọng tâm cần thuộc](#1019-trọng-tâm-cần-thuộc)
 - [11. haievent + Event Ownership + Reference Counting](#11-haievent-event-ownership-reference-counting)
 - [12. Active Object + FSM + Publish / Subscribe](#12-active-object-fsm-publish-subscribe)
 - [13. Diagnostics + Fault + Stack Safety](#13-diagnostics-fault-stack-safety)
@@ -3143,7 +3162,819 @@ Các quy tắc:
 
 # 10. Suspend / Resume + Software Timer
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Chương này gồm hai cơ chế khác nhau:
+
+```text
+Suspend / Resume
+= chủ động loại / đưa Task trở lại scheduling
+
+Software Timer
+= lập lịch callback theo Kernel Tick
+```
+
+Điểm cần phân biệt là `SUSPENDED` không giống `BLOCKED`, còn callback của Software Timer không chạy trực tiếp trong `SysTick_Handler`.
+
+---
+
+## 10.1. Suspend khác BLOCKED như thế nào?
+
+`BLOCKED` nghĩa là task đang chờ một điều kiện cụ thể:
+
+```text
+delay
+queue
+semaphore
+mutex
+timeout
+```
+
+Ví dụ:
+
+```text
+RUNNING
+  ↓
+hr_task_delay(100)
+  ↓
+BLOCKED
+```
+
+`SUSPENDED` là trạng thái quản trị:
+
+```text
+"Task này tạm thời không được scheduler chạy"
+```
+
+Do đó:
+
+```text
+BLOCKED
+= đang chờ một event
+
+SUSPENDED
+= bị chủ động dừng khỏi scheduling
+```
+
+Trong `hairtos`, thông tin suspend được giữ tách biệt với lý do task đang chờ.
+
+---
+
+## 10.2. `hr_task_suspend()`
+
+API:
+
+```c
+hr_task_suspend(task);
+```
+
+Luồng khái niệm:
+
+```text
+Task hiện tại
+READY / RUNNING / BLOCKED
+        ↓
+hr_task_suspend()
+        ↓
+lưu trạng thái cần Resume
+        ↓
+state = SUSPENDED
+```
+
+Nếu task đang nằm trong Ready Set:
+
+```text
+remove khỏi Ready Set
+```
+
+Nếu suspend chính task đang chạy:
+
+```text
+current task
+→ SUSPENDED
+→ phải reschedule
+→ PendSV
+```
+
+---
+
+## 10.3. Suspend một Task đang BLOCKED
+
+Đây là phần quan trọng trong `hairtos`.
+
+Giả sử:
+
+```text
+Worker
+  ↓
+hr_task_delay(100)
+  ↓
+BLOCKED
+```
+
+Supervisor suspend Worker khi Worker vẫn đang chờ delay.
+
+Kernel phải nhớ:
+
+```text
+Worker đang SUSPENDED
+nhưng trạng thái trước suspend là BLOCKED
+```
+
+Có thể hình dung:
+
+```text
+BLOCKED
+   ↓
+suspend()
+   ↓
+SUSPENDED(BLOCKED)
+```
+
+Suspend không được làm mất wait reason của task.
+
+---
+
+## 10.4. Deferred Wakeup khi đang SUSPENDED
+
+Giả sử Worker:
+
+```text
+SUSPENDED(BLOCKED)
+```
+
+Trong lúc nó đang suspended:
+
+```text
+timeout hết
+```
+
+Kernel không được đưa Worker ngay vào Ready Set.
+
+Thay vào đó phải ghi nhận rằng điều kiện chờ đã hoàn thành:
+
+```text
+timeout / event completed
+        ↓
+Worker vẫn SUSPENDED
+        ↓
+deferred wake
+```
+
+Có thể hiểu task lúc này là:
+
+```text
+SUSPENDED(READY)
+```
+
+Nghĩa là:
+
+```text
+nếu không bị suspend
+thì nó đã READY
+```
+
+---
+
+## 10.5. `hr_task_resume()`
+
+API:
+
+```c
+hr_task_resume(task);
+```
+
+Kết quả phụ thuộc trạng thái được lưu.
+
+### Nếu event chưa hoàn thành
+
+```text
+SUSPENDED(BLOCKED)
+       ↓
+resume()
+       ↓
+BLOCKED
+```
+
+Task tiếp tục chờ.
+
+### Nếu event đã hoàn thành
+
+```text
+SUSPENDED(READY)
+       ↓
+resume()
+       ↓
+READY
+```
+
+Task được đưa trở lại Ready Set.
+
+Nếu task vừa resume có priority cao hơn current task:
+
+```text
+READY
+  ↓
+Preemption Required
+  ↓
+PendSV
+```
+
+---
+
+## 10.6. Self-Suspend
+
+Một task cũng có thể suspend chính nó:
+
+```text
+Task A RUNNING
+    ↓
+hr_task_suspend(Task A)
+    ↓
+Task A SUSPENDED
+    ↓
+Scheduler chọn Task khác
+```
+
+Task A không thể tự chạy lại vì nó đã mất CPU.
+
+Do đó phải có task khác:
+
+```text
+Supervisor
+    ↓
+hr_task_resume(Task A)
+```
+
+để đưa A trở lại scheduling.
+
+---
+
+## 10.7. Idle Task không được Suspend
+
+Idle task là fallback cuối cùng của scheduler:
+
+```text
+không có application task READY
+        ↓
+Idle Task RUNNING
+```
+
+Do đó `hairtos` không cho suspend Idle Task.
+
+Nếu Idle cũng bị loại khỏi scheduler:
+
+```text
+Ready Set có thể không còn task hợp lệ
+```
+
+điều này phá invariant của scheduler.
+
+---
+
+## 10.8. Software Timer là gì?
+
+Software Timer là timer do kernel quản lý dựa trên Kernel Tick.
+
+Ví dụ:
+
+```text
+Start Timer
+period = 100 tick
+      ↓
+100 tick trôi qua
+      ↓
+Timer Expired
+      ↓
+Callback được lập lịch
+```
+
+Nó không phải hardware timer peripheral như:
+
+```text
+TIM2
+TIM3
+TIM4
+```
+
+Software Timer dùng hạ tầng thời gian của RTOS.
+
+---
+
+## 10.9. Timer Object trong `hairtos`
+
+Timer được tạo tĩnh bằng:
+
+```c
+hr_timer_create_static();
+```
+
+Timer object chứa các thông tin chính như:
+
+```text
+name
+period
+auto_reload
+callback
+argument
+timeout node
+pending state
+```
+
+Object và storage do caller sở hữu.
+
+Có thể hiểu:
+
+```text
+Timer
+=
+deadline
++
+period
++
+callback
++
+state
+```
+
+---
+
+## 10.10. Timer-Service Task
+
+`hairtos` không chạy callback trong SysTick ISR.
+
+Thay vào đó có:
+
+```text
+Timer-Service Task
+```
+
+Task này được tạo khi timer subsystem được khởi tạo lần đầu và dùng priority/stack từ cấu hình.
+
+Luồng:
+
+```text
+SysTick
+   ↓
+phát hiện Timer hết hạn
+   ↓
+đưa Timer vào Pending Queue
+   ↓
+đánh thức Timer-Service Task
+```
+
+Sau đó:
+
+```text
+Timer-Service Task
+   ↓
+lấy Timer pending
+   ↓
+gọi Callback
+```
+
+Callback vì vậy chạy trong:
+
+```text
+Task Context
+```
+
+không phải:
+
+```text
+Handler Mode
+```
+
+---
+
+## 10.11. Timer Expiry Flow
+
+Luồng đầy đủ:
+
+```text
+Kernel Tick
+   ↓
+Timer deadline tới
+   ↓
+SysTick ISR
+   ↓
+đánh dấu / queue pending callback
+   ↓
+signal Timer-Service Task
+   ↓
+ISR kết thúc
+   ↓
+Scheduler
+   ↓
+Timer-Service Task RUNNING
+   ↓
+pop pending Timer
+   ↓
+invoke callback
+```
+
+Có thể nhớ:
+
+```text
+SysTick
+= phát hiện expiry
+
+Timer-Service Task
+= chạy callback
+```
+
+---
+
+## 10.12. One-Shot và Periodic Timer
+
+### One-Shot
+
+```text
+Start
+ ↓
+Expire
+ ↓
+Callback
+ ↓
+Inactive
+```
+
+Callback chỉ chạy một lần cho lần start đó.
+
+### Periodic / Auto-Reload
+
+```text
+Start
+ ↓
+Expire
+ ↓
+Callback
+ ↓
+Re-arm
+ ↓
+Expire
+ ↓
+Callback
+ ↓
+...
+```
+
+Periodic timer trong `hairtos` được re-arm tự động.
+
+Repo re-arm dựa trên deadline để hạn chế drift thay vì đơn giản lấy thời điểm callback hoàn tất làm mốc mới.
+
+---
+
+## 10.13. `start`, `reset`, `change_period`, `stop`
+
+Các API chính:
+
+```c
+hr_timer_start()
+
+hr_timer_reset()
+
+hr_timer_change_period()
+
+hr_timer_stop()
+```
+
+Có thể hiểu:
+
+### `start`
+
+```text
+Timer inactive
+    ↓
+start
+    ↓
+deadline = now + period
+```
+
+### `reset`
+
+```text
+Timer
+  ↓
+reset
+  ↓
+tính lại expiry từ thời điểm reset
+```
+
+### `change_period`
+
+```text
+period cũ
+   ↓
+change_period
+   ↓
+period mới
+```
+
+### `stop`
+
+```text
+Timer active
+   ↓
+stop
+   ↓
+không còn active timeout
+```
+
+Implementation hiện tại còn phải xử lý nhất quán cả:
+
+```text
+active timeout node
++
+pending callback
+```
+
+khi stop/reset/change period.
+
+---
+
+## 10.14. `pending_count`
+
+Một điểm quan trọng của `hairtos` là mỗi timer có:
+
+```text
+pending_count
+```
+
+Giả sử Timer-Service Task bị trễ trong khi periodic timer đã expire nhiều lần.
+
+Không nên:
+
+```text
+3 expiration
+→ chỉ còn 1 callback pending
+```
+
+vì sẽ làm mất thông tin expiration.
+
+`pending_count` giúp giữ số lần expiry đang chờ xử lý:
+
+```text
+Expire
+→ pending_count++
+
+Service xử lý callback
+→ pending_count--
+```
+
+Nhờ vậy nhiều expiration không bị âm thầm gộp mất khi service task chưa chạy kịp.
+
+---
+
+## 10.15. Vì sao Callback không chạy trong SysTick ISR?
+
+Nếu callback chạy trực tiếp trong SysTick:
+
+```text
+SysTick ISR
+   ↓
+User Callback
+   ↓
+logic application
+```
+
+thì ISR có thể bị kéo dài và làm tăng interrupt latency.
+
+`hairtos` tách:
+
+```text
+ISR
+= cập nhật timer state + queue pending work
+
+Task
+= chạy callback
+```
+
+Nhờ đó callback chạy trong task context và không kéo dài trực tiếp SysTick Handler.
+
+Điểm cần nhớ:
+
+> Timer expiry xảy ra trong nhịp kernel, nhưng callback execution được hoãn sang Timer-Service Task.
+
+---
+
+## 10.16. Ví dụ Suspend / Resume
+
+Giả sử:
+
+```text
+Worker priority = 1
+Supervisor priority = 2
+```
+
+Worker:
+
+```text
+hr_task_delay(100)
+→ BLOCKED
+```
+
+Supervisor:
+
+```text
+suspend Worker
+```
+
+Trạng thái:
+
+```text
+SUSPENDED(BLOCKED)
+```
+
+Sau đó 100 tick trôi qua:
+
+```text
+timeout hết
+```
+
+nhưng Worker vẫn:
+
+```text
+SUSPENDED
+```
+
+Kernel chỉ ghi nhận:
+
+```text
+deferred wake
+```
+
+Khi Supervisor gọi:
+
+```text
+resume Worker
+```
+
+Worker trở thành:
+
+```text
+READY
+```
+
+Vì priority `1` cao hơn Supervisor `2`:
+
+```text
+Preemption
+   ↓
+PendSV
+   ↓
+Worker RUNNING
+```
+
+---
+
+## 10.17. Ví dụ Software Timer
+
+Giả sử periodic timer:
+
+```text
+period = 250 tick
+auto_reload = true
+```
+
+Luồng:
+
+```text
+hr_timer_start()
+      ↓
+250 tick
+      ↓
+SysTick phát hiện expiry
+      ↓
+queue pending Timer
+      ↓
+wake Timer-Service Task
+      ↓
+Callback
+      ↓
+re-arm Timer
+```
+
+Sau đó đổi period:
+
+```text
+250 tick
+   ↓
+hr_timer_change_period()
+   ↓
+500 tick
+```
+
+Timer tiếp tục hoạt động với period mới.
+
+---
+
+## 10.18. Mô hình tư duy cần nhớ
+
+Suspend / Resume:
+
+```text
+READY / RUNNING / BLOCKED
+        ↓
+     suspend()
+        ↓
+    SUSPENDED
+        ↓
+event có thể vẫn xảy ra
+        ↓
+deferred wake nếu cần
+        ↓
+      resume()
+      /      \
+BLOCKED     READY
+```
+
+Software Timer:
+
+```text
+Timer
+  ↓
+Timeout List
+  ↓
+SysTick detects expiry
+  ↓
+Pending Queue
+  ↓
+Timer-Service Task
+  ↓
+Callback
+```
+
+Phân biệt:
+
+```text
+SysTick ISR
+= phát hiện Timer hết hạn
+
+Timer-Service Task
+= chạy callback
+```
+
+---
+
+## 10.19. Trọng tâm cần thuộc
+
+Suspend / Resume:
+
+```text
+BLOCKED
+= chờ event
+
+SUSPENDED
+= bị chủ động loại khỏi scheduling
+```
+
+Các API:
+
+```text
+hr_task_suspend()
+hr_task_resume()
+```
+
+Các nguyên tắc:
+
+- Suspend là trạng thái quản trị độc lập với wait reason.
+- Có thể suspend task đang `READY`, `RUNNING` hoặc `BLOCKED`.
+- Suspend task đang `RUNNING` phải dẫn tới reschedule.
+- Task đang `SUSPENDED` không được đưa vào Ready Set chỉ vì timeout/event xảy ra.
+- Event xảy ra trong lúc suspend phải được ghi nhận dưới dạng deferred wake.
+- Resume trả task về `BLOCKED` nếu wait chưa hoàn thành.
+- Resume trả task về `READY` nếu wait đã hoàn thành.
+- Task vừa resume có thể preempt current task nếu priority cao hơn.
+- Idle Task không được suspend.
+
+Software Timer:
+
+```text
+hr_timer_create_static()
+hr_timer_start()
+hr_timer_reset()
+hr_timer_change_period()
+hr_timer_stop()
+```
+
+Các nguyên tắc:
+
+- Software Timer dựa trên Kernel Tick.
+- Timer object là static/caller-owned storage.
+- Callback không chạy trong SysTick ISR.
+- SysTick chỉ phát hiện expiry và queue pending work.
+- Timer-Service Task chạy callback trong task context.
+- One-shot timer inactive sau expiry.
+- Periodic timer tự re-arm.
+- Periodic rearm dựa trên deadline để hạn chế drift.
+- `pending_count` giữ số expiration chưa được xử lý.
+- `stop/reset/change_period` phải xử lý cả active timeout và pending callback một cách nhất quán.
+
+Điểm quan trọng nhất:
+
+> **`SUSPENDED` không có nghĩa là “đang chờ timeout”. Nó là một lớp điều khiển độc lập; event có thể hoàn thành trong lúc task bị suspend nhưng task chỉ được chạy lại sau `resume()`.**
+
+> **Software Timer của `hairtos` tách “timer hết hạn” khỏi “chạy callback”: SysTick xử lý expiry tối thiểu, còn callback chạy trong Timer-Service Task.**
+
 
 ---
 
