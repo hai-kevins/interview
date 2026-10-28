@@ -116,6 +116,24 @@
   - [7.16. Mô hình tư duy cần nhớ](#716-mô-hình-tư-duy-cần-nhớ)
   - [7.17. Trọng tâm cần thuộc](#717-trọng-tâm-cần-thuộc)
 - [8. Semaphore + ISR Synchronization](#8-semaphore-isr-synchronization)
+  - [8.1. Semaphore là gì?](#81-semaphore-là-gì)
+  - [8.2. Binary Semaphore và Counting Semaphore](#82-binary-semaphore-và-counting-semaphore)
+  - [8.3. Semaphore không có Ownership](#83-semaphore-không-có-ownership)
+  - [8.4. `hr_semaphore_take()`](#84-hr_semaphore_take)
+  - [8.5. `hr_semaphore_give()`](#85-hr_semaphore_give)
+  - [8.6. Vì sao `give()` ưu tiên Waiter?](#86-vì-sao-give-ưu-tiên-waiter)
+  - [8.7. Blocking và Timeout](#87-blocking-và-timeout)
+  - [8.8. `HR_NO_WAIT` và `HR_WAIT_FOREVER`](#88-hr_no_wait-và-hr_wait_forever)
+  - [8.9. `hr_semaphore_give_from_isr()`](#89-hr_semaphore_give_from_isr)
+  - [8.10. `higher_priority_task_woken`](#810-higher_priority_task_woken)
+  - [8.11. ISR không được Block](#811-isr-không-được-block)
+  - [8.12. Pattern ISR → Semaphore → Task](#812-pattern-isr--semaphore--task)
+  - [8.13. Binary Semaphore có thể mất Event như thế nào?](#813-binary-semaphore-có-thể-mất-event-như-thế-nào)
+  - [8.14. Counting Semaphore dùng khi nào?](#814-counting-semaphore-dùng-khi-nào)
+  - [8.15. Semaphore và Mutex khác nhau](#815-semaphore-và-mutex-khác-nhau)
+  - [8.16. Ví dụ từ `hairtos`](#816-ví-dụ-từ-hairtos)
+  - [8.17. Mô hình tư duy cần nhớ](#817-mô-hình-tư-duy-cần-nhớ)
+  - [8.18. Trọng tâm cần thuộc](#818-trọng-tâm-cần-thuộc)
 - [9. Mutex + Priority Inversion + Priority Inheritance](#9-mutex-priority-inversion-priority-inheritance)
 - [10. Suspend / Resume + Software Timer](#10-suspend-resume-software-timer)
 - [11. haievent + Event Ownership + Reference Counting](#11-haievent-event-ownership-reference-counting)
@@ -1332,7 +1350,819 @@ Các điểm cần nhớ:
 
 # 8. Semaphore + ISR Synchronization
 
-> Chưa bổ sung nội dung. Phần này sẽ được điền khi tiếp tục ôn theo thứ tự tài liệu.
+Semaphore là primitive đồng bộ dùng để biểu diễn số lượng token đang có sẵn.
+
+Trong `hairtos`, semaphore có:
+
+```text
+count
+max_count
+waiter list
+```
+
+Có thể hiểu:
+
+```text
+count > 0
+→ có token để take
+
+count = 0
+→ task có thể phải chờ
+```
+
+Semaphore đặc biệt hữu ích để đồng bộ giữa ISR và task:
+
+```text
+ISR
+  ↓
+Give Semaphore
+  ↓
+Task đang chờ được đánh thức
+  ↓
+Task xử lý phần công việc nặng
+```
+
+---
+
+## 8.1. Semaphore là gì?
+
+Semaphore là một counter dùng cho synchronization.
+
+Hai thao tác chính:
+
+```text
+Take
+= lấy một token
+
+Give
+= trả / tạo một token
+```
+
+Nếu:
+
+```text
+count > 0
+```
+
+thì `take()` thành công và:
+
+```text
+count--
+```
+
+Nếu:
+
+```text
+count = 0
+```
+
+thì task có thể block tùy timeout.
+
+---
+
+## 8.2. Binary Semaphore và Counting Semaphore
+
+`hairtos` hỗ trợ:
+
+```c
+hr_semaphore_create_binary()
+
+hr_semaphore_create_counting()
+```
+
+### Binary Semaphore
+
+Binary semaphore có:
+
+```text
+max_count = 1
+```
+
+nên chỉ có hai trạng thái logic:
+
+```text
+0 = chưa có tín hiệu
+1 = có tín hiệu
+```
+
+API:
+
+```c
+hr_semaphore_create_binary(
+    semaphore,
+    initially_available
+);
+```
+
+### Counting Semaphore
+
+Counting semaphore có:
+
+```text
+0 <= count <= max_count
+```
+
+Ví dụ:
+
+```text
+initial_count = 0
+max_count     = 4
+```
+
+có thể biểu diễn tối đa 4 event hoặc 4 resource đang sẵn sàng.
+
+---
+
+## 8.3. Semaphore không có Ownership
+
+Điểm rất quan trọng:
+
+```text
+Semaphore
+= không có owner
+```
+
+Kernel không ghi nhận:
+
+```text
+"Task nào đang sở hữu semaphore?"
+```
+
+Vì vậy semaphore phù hợp cho:
+
+```text
+event signaling
+resource counting
+ISR → Task synchronization
+```
+
+nhưng không phải primitive tốt để bảo vệ shared resource cần ownership.
+
+Semaphore cũng không có:
+
+```text
+Priority Inheritance
+```
+
+Nếu cần mutual exclusion có ownership và Priority Inheritance:
+
+```text
+→ dùng Mutex
+```
+
+---
+
+## 8.4. `hr_semaphore_take()`
+
+API:
+
+```c
+hr_semaphore_take(
+    semaphore,
+    timeout
+);
+```
+
+Nếu:
+
+```text
+count > 0
+```
+
+luồng đơn giản:
+
+```text
+Take
+ ↓
+count > 0
+ ↓
+count--
+ ↓
+HR_OK
+```
+
+Nếu:
+
+```text
+count = 0
+```
+
+thì kết quả phụ thuộc timeout.
+
+---
+
+## 8.5. `hr_semaphore_give()`
+
+`give()` có hai trường hợp chính.
+
+### Có Task đang chờ
+
+```text
+Give
+ ↓
+Waiter tồn tại?
+ ↓ YES
+đánh thức Waiter
+```
+
+Count không được tăng.
+
+### Không có Task đang chờ
+
+```text
+Give
+ ↓
+không có Waiter
+ ↓
+count < max_count?
+ ↓
+count++
+```
+
+Nếu count đã bằng max:
+
+```text
+HR_ERROR_SEMAPHORE_FULL
+```
+
+---
+
+## 8.6. Vì sao `give()` ưu tiên Waiter?
+
+Giả sử:
+
+```text
+count = 0
+Task B đang BLOCKED chờ semaphore
+```
+
+Task A gọi:
+
+```text
+give()
+```
+
+Không nên:
+
+```text
+count++
++
+wake Task B
+```
+
+vì như vậy cùng một token tồn tại hai lần về mặt logic.
+
+`hairtos` làm:
+
+```text
+Give
+  ↓
+Waiter tồn tại
+  ↓
+Wake Waiter trực tiếp
+  ↓
+count vẫn không tăng
+```
+
+Có thể hiểu đây là:
+
+```text
+direct token handoff
+```
+
+Nguyên tắc:
+
+> Một token không được vừa nằm trong `count` vừa được trao cho một waiter trong cùng một operation.
+
+---
+
+## 8.7. Blocking và Timeout
+
+Nếu task gọi:
+
+```c
+hr_semaphore_take(&sem, timeout);
+```
+
+khi:
+
+```text
+count = 0
+```
+
+và timeout cho phép block:
+
+```text
+Task RUNNING
+    ↓
+Semaphore Wait List
+    ↓
+nếu timeout hữu hạn:
+Timeout List
+    ↓
+BLOCKED
+    ↓
+PendSV
+```
+
+Task được đánh thức khi:
+
+```text
+Semaphore được give
+```
+
+hoặc:
+
+```text
+Timeout hết
+```
+
+---
+
+## 8.8. `HR_NO_WAIT` và `HR_WAIT_FOREVER`
+
+Nếu:
+
+```text
+timeout = HR_NO_WAIT
+```
+
+và semaphore không có token:
+
+```text
+→ HR_ERROR_SEMAPHORE_EMPTY
+```
+
+Task không block.
+
+Nếu:
+
+```text
+timeout = HR_WAIT_FOREVER
+```
+
+task có thể chờ vô hạn:
+
+```text
+Semaphore Wait List
+```
+
+mà không cần timeout node.
+
+Với finite timeout:
+
+```text
+Semaphore Wait List
++
+Timeout List
+```
+
+---
+
+## 8.9. `hr_semaphore_give_from_isr()`
+
+ISR không được gọi `hr_semaphore_give()` thông thường.
+
+`hairtos` cung cấp:
+
+```c
+hr_semaphore_give_from_isr(
+    semaphore,
+    &higher_priority_task_woken
+);
+```
+
+API này:
+
+```text
+không block
++
+có thể đánh thức một waiter
++
+trả về thông tin có cần context switch không
+```
+
+Nếu gọi `hr_semaphore_give()` từ ISR:
+
+```text
+HR_ERROR_FROM_ISR
+```
+
+Ngược lại, `give_from_isr()` được thiết kế riêng cho ISR context.
+
+---
+
+## 8.10. `higher_priority_task_woken`
+
+Giả sử:
+
+```text
+Task A priority = 4
+đang RUNNING
+
+Task B priority = 1
+BLOCKED chờ semaphore
+```
+
+ISR gọi:
+
+```text
+give_from_isr()
+```
+
+Task B trở thành READY.
+
+Vì:
+
+```text
+1 < 4
+```
+
+nên:
+
+```text
+higher_priority_task_woken = true
+```
+
+Sau đó ISR dùng cơ chế yield-from-ISR của port để request context switch.
+
+Luồng:
+
+```text
+ISR
+ ↓
+give_from_isr()
+ ↓
+wake Task B
+ ↓
+higher_priority_task_woken = true
+ ↓
+request PendSV
+ ↓
+ISR kết thúc
+ ↓
+PendSV
+ ↓
+Task B RUNNING
+```
+
+Context switch không diễn ra giữa chừng trong ISR.
+
+---
+
+## 8.11. ISR không được Block
+
+ISR phải chạy ngắn và có thời gian hữu hạn.
+
+Do đó ISR không được:
+
+```text
+chờ semaphore
+delay
+block trên queue
+block trên mutex
+```
+
+`hr_semaphore_take()` kiểm tra ISR context và từ chối nếu được gọi trong ISR.
+
+Mental model:
+
+```text
+ISR
+= phát hiện sự kiện + cập nhật tối thiểu + signal task
+
+Task
+= xử lý logic dài / phức tạp
+```
+
+---
+
+## 8.12. Pattern ISR → Semaphore → Task
+
+Đây là pattern rất quan trọng trong embedded RTOS:
+
+```text
+Hardware Event
+      ↓
+ISR
+      ↓
+clear interrupt flag
+      ↓
+Give Semaphore From ISR
+      ↓
+ISR kết thúc
+      ↓
+Task được đánh thức
+      ↓
+xử lý dữ liệu / protocol / control logic
+```
+
+Ví dụ:
+
+```text
+UART RX interrupt
+      ↓
+ISR ghi byte / cập nhật buffer
+      ↓
+Give Semaphore
+      ↓
+Parser Task thức dậy
+      ↓
+parse frame
+```
+
+Mục tiêu là giữ ISR ngắn và chuyển công việc dài sang task context.
+
+---
+
+## 8.13. Binary Semaphore có thể mất Event như thế nào?
+
+Binary semaphore chỉ chứa tối đa:
+
+```text
+count = 1
+```
+
+Giả sử hai event xảy ra trước khi task kịp `take()`:
+
+```text
+Event 1
+→ count = 1
+
+Event 2
+→ semaphore đã full
+```
+
+Event thứ hai không thể làm count thành `2`.
+
+Do đó binary semaphore phù hợp khi chỉ cần biết:
+
+```text
+"đã có ít nhất một event"
+```
+
+Nếu cần đếm chính xác nhiều event xảy ra:
+
+```text
+→ Counting Semaphore
+```
+
+---
+
+## 8.14. Counting Semaphore dùng khi nào?
+
+Counting semaphore phù hợp cho hai kiểu bài toán.
+
+### Đếm Event
+
+```text
+ISR Event
+ ↓
+Give
+ ↓
+count++
+```
+
+Task:
+
+```text
+Take
+ ↓
+count--
+ ↓
+xử lý một event
+```
+
+Count biểu diễn:
+
+```text
+số event đã xảy ra nhưng chưa xử lý
+```
+
+### Đếm Resource
+
+Giả sử có:
+
+```text
+4 buffer
+```
+
+thì:
+
+```text
+max_count = 4
+initial_count = 4
+```
+
+Task lấy resource:
+
+```text
+Take
+→ count--
+```
+
+trả resource:
+
+```text
+Give
+→ count++
+```
+
+---
+
+## 8.15. Semaphore và Mutex khác nhau
+
+Hai primitive có vẻ giống nhau vì đều có:
+
+```text
+Take / Give
+```
+
+nhưng ý nghĩa rất khác.
+
+Semaphore:
+
+```text
+không ownership
+không Priority Inheritance
+có thể dùng để signal từ ISR
+phù hợp event / resource count
+```
+
+Mutex:
+
+```text
+có owner
+dùng bảo vệ shared resource
+có Priority Inheritance
+không dùng như ISR signal
+```
+
+Vì vậy:
+
+> Không nên dùng semaphore thay mutex khi mục tiêu là mutual exclusion có ownership.
+
+Mutex sẽ được học ở Chương 9.
+
+---
+
+## 8.16. Ví dụ từ `hairtos`
+
+Repo có example:
+
+```text
+10-01-semaphore-from-isr
+```
+
+Mô hình:
+
+```text
+Waiter Task
+priority = 1
+BLOCKED trên Binary Semaphore
+
+Trigger Task
+priority = 3
+      ↓
+kích hoạt EXTI0
+      ↓
+EXTI0 ISR
+      ↓
+hr_semaphore_give_from_isr()
+      ↓
+Waiter Task READY
+```
+
+Vì waiter priority cao hơn:
+
+```text
+higher_priority_task_woken = true
+```
+
+ISR request yield:
+
+```text
+hr_port_yield_from_isr()
+```
+
+Sau khi ISR kết thúc:
+
+```text
+PendSV
+ ↓
+Waiter Task RUNNING
+```
+
+Đây là ví dụ trực tiếp về:
+
+```text
+ISR → Semaphore → High-Priority Task
+```
+
+---
+
+## 8.17. Mô hình tư duy cần nhớ
+
+Take:
+
+```text
+TAKE
+ ↓
+count > 0?
+ /       \
+YES       NO
+↓          ↓
+count--   NO_WAIT?
+HR_OK      /    \
+         YES    NO
+         ↓       ↓
+      EMPTY    BLOCK
+```
+
+Give:
+
+```text
+GIVE
+ ↓
+Waiter?
+ /     \
+YES     NO
+↓        ↓
+Wake   count < max?
+Waiter   /      \
+        YES      NO
+        ↓         ↓
+      count++    FULL
+```
+
+ISR synchronization:
+
+```text
+Hardware IRQ
+    ↓
+ISR
+    ↓
+give_from_isr()
+    ↓
+Task BLOCKED → READY
+    ↓
+higher_priority_task_woken?
+    ↓
+PendSV after ISR
+    ↓
+Task RUNNING
+```
+
+---
+
+## 8.18. Trọng tâm cần thuộc
+
+API chính:
+
+```text
+hr_semaphore_create_binary()
+
+hr_semaphore_create_counting()
+
+hr_semaphore_take()
+
+hr_semaphore_give()
+
+hr_semaphore_give_from_isr()
+```
+
+Các invariant chính:
+
+```text
+0 <= count <= max_count
+
+max_count > 0
+```
+
+Các quy tắc:
+
+- Binary semaphore là counting semaphore với `max_count = 1`.
+- `take()` giảm `count` khi có token.
+- `take()` có thể block nếu `count = 0`.
+- `HR_NO_WAIT` khi không có token trả `HR_ERROR_SEMAPHORE_EMPTY`.
+- `give()` ưu tiên đánh thức waiter thay vì tăng count.
+- Nếu không có waiter, `give()` tăng count.
+- Nếu `count == max_count`, `give()` trả `HR_ERROR_SEMAPHORE_FULL`.
+- Semaphore không có owner.
+- Semaphore không có Priority Inheritance.
+- Dùng mutex nếu cần ownership-aware mutual exclusion.
+- ISR không được dùng API blocking.
+- ISR dùng `hr_semaphore_give_from_isr()`.
+- `higher_priority_task_woken` cho biết có cần request PendSV hay không.
+- Context switch chỉ xảy ra sau khi ISR kết thúc.
+- Binary semaphore phù hợp signaling; counting semaphore phù hợp đếm event hoặc resource.
+
+Điểm quan trọng nhất:
+
+> **Semaphore là counter đồng bộ không có ownership. `take()` tiêu thụ token; `give()` tạo token hoặc trao trực tiếp quyền tiến lên cho task đang chờ.**
+
+> **Trong ISR, chỉ nên signal bằng API `_from_isr`, sau đó để PendSV chuyển sang task priority cao hơn sau khi ISR hoàn tất.**
+
 
 ---
 
