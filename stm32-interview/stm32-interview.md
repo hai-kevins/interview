@@ -204,28 +204,61 @@
     - [9.24. Circular Buffer và Half-Transfer](#muc-09-24)
     - [9.25. Lỗi thường gặp](#muc-09-25)
     - [9.26. Câu hỏi tự kiểm tra](#muc-09-26)
-10. **[Debug bằng ST-Link](#chuong-10)**
-    - [10.1. Debug là gì? Programming và Debugging](#muc-10-01)
-    - [10.2. ST-Link là gì?](#muc-10-02)
-    - [10.3. SWD và JTAG](#muc-10-03)
-    - [10.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO](#muc-10-04)
-    - [10.5. SWJ và AFIO_MAPR.SWJ_CFG](#muc-10-05)
-    - [10.6. Debug Session hoạt động như thế nào?](#muc-10-06)
-    - [10.7. Breakpoint](#muc-10-07)
-    - [10.8. Step Into / Step Over / Step Out / Continue](#muc-10-08)
-    - [10.9. Watchpoint](#muc-10-09)
-    - [10.10. Registers / Memory / Peripheral Registers](#muc-10-10)
-    - [10.11. Variables / Watch / Expressions](#muc-10-11)
-    - [10.12. Call Stack / PC / LR / SP](#muc-10-12)
-    - [10.13. Debug Interrupt](#muc-10-13)
-    - [10.14. DBGMCU và Freeze Peripheral](#muc-10-14)
-    - [10.15. Debug trong Sleep / Stop / Standby](#muc-10-15)
-    - [10.16. Debug HardFault](#muc-10-16)
-    - [10.17. Debug với Compiler Optimization](#muc-10-17)
-    - [10.18. SWO / Trace](#muc-10-18)
-    - [10.19. Các lỗi kết nối ST-Link thường gặp](#muc-10-19)
-    - [10.20. Quy trình Debug có hệ thống](#muc-10-20)
-    - [10.21. Câu hỏi tự kiểm tra](#muc-10-21)
+10. **[CAN (Controller Area Network)](#chuong-10)**
+    - [10.1. CAN là gì?](#muc-10-01)
+    - [10.2. CAN khác UART / SPI / I2C như thế nào?](#muc-10-02)
+    - [10.3. CAN Network: Node và Bus Topology](#muc-10-03)
+    - [10.4. CAN Controller và CAN Transceiver](#muc-10-04)
+    - [10.5. CAN_H / CAN_L và Differential Signaling](#muc-10-05)
+    - [10.6. Dominant / Recessive và Termination Resistor](#muc-10-06)
+    - [10.7. Classic CAN và CAN FD](#muc-10-07)
+    - [10.8. CAN Frame: Data / Remote / Error / Overload](#muc-10-08)
+    - [10.9. Cấu trúc CAN Data Frame](#muc-10-09)
+    - [10.10. Standard ID (11-bit) và Extended ID (29-bit)](#muc-10-10)
+    - [10.11. CAN Arbitration và Message Priority](#muc-10-11)
+    - [10.12. ACK và Automatic Retransmission](#muc-10-12)
+    - [10.13. Bit Stuffing / CRC / Error Detection](#muc-10-13)
+    - [10.14. Error Active / Error Passive / Bus-Off](#muc-10-14)
+    - [10.15. CAN Bit Timing: TQ / BS1 / BS2 / SJW](#muc-10-15)
+    - [10.16. CAN Bitrate và Sample Point](#muc-10-16)
+    - [10.17. STM32 bxCAN Architecture](#muc-10-17)
+    - [10.18. RCC Clock và GPIO cho CAN](#muc-10-18)
+    - [10.19. bxCAN Operating Modes](#muc-10-19)
+    - [10.20. CAN_MCR / CAN_MSR / CAN_BTR](#muc-10-20)
+    - [10.21. TX Mailboxes và CAN_TSR](#muc-10-21)
+    - [10.22. RX FIFO0 / FIFO1](#muc-10-22)
+    - [10.23. Acceptance Filters: List / Mask / Scale](#muc-10-23)
+    - [10.24. CAN Interrupt và NVIC](#muc-10-24)
+    - [10.25. CAN Error Status: ESR / TEC / REC](#muc-10-25)
+    - [10.26. Quy trình cấu hình CAN](#muc-10-26)
+    - [10.27. Quy trình truyền CAN Message](#muc-10-27)
+    - [10.28. Quy trình nhận CAN Message](#muc-10-28)
+    - [10.29. Ví dụ CAN Loopback và 500 kbit/s](#muc-10-29)
+    - [10.30. Debug CAN bằng ST-Link / CAN Analyzer](#muc-10-30)
+    - [10.31. Các lỗi CAN thường gặp](#muc-10-31)
+    - [10.32. Câu hỏi tự kiểm tra](#muc-10-32)
+11. **[Debug bằng ST-Link](#chuong-11)**
+    - [11.1. Debug là gì? Programming và Debugging](#muc-11-01)
+    - [11.2. ST-Link là gì?](#muc-11-02)
+    - [11.3. SWD và JTAG](#muc-11-03)
+    - [11.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO](#muc-11-04)
+    - [11.5. SWJ và AFIO_MAPR.SWJ_CFG](#muc-11-05)
+    - [11.6. Debug Session hoạt động như thế nào?](#muc-11-06)
+    - [11.7. Breakpoint](#muc-11-07)
+    - [11.8. Step Into / Step Over / Step Out / Continue](#muc-11-08)
+    - [11.9. Watchpoint](#muc-11-09)
+    - [11.10. Registers / Memory / Peripheral Registers](#muc-11-10)
+    - [11.11. Variables / Watch / Expressions](#muc-11-11)
+    - [11.12. Call Stack / PC / LR / SP](#muc-11-12)
+    - [11.13. Debug Interrupt](#muc-11-13)
+    - [11.14. DBGMCU và Freeze Peripheral](#muc-11-14)
+    - [11.15. Debug trong Sleep / Stop / Standby](#muc-11-15)
+    - [11.16. Debug HardFault](#muc-11-16)
+    - [11.17. Debug với Compiler Optimization](#muc-11-17)
+    - [11.18. SWO / Trace](#muc-11-18)
+    - [11.19. Các lỗi kết nối ST-Link thường gặp](#muc-11-19)
+    - [11.20. Quy trình Debug có hệ thống](#muc-11-20)
+    - [11.21. Câu hỏi tự kiểm tra](#muc-11-21)
 ---
 
 <a id="chuong-01"></a>
@@ -1901,7 +1934,7 @@ R0-R3, R12
 → register state liên quan
 ```
 
-Kỹ thuật HardFault debugging được trình bày đầy đủ ở **Chương 10 – Debug bằng ST-Link**.
+Kỹ thuật HardFault debugging được trình bày đầy đủ ở **Chương 11 – Debug bằng ST-Link**.
 
 **Hình minh họa mở rộng — PSP/MSP trong context switching dùng PendSV**
 
@@ -4254,7 +4287,7 @@ tương ứng:
 Floating Input
 ```
 
-Tuy nhiên một số pin debug có thể đang được khối JTAG/SWD sử dụng sau reset, nên không được suy ra rằng mọi pin đều sẵn sàng làm GPIO chỉ từ giá trị `CRL/CRH`. Phần SWJ và các pin debug được trình bày tại **3.13** và **Chương 10**.
+Tuy nhiên một số pin debug có thể đang được khối JTAG/SWD sử dụng sau reset, nên không được suy ra rằng mọi pin đều sẵn sàng làm GPIO chỉ từ giá trị `CRL/CRH`. Phần SWJ và các pin debug được trình bày tại **3.13** và **Chương 11**.
 
 ---
 
@@ -5249,7 +5282,7 @@ SWD enabled
 
 giúp giải phóng một số pin JTAG nhưng vẫn giữ SWD để debug/program.
 
-Chi tiết debug interface nằm tại **Chương 10**, nên mục này chỉ giữ phần liên quan trực tiếp tới pin mapping của GPIO.
+Chi tiết debug interface nằm tại **Chương 11**, nên mục này chỉ giữ phần liên quan trực tiếp tới pin mapping của GPIO.
 
 ---
 
@@ -5465,7 +5498,7 @@ Peripheral-specific GPIO
 | Chọn Push-Pull/Open-Drain không phù hợp | **3.6**, **3.15** |
 | Peripheral nằm trên pin remap nhưng chưa cấu hình AFIO | **3.13** |
 | ADC input chưa ở Analog mode | **3.14** |
-| Dùng pin JTAG/SWD mà chưa xem `SWJ_CFG` | **3.13**, **Chương 10** |
+| Dùng pin JTAG/SWD mà chưa xem `SWJ_CFG` | **3.13**, **Chương 11** |
 
 Mục này chỉ tổng hợp **thứ tự thao tác**; không lặp lại code và nguyên lý đã giải thích ở các mục chuyên biệt.
 
@@ -11567,7 +11600,7 @@ PB4  → MISO
 PB5  → MOSI
 ```
 
-Các pin `PA15/PB3/PB4` liên quan JTAG sau reset; nếu dùng remap phải xem cấu hình `SWJ_CFG` tại **3.13 / Chương 10**.
+Các pin `PA15/PB3/PB4` liên quan JTAG sau reset; nếu dùng remap phải xem cấu hình `SWJ_CFG` tại **3.13 / Chương 11**.
 
 Ở Slave mode, hướng tín hiệu đổi theo vai trò:
 
@@ -18037,7 +18070,1770 @@ CPU process Half B
 
 
 <a id="chuong-10"></a>
-# 10. Debug bằng ST-Link
+# 10. CAN (Controller Area Network)
+
+Chương này tập trung vào **Classic CAN và peripheral bxCAN trên STM32F1**. Phạm vi bxCAN trong RM0008 áp dụng cho **STM32F103xx performance line** và **STM32F105xx/STM32F107xx connectivity line**; không được suy ra rằng mọi STM32F1 đều có CAN.
+
+CAN cần được hiểu theo ba lớp khác nhau:
+
+```text
+CAN protocol
+→ frame / identifier / arbitration / ACK / error handling
+
+bxCAN controller trong STM32
+→ bit timing / mailbox / FIFO / filter / interrupt / error status
+
+CAN physical layer
+→ transceiver / CAN_H / CAN_L / termination / topology
+```
+
+Điểm quan trọng là **bxCAN controller không phải CAN transceiver**. STM32 xử lý protocol ở mức controller; transceiver bên ngoài mới chuyển `CAN_TX/CAN_RX` thành tín hiệu vi sai `CAN_H/CAN_L` trên bus.
+
+## Quy ước thuật ngữ
+
+| Thuật ngữ dùng trong chương | Cách hiểu |
+|---|---|
+| **CAN** | Controller Area Network; bus truyền thông nhiều node theo message. |
+| **Classic CAN** | CAN 2.0 với payload tối đa 8 byte/data frame. |
+| **CAN FD** | CAN Flexible Data-rate; mở rộng payload và có thể tăng bit rate ở data phase; **bxCAN của STM32F1 không hỗ trợ CAN FD**. |
+| **bxCAN** | Basic Extended CAN peripheral của STM32, hỗ trợ CAN 2.0A/B Active. |
+| **node** | Một thiết bị tham gia CAN network, thường gồm CAN controller + transceiver. |
+| **identifier / ID** | Trường định danh message; đồng thời tham gia arbitration và xác định priority. |
+| **Standard ID** | Identifier 11-bit. |
+| **Extended ID** | Identifier 29-bit. |
+| **dominant** | Mức logic CAN có ưu thế trên bus; tương ứng logical `0` trong arbitration. |
+| **recessive** | Mức logic bị dominant ghi đè; tương ứng logical `1` trong arbitration. |
+| **arbitration** | Cơ chế nhiều node cùng bắt đầu truyền nhưng chỉ message có priority cao nhất tiếp tục mà không phá frame thắng. |
+| **bit time** | Thời gian của một bit CAN. |
+| **time quantum / `tq`** | Đơn vị thời gian nhỏ dùng tạo một CAN bit time. |
+| **sample point** | Thời điểm controller lấy mẫu bus trong mỗi bit time. |
+| **SJW** | Synchronization Jump Width; giới hạn lượng hiệu chỉnh timing khi resynchronization. |
+| **transmit mailbox** | Vùng phần cứng bxCAN chứa message chờ truyền. |
+| **receive FIFO** | Hàng đợi phần cứng chứa các message đã nhận và qua filter. |
+| **acceptance filter** | Bộ lọc phần cứng quyết định message nào được đưa vào RX FIFO. |
+| **TEC / REC** | Transmit Error Counter / Receive Error Counter. |
+| **Bus-Off** | Trạng thái node tự tách khỏi hoạt động bus khi lỗi truyền tích lũy vượt ngưỡng. |
+
+---
+
+<a id="muc-10-01"></a>
+## 10.1. CAN là gì?
+
+CAN là bus truyền thông nối tiếp nhiều node, ban đầu được thiết kế cho môi trường có nhiễu và yêu cầu độ tin cậy cao như automotive/industrial control.
+
+Mô hình:
+
+```text
+Node A ──┐
+Node B ──┼──────── CAN Bus
+Node C ──┤
+Node D ──┘
+```
+
+Một node thường gồm:
+
+```text
+Application / CPU
+      ↓
+CAN controller
+      ↓ CAN_TX / CAN_RX
+CAN transceiver
+      ↓
+CAN_H / CAN_L
+      ↓
+CAN bus
+```
+
+CAN không truyền theo mô hình “gửi byte tới địa chỉ thiết bị” như một số bus khác. Message được **broadcast** trên bus; receiver quyết định có quan tâm message đó hay không dựa trên identifier/filter.
+
+```text
+Transmitter
+   ↓ broadcast frame
+CAN bus
+   ├── Node B → accept
+   ├── Node C → discard
+   └── Node D → accept
+```
+
+---
+
+<a id="muc-10-02"></a>
+## 10.2. CAN khác UART / SPI / I2C như thế nào?
+
+| Đặc điểm | UART | SPI | I2C | CAN |
+|---|---|---|---|---|
+| Clock riêng trên dây | Không | Có | Có | Không |
+| Nhiều node | Thường point-to-point | Có nhiều slave | Có | Có |
+| Arbitration | Không | Không ở bus SPI thông thường | Có trong multi-master | Có, là cơ chế cốt lõi |
+| Address/message ID | Không bắt buộc | Chip Select | Slave address | Message identifier |
+| Error handling protocol | Hạn chế | Phụ thuộc ứng dụng | Có ACK/NACK cơ bản | CRC, ACK, error frame, counters, Bus-Off |
+| Physical signaling | Single-ended thường gặp | Single-ended | Open-Drain | Differential qua transceiver |
+| Broadcast | Không phải cơ chế chuẩn | Không | Có thể general call | Bản chất message được mọi node thấy |
+
+Điểm cần nhớ:
+
+> **CAN identifier mô tả message và priority, không phải địa chỉ vật lý của node nhận.**
+
+---
+
+<a id="muc-10-03"></a>
+## 10.3. CAN Network: Node và Bus Topology
+
+High-speed CAN thường dùng topology dạng bus tuyến tính:
+
+```text
+120 Ω                                      120 Ω
+  │                                          │
+CAN_H ==================================== CAN_H
+CAN_L ==================================== CAN_L
+        |          |          |          |
+      Node A     Node B     Node C     Node D
+```
+
+Hai điện trở termination đặt ở **hai đầu vật lý của đường bus chính**.
+
+Các nhánh từ bus chính tới node nên ngắn để giảm reflection, đặc biệt khi bit rate cao.
+
+Không nên bố trí CAN như star topology dài nhiều nhánh nếu không có thiết kế physical layer phù hợp.
+
+---
+
+<a id="muc-10-04"></a>
+## 10.4. CAN Controller và CAN Transceiver
+
+Hai khối có nhiệm vụ khác nhau.
+
+### CAN controller
+
+Trong STM32F1 là bxCAN:
+
+```text
+frame generation/parsing
+identifier
+arbitration logic
+CRC
+ACK/error handling
+bit timing
+TX mailbox
+RX FIFO
+acceptance filter
+```
+
+### CAN transceiver
+
+Transceiver thực hiện physical layer:
+
+```text
+CAN_TX từ MCU
+    ↓
+transceiver
+    ↓
+CAN_H / CAN_L
+```
+
+và chiều nhận:
+
+```text
+CAN_H / CAN_L
+    ↓
+transceiver
+    ↓
+CAN_RX vào MCU
+```
+
+Do đó không nối trực tiếp:
+
+```text
+STM32 CAN_TX ─X─ CAN_H
+STM32 CAN_RX ─X─ CAN_L
+```
+
+Phải dùng transceiver phù hợp với chuẩn physical layer và điện áp hệ thống.
+
+---
+
+<a id="muc-10-05"></a>
+## 10.5. CAN_H / CAN_L và Differential Signaling
+
+High-speed CAN dùng tín hiệu vi sai:
+
+```text
+Vdiff = V(CAN_H) - V(CAN_L)
+```
+
+Ở trạng thái recessive, hai đường thường gần nhau về điện áp nên differential voltage nhỏ. Ở trạng thái dominant, transceiver tạo chênh lệch rõ giữa `CAN_H` và `CAN_L`.
+
+Giá trị điện áp tuyệt đối phụ thuộc transceiver và điều kiện bus; với transceiver high-speed CAN phổ biến có thể quan sát gần đúng:
+
+```text
+Recessive:
+CAN_H ≈ 2.5 V
+CAN_L ≈ 2.5 V
+
+Dominant:
+CAN_H ≈ 3.5 V
+CAN_L ≈ 1.5 V
+```
+
+Điều quan trọng không phải học thuộc các số gần đúng này mà là hiểu:
+
+```text
+receiver quan sát chênh lệch CAN_H - CAN_L
+→ tăng khả năng chống nhiễu common-mode
+```
+
+---
+
+<a id="muc-10-06"></a>
+## 10.6. Dominant / Recessive và Termination Resistor
+
+Trong arbitration:
+
+```text
+Dominant  = logical 0
+Recessive = logical 1
+```
+
+Nếu một node phát recessive nhưng bus bị node khác kéo dominant:
+
+```text
+node phát 1
+bus đọc 0
+→ node biết mình đã thua arbitration
+```
+
+### Termination
+
+High-speed CAN thường dùng:
+
+```text
+120 Ω ở đầu thứ nhất
+120 Ω ở đầu thứ hai
+```
+
+Hai điện trở song song nhìn từ bus tạo điện trở tương đương xấp xỉ:
+
+```text
+120 Ω || 120 Ω
+≈ 60 Ω
+```
+
+Khi hệ thống tắt nguồn, phép đo giữa `CAN_H` và `CAN_L` thường xấp xỉ `60 Ω` nếu có đúng hai termination 120 Ω và không có mạch khác làm sai phép đo.
+
+Termination không đặt “mỗi node một 120 Ω”; nó thuộc **hai đầu của bus trunk**.
+
+---
+
+<a id="muc-10-07"></a>
+## 10.7. Classic CAN và CAN FD
+
+bxCAN trên STM32F1 hỗ trợ:
+
+```text
+CAN 2.0A
+CAN 2.0B Active
+bit rate tới 1 Mbit/s
+```
+
+Classic CAN data frame có payload:
+
+```text
+0 ... 8 byte
+```
+
+CAN FD mở rộng:
+
+```text
+payload tới 64 byte
+có thể dùng data-phase bit rate cao hơn arbitration phase
+```
+
+Nhưng:
+
+> **bxCAN của STM32F1 không hỗ trợ CAN FD.**
+
+Vì vậy chương này dùng frame/timing của Classic CAN.
+
+---
+
+<a id="muc-10-08"></a>
+## 10.8. CAN Frame: Data / Remote / Error / Overload
+
+Các loại frame chính cần nhận diện:
+
+```text
+Data Frame
+→ mang payload data
+
+Remote Frame
+→ yêu cầu Data Frame có cùng identifier
+
+Error Frame
+→ báo lỗi protocol
+
+Overload Frame
+→ kéo dài khoảng cách trước frame tiếp theo trong điều kiện protocol quy định
+```
+
+Trong firmware hiện đại, Data Frame là loại gặp thường xuyên nhất; Remote Frame tồn tại trong Classic CAN nhưng không phải thiết kế application nào cũng sử dụng.
+
+---
+
+<a id="muc-10-09"></a>
+## 10.9. Cấu trúc CAN Data Frame
+
+Một Standard Data Frame có thể hình dung:
+
+```text
+SOF
+ ↓
+Arbitration Field
+ ↓
+Control Field
+ ↓
+Data Field (0..8 byte)
+ ↓
+CRC Field
+ ↓
+ACK Field
+ ↓
+EOF
+```
+
+Các trường quan trọng:
+
+```text
+SOF
+→ Start Of Frame
+
+Identifier
+→ định danh message + tham gia arbitration
+
+RTR
+→ phân biệt Data/Remote request
+
+IDE
+→ Standard hay Extended identifier
+
+DLC
+→ số byte payload Classic CAN
+
+CRC
+→ kiểm tra lỗi frame
+
+ACK
+→ receiver xác nhận frame hợp lệ
+
+EOF
+→ End Of Frame
+```
+
+Classic CAN dùng `DLC` để biểu diễn payload tối đa 8 byte trong data frame.
+
+---
+
+<a id="muc-10-10"></a>
+## 10.10. Standard ID (11-bit) và Extended ID (29-bit)
+
+Hai định dạng identifier:
+
+```text
+Standard ID
+→ 11 bit
+→ 0x000 ... 0x7FF
+
+Extended ID
+→ 29 bit
+→ 0x00000000 ... 0x1FFFFFFF
+```
+
+Trong bxCAN transmit/receive identifier register, hardware còn lưu thông tin:
+
+```text
+IDE
+→ Standard / Extended
+
+RTR
+→ Data / Remote
+```
+
+Identifier không phải node address. Ví dụ application có thể quy ước:
+
+```text
+0x100 → vehicle speed
+0x120 → engine temperature
+0x300 → diagnostic status
+```
+
+Mọi node đều thấy frame trên bus, nhưng filter/application quyết định frame nào được sử dụng.
+
+---
+
+<a id="muc-10-11"></a>
+## 10.11. CAN Arbitration và Message Priority
+
+CAN cho phép nhiều node bắt đầu truyền khi bus idle.
+
+Mỗi transmitter đồng thời:
+
+```text
+phát bit
++
+đọc lại trạng thái bus
+```
+
+Quy tắc:
+
+```text
+Dominant 0
+thắng
+Recessive 1
+```
+
+Ví dụ đơn giản:
+
+```text
+Node A ID = 0x100
+Node B ID = 0x200
+```
+
+Tại bit identifier đầu tiên nơi hai ID khác nhau:
+
+```text
+A phát dominant 0
+B phát recessive 1
+bus = dominant 0
+
+→ B phát hiện bit mình gửi != bit trên bus
+→ B dừng truyền
+→ A tiếp tục frame
+```
+
+Đây là **non-destructive arbitration**: frame thắng không bị phá hỏng và không phải truyền lại chỉ vì có node khác cùng bắt đầu.
+
+Với cùng loại frame/identifier format, ID số nhỏ hơn thường có priority cao hơn vì xuất hiện dominant sớm hơn trong arbitration field.
+
+Cần phân biệt hai lớp priority:
+
+```text
+CAN bus arbitration
+→ luôn theo bit arbitration của protocol
+
+bxCAN local mailbox scheduling
+→ có thể theo identifier hoặc transmit request order qua TXFP
+```
+
+`TXFP` không thay đổi arbitration rule trên dây CAN.
+
+---
+
+<a id="muc-10-12"></a>
+## 10.12. ACK và Automatic Retransmission
+
+Trong ACK slot, transmitter phát recessive và kiểm tra bus.
+
+Một receiver đã nhận frame hợp lệ có thể kéo ACK slot xuống dominant:
+
+```text
+Transmitter gửi frame
+      ↓
+receiver kiểm tra frame hợp lệ
+      ↓
+receiver phát dominant trong ACK slot
+      ↓
+transmitter thấy ACK
+```
+
+Nếu không có node nào ACK:
+
+```text
+ACK slot vẫn recessive
+→ ACK error
+```
+
+Trên bxCAN mặc định:
+
+```text
+NART = 0
+→ hardware tự retransmit khi transmission không thành công theo CAN protocol
+```
+
+Nếu:
+
+```text
+NART = 1
+→ Nonautomatic Retransmission
+→ mỗi request chỉ được thử một lần
+```
+
+Điểm thực tế quan trọng:
+
+> **Một node CAN duy nhất trong Normal mode thường không truyền thành công vì không có node khác ACK.** Khi test một mình, dùng Loopback mode hoặc kết nối thêm node/adapter CAN hoạt động đúng bitrate.
+
+---
+
+<a id="muc-10-13"></a>
+## 10.13. Bit Stuffing / CRC / Error Detection
+
+CAN có nhiều cơ chế phát hiện lỗi.
+
+### Bit Stuffing
+
+Trong vùng frame áp dụng bit stuffing, sau một chuỗi 5 bit liên tiếp cùng mức, transmitter chèn một bit ngược mức.
+
+```text
+11111
+→ chèn 0
+
+00000
+→ chèn 1
+```
+
+Receiver kiểm tra quy tắc này; vi phạm tạo Stuff Error.
+
+### CRC
+
+Frame chứa CRC để receiver kiểm tra nội dung truyền.
+
+```text
+CRC nhận != CRC tính
+→ CRC Error
+```
+
+### Các loại lỗi protocol cần nhận diện
+
+```text
+Bit Error
+Stuff Error
+CRC Error
+Form Error
+ACK Error
+```
+
+Khi lỗi được phát hiện, CAN hardware tham gia cơ chế Error Frame và cập nhật error counter theo protocol. Firmware không phải tự tính CRC hay tự tạo Error Frame cho mỗi frame thông thường.
+
+---
+
+<a id="muc-10-14"></a>
+## 10.14. Error Active / Error Passive / Bus-Off
+
+bxCAN quản lý lỗi bằng:
+
+```text
+TEC
+→ Transmit Error Counter
+
+REC
+→ Receive Error Counter
+```
+
+Ba trạng thái chính:
+
+```text
+Error Active
+   ↓ TEC hoặc REC > 127
+Error Passive
+   ↓ TEC > 255
+Bus-Off
+```
+
+Khi:
+
+```text
+TEC < 128
+và
+REC < 128
+```
+
+node có thể trở lại Error Active theo quy tắc protocol.
+
+### Error Active
+
+Node có thể phát **Active Error Flag** khi phát hiện lỗi.
+
+### Error Passive
+
+Node vẫn có thể tham gia bus nhưng hành vi error signaling bị hạn chế hơn để giảm tác động của một node đang có nhiều lỗi.
+
+### Bus-Off
+
+Khi:
+
+```text
+TEC > 255
+→ Bus-Off
+```
+
+bxCAN không còn truyền/nhận message trên bus cho tới khi hoàn thành recovery.
+
+`CAN_ESR` cung cấp các trạng thái quan trọng:
+
+```text
+EWGF
+→ Error Warning
+
+EPVF
+→ Error Passive
+
+BOFF
+→ Bus-Off
+
+LEC
+→ Last Error Code
+
+TEC / REC
+→ error counters
+```
+
+### Bus-Off recovery
+
+Nếu:
+
+```text
+CAN_MCR.ABOM = 1
+```
+
+hardware tự bắt đầu recovery. Nếu `ABOM = 0`, software phải yêu cầu quá trình recovery bằng cách vào/rời Initialization mode.
+
+Trong cả hai trường hợp, CAN protocol yêu cầu quan sát recovery sequence tương ứng, trên bxCAN là 128 lần xuất hiện chuỗi 11 recessive bits.
+
+---
+
+<a id="muc-10-15"></a>
+## 10.15. CAN Bit Timing: TQ / BS1 / BS2 / SJW
+
+Một nominal CAN bit time được chia thành:
+
+```text
+SYNC_SEG | BS1 | BS2
+```
+
+Trong bxCAN:
+
+```text
+SYNC_SEG
+→ cố định 1 tq
+
+BS1
+→ 1 ... 16 tq
+
+BS2
+→ 1 ... 8 tq
+
+SJW
+→ 1 ... 4 tq
+```
+
+Sample point nằm tại ranh giới:
+
+```text
+SYNC_SEG + BS1 | BS2
+                 ↑
+             Sample Point
+```
+
+Time quantum được tạo từ APB clock:
+
+```text
+tq = (BRP + 1) × tPCLK1
+```
+
+với `BRP` ở đây là raw field trong `CAN_BTR`.
+
+Nominal bit time:
+
+```text
+Tbit
+= tq × [1 + (TS1 + 1) + (TS2 + 1)]
+```
+
+Nếu dùng giá trị thực tế:
+
+```text
+BRP_actual = CAN_BTR.BRP + 1
+BS1_actual = CAN_BTR.TS1 + 1
+BS2_actual = CAN_BTR.TS2 + 1
+```
+
+thì:
+
+```text
+Bitrate
+= PCLK1
+  / [BRP_actual × (1 + BS1_actual + BS2_actual)]
+```
+
+`CAN_BTR` chỉ được thay đổi khi bxCAN ở Initialization mode.
+
+---
+
+<a id="muc-10-16"></a>
+## 10.16. CAN Bitrate và Sample Point
+
+Sample point:
+
+```text
+SamplePoint
+= (1 + BS1) / (1 + BS1 + BS2)
+```
+
+trong đó `BS1/BS2` là số `tq` thực tế.
+
+Ví dụ với:
+
+```text
+PCLK1 = 36 MHz
+BRP   = 4
+BS1   = 15 tq
+BS2   = 2 tq
+SJW   = 1 tq
+```
+
+Tổng số time quantum:
+
+```text
+1 + 15 + 2
+= 18 tq
+```
+
+Bitrate:
+
+```text
+36 MHz / (4 × 18)
+= 500 kbit/s
+```
+
+Sample point:
+
+```text
+(1 + 15) / 18
+≈ 88.9%
+```
+
+Raw fields trong `CAN_BTR` tương ứng:
+
+```text
+BRP field = 4 - 1  = 3
+TS1 field = 15 - 1 = 14
+TS2 field = 2 - 1  = 1
+SJW field = 1 - 1  = 0
+```
+
+Hai node không chỉ cần “cùng 500 kbit/s” về danh nghĩa; oscillator tolerance, sample point, propagation delay và bus topology cũng ảnh hưởng margin timing.
+
+---
+
+<a id="muc-10-17"></a>
+## 10.17. STM32 bxCAN Architecture
+
+bxCAN có các khối chính:
+
+```text
+CAN_TX / CAN_RX
+      ↓
+ CAN protocol core
+      │
+      ├── 3 Transmit Mailboxes
+      │
+      ├── Acceptance Filters
+      │       ↓
+      ├── RX FIFO0 (3 stages)
+      └── RX FIFO1 (3 stages)
+```
+
+Các tính năng cốt lõi:
+
+```text
+CAN 2.0A / 2.0B Active
+bit rate tới 1 Mbit/s
+3 TX mailboxes
+2 RX FIFOs × 3 stages
+Identifier List / Mask filtering
+interrupts cho TX / RX FIFO / status-error
+TEC / REC / Bus-Off management
+```
+
+Filter bank:
+
+```text
+STM32F103xx với một bxCAN
+→ 14 filter banks
+
+STM32F105/107 connectivity line
+→ 28 filter banks chia sẻ giữa CAN1 và CAN2
+```
+
+Trên connectivity line, CAN1 là master của vùng SRAM/filter dùng chung; CAN2 phụ thuộc kiến trúc shared resource này.
+
+### Lưu ý USB/CAN trên STM32F103 non-connectivity line
+
+Ở low/medium/high/XL-density devices có USB device + CAN, USB và CAN dùng chung dedicated 512-byte SRAM cho data transmission/reception nên **không thể hoạt động đồng thời**; có thể cùng tồn tại trong application nhưng không dùng cùng lúc.
+
+---
+
+<a id="muc-10-18"></a>
+## 10.18. RCC Clock và GPIO cho CAN
+
+bxCAN nằm trên APB1, vì vậy clock timing của CAN lấy từ:
+
+```text
+PCLK1
+```
+
+Với cấu hình phổ biến của Chương 2:
+
+```text
+PCLK1 = 36 MHz
+```
+
+đây là clock đầu vào dùng tính `CAN_BTR`.
+
+### Clock enable
+
+Với CAN1:
+
+```text
+RCC_APB1ENR.CAN1EN
+```
+
+Trên connectivity line có CAN2; do kiến trúc dual-CAN/shared resources, phải tuân thủ yêu cầu clock của đúng device.
+
+### GPIO CAN1
+
+Default mapping:
+
+```text
+PA11 → CAN_RX
+PA12 → CAN_TX
+```
+
+Remap thường dùng:
+
+```text
+PB8 → CAN_RX
+PB9 → CAN_TX
+```
+
+Một số package hỗ trợ:
+
+```text
+PD0 → CAN_RX
+PD1 → CAN_TX
+```
+
+Mapping cụ thể phụ thuộc package/remap.
+
+GPIO mode điển hình trên STM32F1:
+
+```text
+CAN_TX
+→ Alternate Function Output Push-Pull
+
+CAN_RX
+→ Input mode phù hợp
+```
+
+CAN_H/CAN_L nằm phía transceiver, không phải GPIO của STM32.
+
+---
+
+<a id="muc-10-19"></a>
+## 10.19. bxCAN Operating Modes
+
+Ba operating mode chính:
+
+```text
+Initialization mode
+Normal mode
+Sleep mode
+```
+
+Sau hardware reset, bxCAN bắt đầu ở Sleep mode.
+
+### Initialization mode
+
+Software:
+
+```text
+set CAN_MCR.INRQ
+clear SLEEP nếu cần
+        ↓
+wait CAN_MSR.INAK = 1
+```
+
+Trong mode này cấu hình các tham số quan trọng như `CAN_BTR`.
+
+### Normal mode
+
+Để rời Initialization mode:
+
+```text
+clear INRQ
+        ↓
+wait INAK = 0
+```
+
+Trước khi tham gia bus, bxCAN đồng bộ bằng cách quan sát bus idle, tương ứng chuỗi 11 recessive bits.
+
+### Sleep mode
+
+```text
+CAN_MCR.SLEEP = 1
+→ request Sleep
+
+CAN_MSR.SLAK = 1
+→ hardware xác nhận
+```
+
+### Test modes
+
+`CAN_BTR` còn có:
+
+```text
+LBKM
+→ Loopback
+
+SILM
+→ Silent
+```
+
+Các bit này phải cấu hình khi bxCAN ở Initialization mode.
+
+```text
+Loopback
+→ test nội bộ TX → RX
+
+Silent
+→ monitor bus mà không chủ động ảnh hưởng bus như normal node
+
+Silent + Loopback
+→ self-test không làm ảnh hưởng external bus
+```
+
+---
+
+<a id="muc-10-20"></a>
+## 10.20. CAN_MCR / CAN_MSR / CAN_BTR
+
+Ba register cấu hình/trạng thái nền tảng:
+
+### `CAN_MCR` — Master Control Register
+
+Các bit cần nhận diện:
+
+```text
+INRQ
+→ request Initialization mode
+
+SLEEP
+→ request Sleep mode
+
+TXFP
+→ local TX priority theo request order hay identifier
+
+RFLM
+→ FIFO locked behavior khi overrun
+
+NART
+→ disable automatic retransmission
+
+AWUM
+→ automatic wakeup
+
+ABOM
+→ automatic Bus-Off management
+
+TTCM
+→ Time Triggered Communication mode
+
+DBF
+→ freeze CAN reception/transmission trong debug
+```
+
+### `CAN_MSR` — Master Status Register
+
+Các trạng thái quan trọng:
+
+```text
+INAK
+→ Initialization acknowledge
+
+SLAK
+→ Sleep acknowledge
+
+ERRI
+→ error interrupt status
+
+WKUI
+→ wakeup interrupt status
+
+SLAKI
+→ sleep acknowledge interrupt status
+```
+
+### `CAN_BTR` — Bit Timing Register
+
+```text
+SILM
+LBKM
+SJW
+TS2
+TS1
+BRP
+```
+
+`CAN_BTR` chỉ được thay đổi trong Initialization mode.
+
+---
+
+<a id="muc-10-21"></a>
+## 10.21. TX Mailboxes và CAN_TSR
+
+bxCAN có ba transmit mailbox:
+
+```text
+Mailbox 0
+Mailbox 1
+Mailbox 2
+```
+
+Mỗi mailbox chứa:
+
+```text
+CAN_TIxR
+→ Identifier + IDE + RTR + TXRQ
+
+CAN_TDTxR
+→ DLC + time-related fields
+
+CAN_TDLxR
+→ Data byte 0..3
+
+CAN_TDHxR
+→ Data byte 4..7
+```
+
+Quy trình:
+
+```text
+TME = 1
+→ mailbox empty
+     ↓
+software ghi ID / DLC / data
+     ↓
+TXRQ = 1
+     ↓
+mailbox pending/scheduled
+     ↓
+transmission
+     ↓
+CAN_TSR cập nhật result
+```
+
+Các status bit quan trọng theo từng mailbox:
+
+```text
+RQCPx
+→ request completed
+
+TXOKx
+→ transmission successful
+
+ALSTx
+→ arbitration lost
+
+TERRx
+→ transmission error
+
+TMEx
+→ mailbox empty
+
+ABRQx
+→ software request abort
+```
+
+Khi `TXFP = 0`, local mailbox priority dựa trên identifier; khi `TXFP = 1`, bxCAN dùng transmit request order. Trên bus, arbitration vẫn tuân CAN protocol.
+
+---
+
+<a id="muc-10-22"></a>
+## 10.22. RX FIFO0 / FIFO1
+
+bxCAN có:
+
+```text
+FIFO0
+→ 3 stages
+
+FIFO1
+→ 3 stages
+```
+
+Sau khi frame hợp lệ qua acceptance filter:
+
+```text
+frame
+ ↓
+filter match
+ ↓
+FIFO0 hoặc FIFO1
+ ↓
+FIFO output mailbox
+ ↓
+software đọc
+ ↓
+release FIFO output mailbox
+```
+
+Receive mailbox register:
+
+```text
+CAN_RIxR
+→ ID / IDE / RTR
+
+CAN_RDTxR
+→ DLC / Filter Match Index / timestamp
+
+CAN_RDLxR
+→ Data 0..3
+
+CAN_RDHxR
+→ Data 4..7
+```
+
+`CAN_RF0R` / `CAN_RF1R` có:
+
+```text
+FMPx
+→ số message pending
+
+FULLx
+→ FIFO full
+
+FOVRx
+→ FIFO overrun
+
+RFOMx
+→ release FIFO output mailbox
+```
+
+Sau khi đọc message, software phải release output mailbox để message tiếp theo trở thành available.
+
+### `RFLM`
+
+Nếu FIFO đã đầy:
+
+```text
+RFLM = 0
+→ message mới có thể ghi đè message gần nhất trong FIFO
+→ ưu tiên giữ dữ liệu mới hơn
+
+RFLM = 1
+→ message mới bị discard
+→ giữ ba message cũ đang có
+```
+
+---
+
+<a id="muc-10-23"></a>
+## 10.23. Acceptance Filters: List / Mask / Scale
+
+Acceptance filter giúp loại frame không cần thiết **trước khi CPU phải xử lý**.
+
+```text
+CAN bus
+   ↓
+receiver
+   ↓
+acceptance filter
+   ├── match    → FIFO0/FIFO1
+   └── no match → discard
+```
+
+Mỗi filter bank có hai 32-bit filter register và có thể cấu hình theo hai mode.
+
+### Identifier List mode
+
+```text
+Filter chứa các identifier cụ thể
+→ exact-match style
+```
+
+Phù hợp khi application chỉ quan tâm một số ID rời rạc.
+
+### Identifier Mask mode
+
+Dùng cặp:
+
+```text
+Filter ID
+Filter Mask
+```
+
+Ý nghĩa mask ở mức khái niệm:
+
+```text
+mask bit = 1
+→ bit tương ứng phải match
+
+mask bit = 0
+→ don't care
+```
+
+Phù hợp khi muốn nhận một dải/group ID.
+
+### Scale
+
+bxCAN hỗ trợ:
+
+```text
+32-bit scale
+16-bit scale
+```
+
+Scale quyết định cách 64 bit của một filter bank được chia thành các entry/filter expression.
+
+### FIFO assignment
+
+Mỗi filter bank active được gán tới:
+
+```text
+FIFO0
+hoặc
+FIFO1
+```
+
+Filter configuration liên quan các register:
+
+```text
+CAN_FMR
+→ filter init / CAN2 start bank trên dual-CAN
+
+CAN_FM1R
+→ List hay Mask mode
+
+CAN_FS1R
+→ 16-bit hay 32-bit scale
+
+CAN_FFA1R
+→ FIFO assignment
+
+CAN_FA1R
+→ activate filter bank
+
+CAN_FxR1 / CAN_FxR2
+→ filter values
+```
+
+Khi không có filter nào match, frame bị hardware discard.
+
+---
+
+<a id="muc-10-24"></a>
+## 10.24. CAN Interrupt và NVIC
+
+bxCAN có bốn nhóm interrupt vector logic:
+
+```text
+Transmit
+FIFO0
+FIFO1
+Status change / Error
+```
+
+Nguồn interrupt được enable bằng `CAN_IER`.
+
+### Transmit
+
+Có thể phát sinh khi transmit request hoàn tất, thể hiện qua `RQCPx`.
+
+### FIFO0 / FIFO1
+
+Các sự kiện nhận quan trọng:
+
+```text
+message pending
+FIFO full
+FIFO overrun
+```
+
+### Status / Error
+
+Có thể liên quan:
+
+```text
+error warning
+error passive
+Bus-Off
+last error code
+wakeup
+sleep acknowledge
+```
+
+Tên IRQ cụ thể phụ thuộc device family/line. Trên nhiều STM32F103 non-connectivity devices, một số vector USB và CAN được chia sẻ, ví dụ `USB_HP_CAN_TX` và `USB_LP_CAN_RX0`; vì vậy phải dùng startup/header đúng part number.
+
+Cơ chế NVIC chung đã được trình bày ở **Chương 4**.
+
+---
+
+<a id="muc-10-25"></a>
+## 10.25. CAN Error Status: ESR / TEC / REC
+
+`CAN_ESR` là register chính để phân tích sức khỏe CAN network.
+
+Các field quan trọng:
+
+```text
+EWGF
+→ Error Warning Flag
+
+EPVF
+→ Error Passive Flag
+
+BOFF
+→ Bus-Off Flag
+
+LEC
+→ Last Error Code
+
+TEC
+→ Transmit Error Counter
+
+REC
+→ Receive Error Counter
+```
+
+Khi debug CAN không hoạt động, chỉ nhìn `BOFF` là chưa đủ. Nên quan sát:
+
+```text
+LEC
+TEC
+REC
+EWGF
+EPVF
+BOFF
+```
+
+Ví dụ:
+
+```text
+TEC tăng liên tục
++
+ACK Error
+→ kiểm tra có node khác ACK không
+→ kiểm tra bitrate / wiring / termination / transceiver
+```
+
+Nếu `REC` tăng nhiều hơn, lỗi có thể liên quan chất lượng tín hiệu/receive timing/noise, nhưng vẫn phải kiểm chứng bằng analyzer/oscilloscope thay vì suy luận từ counter duy nhất.
+
+---
+
+<a id="muc-10-26"></a>
+## 10.26. Quy trình cấu hình CAN
+
+Quy trình tổng quát:
+
+```text
+1. Kiểm tra đúng MCU có bxCAN
+        ↓
+2. Xác định PCLK1
+        ↓
+3. Tính BRP / BS1 / BS2 / SJW
+        ↓
+4. Enable AFIO/GPIO/CAN clock
+        ↓
+5. Cấu hình CAN_RX / CAN_TX và remap nếu cần
+        ↓
+6. Kết nối CAN transceiver + termination đúng
+        ↓
+7. Request Initialization mode
+   → chờ INAK = 1
+        ↓
+8. Cấu hình MCR / BTR
+        ↓
+9. Cấu hình acceptance filter
+        ↓
+10. Cấu hình interrupt nếu dùng
+        ↓
+11. Clear INRQ
+   → chờ INAK = 0
+        ↓
+12. Truyền / nhận message
+        ↓
+13. Theo dõi ESR / FIFO / TX status
+```
+
+Không nên bỏ qua filter: bxCAN chỉ đưa message vào RX FIFO khi frame hợp lệ **và** filter match.
+
+---
+
+<a id="muc-10-27"></a>
+## 10.27. Quy trình truyền CAN Message
+
+Một transmit sequence điển hình:
+
+```text
+1. Tìm TX mailbox empty
+        ↓
+2. Ghi Standard/Extended ID
+        ↓
+3. Chọn Data/Remote frame
+        ↓
+4. Ghi DLC
+        ↓
+5. Ghi payload
+        ↓
+6. Set TXRQ
+        ↓
+7. Hardware arbitration + transmission
+        ↓
+8. Kiểm tra RQCP/TXOK/ALST/TERR
+```
+
+Ví dụ conceptual Standard Data Frame:
+
+```text
+ID  = 0x123
+DLC = 8
+Data = 11 22 33 44 55 66 77 88
+```
+
+Trong Normal mode, `TXOK` chỉ thành công khi transmission hoàn tất theo protocol, bao gồm ACK hợp lệ. Nếu arbitration bị mất, đó không phải protocol error; với automatic retransmission bật, hardware có thể tự thử lại khi bus cho phép.
+
+---
+
+<a id="muc-10-28"></a>
+## 10.28. Quy trình nhận CAN Message
+
+Receive sequence:
+
+```text
+CAN bus
+  ↓
+frame hợp lệ
+  ↓
+acceptance filter match
+  ↓
+FIFO0/FIFO1
+  ↓
+FMP > 0 / interrupt
+  ↓
+software đọc RI/RDT/RDL/RDH
+  ↓
+parse ID / IDE / RTR / DLC / data
+  ↓
+release FIFO output mailbox
+```
+
+ISR nhận thường chỉ nên:
+
+```text
+đọc message cần thiết
+copy vào software queue/ring buffer nếu cần
+release FIFO
+set event / notify task
+return
+```
+
+Không nên thực hiện xử lý application dài trong CAN RX ISR nếu traffic có thể dày, vì FIFO phần cứng chỉ có ba stages mỗi FIFO.
+
+---
+
+<a id="muc-10-29"></a>
+## 10.29. Ví dụ CAN Loopback và 500 kbit/s
+
+Mục tiêu:
+
+```text
+STM32F103
+PCLK1 = 36 MHz
+Classic CAN
+500 kbit/s
+Loopback mode
+Standard ID = 0x123
+DLC = 8
+```
+
+Bit timing theo **10.16**:
+
+```text
+BRP = 4
+BS1 = 15 tq
+BS2 = 2 tq
+SJW = 1 tq
+
+Total = 18 tq
+500 kbit/s
+Sample Point ≈ 88.9%
+```
+
+Raw `CAN_BTR` fields:
+
+```text
+BRP = 3
+TS1 = 14
+TS2 = 1
+SJW = 0
+LBKM = 1
+SILM = 0
+```
+
+Luồng test:
+
+```text
+enter Initialization mode
+      ↓
+set BTR + LBKM
+      ↓
+configure filter accept test ID / accept all
+      ↓
+leave Initialization mode
+      ↓
+load TX mailbox
+      ↓
+TXRQ
+      ↓
+internal loopback
+      ↓
+RX FIFO
+      ↓
+read back ID/DLC/data
+```
+
+Loopback là bước tốt để xác nhận:
+
+```text
+bxCAN register configuration
+bit timing encoding
+TX mailbox
+RX FIFO
+filter
+software parse
+```
+
+nhưng **không kiểm tra được transceiver, CAN_H/CAN_L, termination và chất lượng bus ngoài**.
+
+---
+
+<a id="muc-10-30"></a>
+## 10.30. Debug CAN bằng ST-Link / CAN Analyzer
+
+Debug CAN nên tách theo lớp.
+
+### 1. Controller state bằng ST-Link
+
+Kiểm tra:
+
+```text
+RCC clock
+GPIO / remap
+MCR / MSR
+BTR
+filter registers
+TSR
+RF0R / RF1R
+ESR
+```
+
+### 2. Protocol traffic bằng CAN Analyzer
+
+Analyzer giúp xác nhận:
+
+```text
+bitrate
+identifier
+DLC
+data
+frame direction
+error frames
+bus load
+```
+
+### 3. Physical signal bằng oscilloscope
+
+Kiểm tra:
+
+```text
+CAN_H / CAN_L waveform
+termination
+ringing
+noise
+common-mode problem
+edge quality
+```
+
+Một quy trình tốt:
+
+```text
+Loopback pass?
+   ├── No  → bxCAN/config/filter/software
+   └── Yes
+        ↓
+CAN_TX/CAN_RX phía transceiver đúng?
+        ↓
+CAN_H/CAN_L đúng?
+        ↓
+Analyzer thấy frame?
+        ↓
+ACK / errors / counters thế nào?
+```
+
+Phần công cụ ST-Link chi tiết nằm ở **Chương 11 – Debug bằng ST-Link**.
+
+---
+
+<a id="muc-10-31"></a>
+## 10.31. Các lỗi CAN thường gặp
+
+| Triệu chứng | Nguyên nhân cần kiểm tra |
+|---|---|
+| `TXOK` không lên, TEC tăng | Không có ACK, sai bitrate, bus wiring/transceiver lỗi |
+| Vừa transmit là Error/Bus-Off | Bit timing sai, transceiver/wiring/termination lỗi, node khác cấu hình sai |
+| Analyzer thấy frame nhưng MCU không RX | Acceptance filter, FIFO assignment, interrupt/NVIC, RX pin/remap |
+| RX FIFO overrun | Software/ISR xử lý chậm, traffic quá dày, filter quá rộng |
+| Loopback chạy nhưng bus thật không chạy | Physical layer/transceiver/termination/wiring |
+| Chỉ chạy khi có analyzer cắm vào | Analyzer có termination hoặc đang cung cấp ACK mà hệ thống thiếu |
+| CAN hoạt động không ổn định ở cable dài | Bitrate cao, sample point/propagation margin kém, topology/stub/termination không tốt |
+| CAN2 không nhận trên connectivity line | Shared filter/CAN2 start bank/clock dependency cấu hình sai |
+| CAN1 không vào Normal mode | Không rời Sleep đúng, chưa clear INRQ, bus chưa thấy idle/sync |
+| USB và CAN xung đột trên STM32F103 non-connectivity | Dedicated SRAM dùng chung, không được dùng đồng thời |
+
+Nguyên tắc debug:
+
+```text
+Protocol config đúng
+≠
+Physical layer đúng
+```
+
+và:
+
+```text
+Loopback pass
+≠
+external CAN network pass
+```
+
+---
+
+<a id="muc-10-32"></a>
+## 10.32. Câu hỏi tự kiểm tra
+
+1. CAN khác UART/SPI/I2C ở cơ chế message broadcast và arbitration như thế nào?
+2. Vì sao CAN identifier không nên gọi đơn giản là “địa chỉ node”?
+3. CAN controller và CAN transceiver khác nhau ở chức năng nào?
+4. Vì sao STM32 `CAN_TX/CAN_RX` không nối trực tiếp vào `CAN_H/CAN_L`?
+5. Dominant và Recessive tương ứng logical bit nào?
+6. Vì sao CAN arbitration được gọi là non-destructive?
+7. Với hai Standard Data Frame có ID `0x100` và `0x200`, frame nào có priority cao hơn?
+8. Standard ID và Extended ID có độ dài bao nhiêu bit?
+9. Classic CAN Data Frame mang tối đa bao nhiêu byte payload?
+10. ACK slot hoạt động như thế nào và vì sao một node duy nhất ở Normal mode thường không TX thành công?
+11. Automatic retransmission của bxCAN bị thay đổi bởi bit nào?
+12. Năm nhóm lỗi CAN thường được phát hiện ở protocol level là gì?
+13. TEC và REC dùng để làm gì?
+14. Khi nào node chuyển sang Error Passive và Bus-Off?
+15. `ABOM` ảnh hưởng Bus-Off recovery như thế nào?
+16. Một CAN bit time của bxCAN gồm những segment nào?
+17. `BRP`, `BS1`, `BS2` và `SJW` ảnh hưởng timing ra sao?
+18. Với `PCLK1 = 36 MHz`, `BRP = 4`, `BS1 = 15`, `BS2 = 2`, bitrate bằng bao nhiêu?
+19. bxCAN có bao nhiêu TX mailbox và bao nhiêu RX FIFO?
+20. Identifier List mode và Identifier Mask mode khác nhau ở mục tiêu lọc nào?
+21. Vì sao sau khi đọc RX message phải release FIFO output mailbox?
+22. `TXFP` thay đổi local mailbox scheduling hay thay đổi arbitration trên CAN bus?
+23. Loopback mode kiểm tra được những phần nào và không kiểm tra được những phần nào?
+24. Hãy mô tả chuỗi debug khi Loopback pass nhưng external CAN bus vẫn không hoạt động.
+
+---
+
+## 10.33. Tóm tắt
+
+Mô hình hệ thống:
+
+```text
+STM32 bxCAN
+   │ CAN_TX / CAN_RX
+   ↓
+CAN Transceiver
+   │ CAN_H / CAN_L
+   ↓
+Differential CAN Bus
+```
+
+Protocol:
+
+```text
+Message Identifier
+→ arbitration + priority + message meaning
+
+Dominant 0
+Recessive 1
+
+Standard ID
+→ 11 bit
+
+Extended ID
+→ 29 bit
+
+Classic CAN payload
+→ 0..8 byte
+```
+
+bxCAN:
+
+```text
+PCLK1
+  ↓
+CAN_BTR
+  ↓
+Bit Timing
+
+3 TX Mailboxes
+2 RX FIFOs × 3 stages
+Acceptance Filters
+CAN_IER interrupts
+CAN_ESR error state
+```
+
+Bit timing:
+
+```text
+SYNC_SEG = 1 tq
+BS1 = 1..16 tq
+BS2 = 1..8 tq
+SJW = 1..4 tq
+
+Bitrate
+= PCLK1 / [BRP × (1 + BS1 + BS2)]
+```
+
+với `BRP`, `BS1`, `BS2` trong công thức cuối là **giá trị thực tế**, không phải raw field value.
+
+Error state:
+
+```text
+Error Active
+→ Error Passive
+→ Bus-Off
+```
+
+Debug theo lớp:
+
+```text
+bxCAN registers
+→ CAN analyzer
+→ CAN_H/CAN_L waveform
+```
+
+> **CAN hoạt động đúng chỉ khi cả protocol configuration, bxCAN controller, transceiver và physical bus đều đúng. Khi debug, luôn phân biệt lỗi controller/software với lỗi physical layer; dùng Loopback để cô lập bxCAN, CAN Analyzer để quan sát protocol và oscilloscope khi cần xác nhận chất lượng CAN_H/CAN_L.**
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="chuong-11"></a>
+# 11. Debug bằng ST-Link
 
 Chương này dùng một mục chính cho mỗi khái niệm debug. Các mục xử lý lỗi và quy trình chỉ áp dụng lại cơ chế đã nêu và dẫn chiếu về mục chính để tránh lặp nội dung.
 
@@ -18111,8 +19907,8 @@ Tên register/bit giữ nguyên ký hiệu STM32F1/Cortex-M3 như `AFIO_MAPR.SWJ
 
 ---
 
-<a id="muc-10-01"></a>
-## 10.1. Debug là gì? Programming và Debugging
+<a id="muc-11-01"></a>
+## 11.1. Debug là gì? Programming và Debugging
 
 ST-Link có thể phục vụ cả **programming** và **debugging**, nhưng hai thao tác này có mục tiêu khác nhau.
 
@@ -18183,12 +19979,12 @@ machine-code address
 
 Raw `.bin` chỉ là byte image và không tự mang đầy đủ symbol/source-level debug information như ELF.
 
-Phân biệt host, debugger, debug server, probe và target được trình bày tại **10.2**.
+Phân biệt host, debugger, debug server, probe và target được trình bày tại **11.2**.
 
 ---
 
-<a id="muc-10-02"></a>
-## 10.2. ST-Link là gì?
+<a id="muc-11-02"></a>
+## 11.2. ST-Link là gì?
 
 **ST-Link** là debug/programming probe dùng để nối host với STM32 target.
 
@@ -18255,12 +20051,12 @@ có thể được nối thêm.
 
 `VTref` cho probe biết mức điện áp logic của target. Không mặc định ST-Link luôn là nguồn cấp điện cho board; cách cấp nguồn phụ thuộc probe/board cụ thể.
 
-Các chân và chức năng của SWD/JTAG được tách tại **10.3–10.4**.
+Các chân và chức năng của SWD/JTAG được tách tại **11.3–11.4**.
 
 ---
 
-<a id="muc-10-03"></a>
-## 10.3. SWD và JTAG
+<a id="muc-11-03"></a>
+## 11.3. SWD và JTAG
 
 STM32F1 với Cortex-M3 hỗ trợ Serial Wire/JTAG Debug Port.
 
@@ -18333,14 +20129,14 @@ PA14
 
 cho SWD.
 
-Cách chọn trạng thái JTAG/SWD trên STM32F1 nằm tại **10.5**.
+Cách chọn trạng thái JTAG/SWD trên STM32F1 nằm tại **11.5**.
 
 ---
 
-<a id="muc-10-04"></a>
-## 10.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
+<a id="muc-11-04"></a>
+## 11.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
 
-Mục này tập trung vào vai trò từng tín hiệu; mapping SWD/JTAG đã được nêu tại **10.3**.
+Mục này tập trung vào vai trò từng tín hiệu; mapping SWD/JTAG đã được nêu tại **11.3**.
 
 ### `SWDIO`
 
@@ -18376,7 +20172,7 @@ Connect Under Reset
 recovery khi firmware chạy lỗi rất sớm
 ```
 
-`Connect Under Reset` được áp dụng tại **10.19**, nên không lặp lại quy trình recovery tại đây.
+`Connect Under Reset` được áp dụng tại **11.19**, nên không lặp lại quy trình recovery tại đây.
 
 ### `SWO`
 
@@ -18401,12 +20197,12 @@ muốn SWO trace
 → cần pin/wiring + trace configuration phù hợp
 ```
 
-Trace được trình bày tại **10.18**.
+Trace được trình bày tại **11.18**.
 
 ---
 
-<a id="muc-10-05"></a>
-## 10.5. SWJ và AFIO_MAPR.SWJ_CFG
+<a id="muc-11-05"></a>
+## 11.5. SWJ và AFIO_MAPR.SWJ_CFG
 
 STM32F1 dùng:
 
@@ -18453,12 +20249,12 @@ cho SWD.
 
 Cơ chế AFIO và pin remapping đã được trình bày tại **3.13**; tại đây chỉ tập trung vào ảnh hưởng của `SWJ_CFG` tới debug connection.
 
-Nếu firmware disable cả JTAG và SWD, probe có thể mất kết nối sau khi code đó chạy. Cách recovery bằng `NRST`/Connect Under Reset được xử lý tại **10.19**.
+Nếu firmware disable cả JTAG và SWD, probe có thể mất kết nối sau khi code đó chạy. Cách recovery bằng `NRST`/Connect Under Reset được xử lý tại **11.19**.
 
 ---
 
-<a id="muc-10-06"></a>
-## 10.6. Debug Session hoạt động như thế nào?
+<a id="muc-11-06"></a>
+## 11.6. Debug Session hoạt động như thế nào?
 
 Một debug session điển hình:
 
@@ -18494,7 +20290,7 @@ peripheral registers
 variables / Call Stack
 ```
 
-`PC` giúp xác định execution context hiện tại; cách sử dụng `PC/LR/SP` nằm tại **10.12**.
+`PC` giúp xác định execution context hiện tại; cách sử dụng `PC/LR/SP` nằm tại **11.12**.
 
 ### Halt không có nghĩa toàn hệ thống dừng
 
@@ -18518,12 +20314,12 @@ motor / power stage ngoài MCU
 
 Đây là nguyên nhân breakpoint có thể làm timing của hệ thống khác với free-running execution.
 
-Cơ chế dừng peripheral được hỗ trợ nằm tại **10.14**.
+Cơ chế dừng peripheral được hỗ trợ nằm tại **11.14**.
 
 ---
 
-<a id="muc-10-07"></a>
-## 10.7. Breakpoint
+<a id="muc-11-07"></a>
+## 11.7. Breakpoint
 
 **Breakpoint** dừng processor khi execution đạt vị trí đã chọn.
 
@@ -18558,14 +20354,14 @@ Số comparator phần cứng có giới hạn, vì vậy số hardware breakpoi
 
 ### Ảnh hưởng của breakpoint
 
-Tác động hệ thống khi halt đã được trình bày tại **10.6**. Vì vậy khi debug code phụ thuộc timing, peripheral hoặc external device, không nên giả định trạng thái sau một breakpoint hoàn toàn giống trạng thái khi firmware chạy tự do.
+Tác động hệ thống khi halt đã được trình bày tại **11.6**. Vì vậy khi debug code phụ thuộc timing, peripheral hoặc external device, không nên giả định trạng thái sau một breakpoint hoàn toàn giống trạng thái khi firmware chạy tự do.
 
-Watchpoint là cơ chế khác, dựa trên memory access, và được trình bày tại **10.9**.
+Watchpoint là cơ chế khác, dựa trên memory access, và được trình bày tại **11.9**.
 
 ---
 
-<a id="muc-10-08"></a>
-## 10.8. Step Into / Step Over / Step Out / Continue
+<a id="muc-11-08"></a>
+## 11.8. Step Into / Step Over / Step Out / Continue
 
 Các lệnh stepping được hiểu ở mức debugger/source view:
 
@@ -18629,12 +20425,12 @@ remove
 merge
 ```
 
-Do đó hành vi source stepping phụ thuộc debug information và compiler optimization. Phần optimization được tập trung tại **10.17**.
+Do đó hành vi source stepping phụ thuộc debug information và compiler optimization. Phần optimization được tập trung tại **11.17**.
 
 ---
 
-<a id="muc-10-09"></a>
-## 10.9. Watchpoint
+<a id="muc-11-09"></a>
+## 11.9. Watchpoint
 
 Cần phân biệt:
 
@@ -18685,12 +20481,12 @@ biến bị ghi ngoài dự kiến
 
 Giống hardware breakpoint, số comparator watchpoint có giới hạn.
 
-`PC` và Call Stack dùng để truy nguồn instruction ghi dữ liệu được trình bày tại **10.12**.
+`PC` và Call Stack dùng để truy nguồn instruction ghi dữ liệu được trình bày tại **11.12**.
 
 ---
 
-<a id="muc-10-10"></a>
-## 10.10. Registers / Memory / Peripheral Registers
+<a id="muc-11-10"></a>
+## 11.10. Registers / Memory / Peripheral Registers
 
 Debugger có thể quan sát ba lớp chính:
 
@@ -18725,7 +20521,7 @@ SP
 xPSR
 ```
 
-Cách đọc chúng khi debug nằm tại **10.12**.
+Cách đọc chúng khi debug nằm tại **11.12**.
 
 ### Memory
 
@@ -18798,8 +20594,8 @@ Vì vậy:
 
 ---
 
-<a id="muc-10-11"></a>
-## 10.11. Variables / Watch / Expressions
+<a id="muc-11-11"></a>
+## 11.11. Variables / Watch / Expressions
 
 Debugger dùng debug information để biểu diễn object/source-level state như:
 
@@ -18847,7 +20643,7 @@ Debugger khi đó có thể hiển thị:
 <optimized out>
 ```
 
-Đây không tự động chứng minh firmware sai; quan hệ giữa source và optimized machine code được trình bày tại **10.17**.
+Đây không tự động chứng minh firmware sai; quan hệ giữa source và optimized machine code được trình bày tại **11.17**.
 
 ### Live Watch
 
@@ -18855,8 +20651,8 @@ Một số tool cho phép đọc biến khi processor vẫn chạy. Việc này 
 
 ---
 
-<a id="muc-10-12"></a>
-## 10.12. Call Stack / PC / LR / SP
+<a id="muc-11-12"></a>
+## 11.12. Call Stack / PC / LR / SP
 
 Định nghĩa kiến trúc của `PC`, `LR`, `SP`, MSP/PSP và exception stack frame đã được trình bày tại **Chương 1**. Mục này tập trung vào **cách dùng chúng khi debug**.
 
@@ -18942,12 +20738,12 @@ disassembly
 fault status nếu có
 ```
 
-HardFault-specific analysis nằm tại **10.16**.
+HardFault-specific analysis nằm tại **11.16**.
 
 ---
 
-<a id="muc-10-13"></a>
-## 10.13. Debug Interrupt
+<a id="muc-11-13"></a>
+## 11.13. Debug Interrupt
 
 Cơ chế exception, NVIC, priority, masking và peripheral pending flag đã được trình bày tại **Chương 4**. Khi debug một interrupt không chạy, kiểm tra theo đúng các tầng đó thay vì định nghĩa lại cơ chế interrupt.
 
@@ -19005,12 +20801,12 @@ priority grouping / priority
 
 ### Breakpoint trong ISR
 
-Ảnh hưởng của processor Halt đã được nêu tại **10.6**. Khi dừng trong ISR, external event, DMA hoặc peripheral không được freeze có thể tiếp tục thay đổi state. Vì vậy phải thận trọng khi suy luận timing từ một run có breakpoint trong ISR.
+Ảnh hưởng của processor Halt đã được nêu tại **11.6**. Khi dừng trong ISR, external event, DMA hoặc peripheral không được freeze có thể tiếp tục thay đổi state. Vì vậy phải thận trọng khi suy luận timing từ một run có breakpoint trong ISR.
 
 ---
 
-<a id="muc-10-14"></a>
-## 10.14. DBGMCU và Freeze Peripheral
+<a id="muc-11-14"></a>
+## 11.14. DBGMCU và Freeze Peripheral
 
 STM32F1 có khối:
 
@@ -19103,12 +20899,12 @@ freeze toàn bộ MCU
 
 Chỉ peripheral có debug freeze support/bit tương ứng mới chịu cơ chế này. Thiết bị ngoài MCU không bị DBGMCU freeze.
 
-Low-power debug qua `DBGMCU_CR` được tách tại **10.15**.
+Low-power debug qua `DBGMCU_CR` được tách tại **11.15**.
 
 ---
 
-<a id="muc-10-15"></a>
-## 10.15. Debug trong Sleep / Stop / Standby
+<a id="muc-11-15"></a>
+## 11.15. Debug trong Sleep / Stop / Standby
 
 `DBGMCU_CR` có các bit:
 
@@ -19155,12 +20951,12 @@ Interrupt / Event
 
 theo low-power mode đang sử dụng.
 
-Nếu target vào Stop/Standby quá sớm làm probe khó attach, cách recovery được xử lý tại **10.19**.
+Nếu target vào Stop/Standby quá sớm làm probe khó attach, cách recovery được xử lý tại **11.19**.
 
 ---
 
-<a id="muc-10-16"></a>
-## 10.16. Debug HardFault
+<a id="muc-11-16"></a>
+## 11.16. Debug HardFault
 
 Exception stack frame đã được trình bày tại **1.9** và exception/fault model liên quan nằm trong **Chương 4**. Mục này tập trung vào quy trình thu thập bằng chứng khi firmware vào `HardFault_Handler()`.
 
@@ -19315,8 +21111,8 @@ Không nên chỉ reset target ngay khi vào HardFault vì sẽ làm mất bằn
 
 ---
 
-<a id="muc-10-17"></a>
-## 10.17. Debug với Compiler Optimization
+<a id="muc-11-17"></a>
+## 11.17. Debug với Compiler Optimization
 
 Compiler optimization thay đổi quan hệ giữa source code và machine code.
 
@@ -19340,7 +21136,7 @@ Call Stack khó đọc hơn
 breakpoint source-line không nằm đúng nơi trực giác mong đợi
 ```
 
-Điều này liên hệ trực tiếp tới **10.8**, **10.11** và **10.12**; không cần định nghĩa lại stepping/Watch/Call Stack tại đây.
+Điều này liên hệ trực tiếp tới **11.8**, **11.11** và **11.12**; không cần định nghĩa lại stepping/Watch/Call Stack tại đây.
 
 ### `volatile`
 
@@ -19393,8 +21189,8 @@ có thể chỉ lộ ra khi dùng optimization gần cấu hình release.
 
 ---
 
-<a id="muc-10-18"></a>
-## 10.18. SWO / Trace
+<a id="muc-11-18"></a>
+## 11.18. SWO / Trace
 
 Breakpoint/watchpoint có thể làm processor halt. Trace được dùng khi cần quan sát event/instrumentation mà không dừng CPU cho từng event.
 
@@ -19443,7 +21239,7 @@ software instrumentation vẫn có cost
 
 ### SWO pin
 
-Pin `PB3 / TRACESWO` đã được nêu tại **10.4**. Nếu PB3 đã được giải phóng để dùng làm GPIO/peripheral khác bằng SWJ configuration, muốn dùng SWO phải cấu hình lại pin/debug function phù hợp.
+Pin `PB3 / TRACESWO` đã được nêu tại **11.4**. Nếu PB3 đã được giải phóng để dùng làm GPIO/peripheral khác bằng SWJ configuration, muốn dùng SWO phải cấu hình lại pin/debug function phù hợp.
 
 ### SWO khác UART logging
 
@@ -19463,19 +21259,19 @@ Hai data path độc lập.
 
 ---
 
-<a id="muc-10-19"></a>
-## 10.19. Các lỗi kết nối ST-Link thường gặp
+<a id="muc-11-19"></a>
+## 11.19. Các lỗi kết nối ST-Link thường gặp
 
 Mục này chỉ tổng hợp triệu chứng và trỏ về cơ chế đã giải thích.
 
 | Triệu chứng | Kiểm tra chính | Dẫn chiếu |
 |---|---|---|
-| `No target found` | Target power, `VTref`, GND, `SWDIO`, `SWCLK`, wiring | **10.2–10.4** |
-| Kết nối chập chờn | SWD clock quá cao so với wiring/signal integrity | **10.3–10.4** |
-| Kết nối mất ngay sau reset | Firmware thay `SWJ_CFG`, chiếm/debug pin hoặc disable SWD | **10.5** |
-| Target vào Stop/Standby quá sớm | Low-power path và debug configuration | **10.15** |
-| Target reset khi đang dừng breakpoint | Watchdog/peripheral không được freeze | **10.14** |
-| Firmware crash rất sớm | Dùng reset/recovery rồi debug fault/startup | **10.16** |
+| `No target found` | Target power, `VTref`, GND, `SWDIO`, `SWCLK`, wiring | **11.2–11.4** |
+| Kết nối chập chờn | SWD clock quá cao so với wiring/signal integrity | **11.3–11.4** |
+| Kết nối mất ngay sau reset | Firmware thay `SWJ_CFG`, chiếm/debug pin hoặc disable SWD | **11.5** |
+| Target vào Stop/Standby quá sớm | Low-power path và debug configuration | **11.15** |
+| Target reset khi đang dừng breakpoint | Watchdog/peripheral không được freeze | **11.14** |
+| Firmware crash rất sớm | Dùng reset/recovery rồi debug fault/startup | **11.16** |
 | Debug access bị hạn chế | Option Bytes / protection configuration | kiểm tra đúng device/reference manual |
 
 ### Connect Under Reset
@@ -19501,7 +21297,7 @@ vào low-power rất sớm
 crash/reset loop trước khi attach bình thường
 ```
 
-`NRST` đã được định nghĩa tại **10.4**, nên mục này chỉ áp dụng nó cho recovery.
+`NRST` đã được định nghĩa tại **11.4**, nên mục này chỉ áp dụng nó cho recovery.
 
 ### Protection
 
@@ -19509,8 +21305,8 @@ Khi thay Option Bytes hoặc protection level, phải hiểu hậu quả trướ
 
 ---
 
-<a id="muc-10-20"></a>
-## 10.20. Quy trình Debug có hệ thống
+<a id="muc-11-20"></a>
+## 11.20. Quy trình Debug có hệ thống
 
 Mục tiêu của debug có hệ thống là **thu hẹp lỗi bằng bằng chứng**, không thay nhiều cấu hình cùng lúc rồi thử lại.
 
@@ -19544,14 +21340,15 @@ Không định nghĩa lại peripheral tại đây; dùng các chương tương 
 |---|---|---|
 | RCC/Clock | source ready → SYSCLK/HCLK/PCLK → peripheral clock enable | **Chương 2** |
 | GPIO | clock → `MODE/CNF` → `IDR/ODR` → AFIO/remap | **Chương 3** |
-| Interrupt | source flag → source enable → NVIC → masking/priority → vector/ISR | **Chương 4**, **10.13** |
+| Interrupt | source flag → source enable → NVIC → masking/priority → vector/ISR | **Chương 4**, **11.13** |
 | Timer/PWM | `TIMxCLK` → PSC/ARR/CNT → flag/channel → GPIO AF | **Chương 5** |
 | USART | clock/GPIO → BRR → UE/TE/RE → TXE/RXNE/TC/error | **Chương 6** |
 | SPI | clock/GPIO → mode/timing → TXE/RXNE/BSY/error → CS/NSS | **Chương 7** |
 | I2C | clock/GPIO/pull-up → BUSY/START/address → event/error flags | **Chương 7** |
 | ADC | ADCCLK/GPIO → sampling/sequence/trigger → EOC/result/DMA | **Chương 8** |
 | DMA | mapping → peripheral request → address/count/direction/width → HT/TC/TE | **Chương 9** |
-| HardFault | HFSR/CFSR → valid fault address → stacked PC/LR → disassembly | **10.16** |
+| CAN | PCLK1/GPIO/transceiver → `CAN_BTR` → mode/filter → TX/RX FIFO → `CAN_ESR` | **Chương 10** |
+| HardFault | HFSR/CFSR → valid fault address → stacked PC/LR → disassembly | **11.16** |
 
 ### Nguyên tắc kiểm chứng
 
@@ -19580,12 +21377,12 @@ Nếu các bit đều đúng:
 → chuyển sang GPIO/BRR/data path
 ```
 
-Khi debugger có thể ảnh hưởng hệ thống, đặc biệt do Halt hoặc read side effect, phải xét các lưu ý tại **10.6**, **10.10** và **10.14** trước khi kết luận.
+Khi debugger có thể ảnh hưởng hệ thống, đặc biệt do Halt hoặc read side effect, phải xét các lưu ý tại **11.6**, **11.10** và **11.14** trước khi kết luận.
 
 ---
 
-<a id="muc-10-21"></a>
-## 10.21. Câu hỏi tự kiểm tra
+<a id="muc-11-21"></a>
+## 11.21. Câu hỏi tự kiểm tra
 
 1. Programming và Debugging khác nhau ở mục tiêu nào?
 2. Host, debugger, debug server, ST-Link và target nằm ở các lớp nào?
@@ -19614,7 +21411,7 @@ Khi debugger có thể ảnh hưởng hệ thống, đặc biệt do Halt hoặc
 
 ---
 
-## 10.22. Tóm tắt
+## 11.22. Tóm tắt
 
 Kiến trúc debug:
 
