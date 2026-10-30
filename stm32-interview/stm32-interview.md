@@ -237,28 +237,67 @@
     - [10.30. Debug CAN bằng ST-Link / CAN Analyzer](#muc-10-30)
     - [10.31. Các lỗi CAN thường gặp](#muc-10-31)
     - [10.32. Câu hỏi tự kiểm tra](#muc-10-32)
-11. **[Debug bằng ST-Link](#chuong-11)**
-    - [11.1. Debug là gì? Programming và Debugging](#muc-11-01)
-    - [11.2. ST-Link là gì?](#muc-11-02)
-    - [11.3. SWD và JTAG](#muc-11-03)
-    - [11.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO](#muc-11-04)
-    - [11.5. SWJ và AFIO_MAPR.SWJ_CFG](#muc-11-05)
-    - [11.6. Debug Session hoạt động như thế nào?](#muc-11-06)
-    - [11.7. Breakpoint](#muc-11-07)
-    - [11.8. Step Into / Step Over / Step Out / Continue](#muc-11-08)
-    - [11.9. Watchpoint](#muc-11-09)
-    - [11.10. Registers / Memory / Peripheral Registers](#muc-11-10)
-    - [11.11. Variables / Watch / Expressions](#muc-11-11)
-    - [11.12. Call Stack / PC / LR / SP](#muc-11-12)
-    - [11.13. Debug Interrupt](#muc-11-13)
-    - [11.14. DBGMCU và Freeze Peripheral](#muc-11-14)
-    - [11.15. Debug trong Sleep / Stop / Standby](#muc-11-15)
-    - [11.16. Debug HardFault](#muc-11-16)
-    - [11.17. Debug với Compiler Optimization](#muc-11-17)
-    - [11.18. SWO / Trace](#muc-11-18)
-    - [11.19. Các lỗi kết nối ST-Link thường gặp](#muc-11-19)
-    - [11.20. Quy trình Debug có hệ thống](#muc-11-20)
-    - [11.21. Câu hỏi tự kiểm tra](#muc-11-21)
+11. **[USB (Universal Serial Bus)](#chuong-11)**
+    - [11.1. USB là gì?](#muc-11-01)
+    - [11.2. Host / Device / Hub](#muc-11-02)
+    - [11.3. USB Speed: Low-Speed / Full-Speed / High-Speed](#muc-11-03)
+    - [11.4. USB trên STM32F1: USB Device FS và OTG_FS](#muc-11-04)
+    - [11.5. D+ / D- và Differential Signaling](#muc-11-05)
+    - [11.6. Device Attach / Pull-Up / Bus Reset](#muc-11-06)
+    - [11.7. USB là Host-Centric Protocol](#muc-11-07)
+    - [11.8. Packet / Transaction / Transfer](#muc-11-08)
+    - [11.9. Token Packet / Data Packet / Handshake Packet](#muc-11-09)
+    - [11.10. IN / OUT theo góc nhìn của Host](#muc-11-10)
+    - [11.11. Endpoint là gì?](#muc-11-11)
+    - [11.12. Endpoint Address và Endpoint 0](#muc-11-12)
+    - [11.13. Control / Bulk / Interrupt / Isochronous Transfer](#muc-11-13)
+    - [11.14. ACK / NAK / STALL](#muc-11-14)
+    - [11.15. DATA0 / DATA1 và Data Toggle](#muc-11-15)
+    - [11.16. USB Descriptor](#muc-11-16)
+    - [11.17. Device / Configuration / Interface / Endpoint / String Descriptor](#muc-11-17)
+    - [11.18. Enumeration](#muc-11-18)
+    - [11.19. SETUP Packet và Control Transfer](#muc-11-19)
+    - [11.20. Standard USB Requests](#muc-11-20)
+    - [11.21. USB Device Classes: CDC / HID / MSC / DFU](#muc-11-21)
+    - [11.22. USB Clock 48 MHz trên STM32F1](#muc-11-22)
+    - [11.23. GPIO và phần cứng USB trên STM32F103](#muc-11-23)
+    - [11.24. STM32F103 USB Peripheral Architecture](#muc-11-24)
+    - [11.25. Endpoint Registers: USB_EPnR](#muc-11-25)
+    - [11.26. Packet Memory Area — PMA](#muc-11-26)
+    - [11.27. Buffer Descriptor Table — BTABLE](#muc-11-27)
+    - [11.28. USB_CNTR / USB_ISTR / USB_FNR / USB_DADDR](#muc-11-28)
+    - [11.29. USB Interrupt](#muc-11-29)
+    - [11.30. Suspend / Resume / Wakeup](#muc-11-30)
+    - [11.31. Quy trình khởi tạo USB Device](#muc-11-31)
+    - [11.32. Luồng Enumeration trên STM32](#muc-11-32)
+    - [11.33. Luồng truyền/nhận dữ liệu Endpoint](#muc-11-33)
+    - [11.34. Ví dụ USB CDC Virtual COM Port](#muc-11-34)
+    - [11.35. USB và CAN trên STM32F103](#muc-11-35)
+    - [11.36. Debug USB bằng ST-Link / Wireshark / USB Analyzer](#muc-11-36)
+    - [11.37. Các lỗi USB thường gặp](#muc-11-37)
+    - [11.38. Câu hỏi tự kiểm tra](#muc-11-38)
+12. **[Debug bằng ST-Link](#chuong-12)**
+    - [12.1. Debug là gì? Programming và Debugging](#muc-12-01)
+    - [12.2. ST-Link là gì?](#muc-12-02)
+    - [12.3. SWD và JTAG](#muc-12-03)
+    - [12.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO](#muc-12-04)
+    - [12.5. SWJ và AFIO_MAPR.SWJ_CFG](#muc-12-05)
+    - [12.6. Debug Session hoạt động như thế nào?](#muc-12-06)
+    - [12.7. Breakpoint](#muc-12-07)
+    - [12.8. Step Into / Step Over / Step Out / Continue](#muc-12-08)
+    - [12.9. Watchpoint](#muc-12-09)
+    - [12.10. Registers / Memory / Peripheral Registers](#muc-12-10)
+    - [12.11. Variables / Watch / Expressions](#muc-12-11)
+    - [12.12. Call Stack / PC / LR / SP](#muc-12-12)
+    - [12.13. Debug Interrupt](#muc-12-13)
+    - [12.14. DBGMCU và Freeze Peripheral](#muc-12-14)
+    - [12.15. Debug trong Sleep / Stop / Standby](#muc-12-15)
+    - [12.16. Debug HardFault](#muc-12-16)
+    - [12.17. Debug với Compiler Optimization](#muc-12-17)
+    - [12.18. SWO / Trace](#muc-12-18)
+    - [12.19. Các lỗi kết nối ST-Link thường gặp](#muc-12-19)
+    - [12.20. Quy trình Debug có hệ thống](#muc-12-20)
+    - [12.21. Câu hỏi tự kiểm tra](#muc-12-21)
 ---
 
 <a id="chuong-01"></a>
@@ -1934,7 +1973,7 @@ R0-R3, R12
 → register state liên quan
 ```
 
-Kỹ thuật HardFault debugging được trình bày đầy đủ ở **Chương 11 – Debug bằng ST-Link**.
+Kỹ thuật HardFault debugging được trình bày đầy đủ ở **Chương 12 – Debug bằng ST-Link**.
 
 **Hình minh họa mở rộng — PSP/MSP trong context switching dùng PendSV**
 
@@ -4287,7 +4326,7 @@ tương ứng:
 Floating Input
 ```
 
-Tuy nhiên một số pin debug có thể đang được khối JTAG/SWD sử dụng sau reset, nên không được suy ra rằng mọi pin đều sẵn sàng làm GPIO chỉ từ giá trị `CRL/CRH`. Phần SWJ và các pin debug được trình bày tại **3.13** và **Chương 11**.
+Tuy nhiên một số pin debug có thể đang được khối JTAG/SWD sử dụng sau reset, nên không được suy ra rằng mọi pin đều sẵn sàng làm GPIO chỉ từ giá trị `CRL/CRH`. Phần SWJ và các pin debug được trình bày tại **3.13** và **Chương 12**.
 
 ---
 
@@ -5282,7 +5321,7 @@ SWD enabled
 
 giúp giải phóng một số pin JTAG nhưng vẫn giữ SWD để debug/program.
 
-Chi tiết debug interface nằm tại **Chương 11**, nên mục này chỉ giữ phần liên quan trực tiếp tới pin mapping của GPIO.
+Chi tiết debug interface nằm tại **Chương 12**, nên mục này chỉ giữ phần liên quan trực tiếp tới pin mapping của GPIO.
 
 ---
 
@@ -5498,7 +5537,7 @@ Peripheral-specific GPIO
 | Chọn Push-Pull/Open-Drain không phù hợp | **3.6**, **3.15** |
 | Peripheral nằm trên pin remap nhưng chưa cấu hình AFIO | **3.13** |
 | ADC input chưa ở Analog mode | **3.14** |
-| Dùng pin JTAG/SWD mà chưa xem `SWJ_CFG` | **3.13**, **Chương 11** |
+| Dùng pin JTAG/SWD mà chưa xem `SWJ_CFG` | **3.13**, **Chương 12** |
 
 Mục này chỉ tổng hợp **thứ tự thao tác**; không lặp lại code và nguyên lý đã giải thích ở các mục chuyên biệt.
 
@@ -11600,7 +11639,7 @@ PB4  → MISO
 PB5  → MOSI
 ```
 
-Các pin `PA15/PB3/PB4` liên quan JTAG sau reset; nếu dùng remap phải xem cấu hình `SWJ_CFG` tại **3.13 / Chương 11**.
+Các pin `PA15/PB3/PB4` liên quan JTAG sau reset; nếu dùng remap phải xem cấu hình `SWJ_CFG` tại **3.13 / Chương 12**.
 
 Ở Slave mode, hướng tín hiệu đổi theo vai trò:
 
@@ -19678,7 +19717,7 @@ Analyzer thấy frame?
 ACK / errors / counters thế nào?
 ```
 
-Phần công cụ ST-Link chi tiết nằm ở **Chương 11 – Debug bằng ST-Link**.
+Phần công cụ ST-Link chi tiết nằm ở **Chương 12 – Debug bằng ST-Link**.
 
 ---
 
@@ -19833,7 +19872,2177 @@ bxCAN registers
 ---
 
 <a id="chuong-11"></a>
-# 11. Debug bằng ST-Link
+# 11. USB (Universal Serial Bus)
+
+Chương này tập trung vào **USB 2.0 Full-Speed Device trên STM32F102/F103**, vì đây là USB peripheral phù hợp với STM32F103 đang được dùng xuyên suốt các chương trước. `USB OTG_FS` của STM32F105/F107 chỉ được nêu để phân biệt kiến trúc; không dùng lẫn register của hai peripheral.
+
+USB nên được học theo thứ tự:
+
+```text
+USB Protocol
+     ↓
+Host / Device
+     ↓
+Packet / Transaction / Transfer
+     ↓
+Endpoint
+     ↓
+Descriptor / Enumeration
+     ↓
+STM32 USB Peripheral
+     ↓
+PMA / Registers / Interrupt
+     ↓
+USB Class
+```
+
+Không nên bắt đầu bằng `USB_EPnR`, `PMA` hoặc `BTABLE` trước khi hiểu EP0 và enumeration, vì register chỉ là cách STM32 hiện thực protocol USB.
+
+## Quy ước thuật ngữ
+
+| Thuật ngữ | Cách hiểu trong chương |
+|---|---|
+| **USB Host** | Thành phần điều khiển bus và khởi tạo transaction. PC thường đóng vai trò Host. |
+| **USB Device** | Thiết bị ngoại vi USB phản hồi transaction do Host khởi tạo. |
+| **Hub** | Thiết bị mở rộng một upstream port thành nhiều downstream port. |
+| **Full-Speed (FS)** | USB signaling rate 12 Mbit/s. |
+| **endpoint** | Điểm giao tiếp logic bên trong USB Device. |
+| **EP0** | Default Control Endpoint, bắt buộc có ở mọi USB Device. |
+| **IN** | Data direction **Device → Host**. |
+| **OUT** | Data direction **Host → Device**. |
+| **PMA** | Packet Memory Area, SRAM chuyên dụng dùng làm buffer packet của USB peripheral STM32F102/F103. |
+| **BTABLE** | Buffer Descriptor Table mô tả vị trí/kích thước buffer trong PMA. |
+| **enumeration** | Quá trình Host reset, nhận descriptor, gán address và chọn configuration cho Device. |
+| **descriptor** | Cấu trúc dữ liệu mô tả Device/Configuration/Interface/Endpoint/String. |
+| **USB class** | Chuẩn chức năng ở tầng cao hơn như CDC, HID, MSC, DFU. |
+
+---
+
+<a id="muc-11-01"></a>
+## 11.1. USB là gì?
+
+`USB`:
+
+```text
+Universal Serial Bus
+```
+
+USB là bus nối tiếp được thiết kế để Host có thể phát hiện, cấu hình và giao tiếp với nhiều loại Device theo một protocol chuẩn.
+
+Mô hình cơ bản:
+
+```text
+Host
+ │
+ ├── Device
+ ├── Device
+ └── Hub
+      ├── Device
+      └── Device
+```
+
+Khác với UART point-to-point đơn giản, USB có sẵn các khái niệm protocol như:
+
+```text
+Device Address
+Endpoint
+Packet
+Transaction
+Transfer
+Descriptor
+Enumeration
+Standard Request
+Device Class
+```
+
+Do đó USB không chỉ là:
+
+```text
+TX byte
+RX byte
+```
+
+mà là một protocol stack có nhiều tầng.
+
+---
+
+<a id="muc-11-02"></a>
+## 11.2. Host / Device / Hub
+
+### Host
+
+Host là thành phần điều khiển bus.
+
+```text
+Host
+→ phát hiện Device
+→ reset bus
+→ cấp lịch giao tiếp
+→ gửi token
+→ đọc descriptor
+→ gán address
+→ chọn configuration
+```
+
+Ví dụ phổ biến:
+
+```text
+PC
+→ USB Host
+```
+
+### Device
+
+Device là thiết bị ngoại vi phản hồi yêu cầu của Host.
+
+Ví dụ:
+
+```text
+STM32F103 USB CDC
+→ USB Device
+```
+
+### Hub
+
+Hub mở rộng topology USB.
+
+```text
+Host
+ ↓
+Hub
+├── Device A
+├── Device B
+└── Device C
+```
+
+Điểm cần nhớ:
+
+> **USB là host-controlled bus. Device không tự giành quyền bus để bắt đầu một transaction tùy ý.**
+
+---
+
+<a id="muc-11-03"></a>
+## 11.3. USB Speed: Low-Speed / Full-Speed / High-Speed
+
+Các tốc độ quen thuộc của USB 2.0:
+
+| Speed | Signaling rate |
+|---|---:|
+| Low-Speed | 1.5 Mbit/s |
+| Full-Speed | 12 Mbit/s |
+| High-Speed | 480 Mbit/s |
+
+Trong chương này:
+
+```text
+STM32F102/F103
+→ USB Full-Speed Device
+→ 12 Mbit/s signaling rate
+```
+
+Không được nhầm:
+
+```text
+USB Full-Speed
+= 12 Mbit/s
+```
+
+với:
+
+```text
+USB peripheral clock
+= 48 MHz
+```
+
+`12 Mbit/s` là tốc độ signaling trên bus. `48 MHz` là clock mà USB peripheral Full-Speed của STM32F1 cần để hoạt động đúng.
+
+---
+
+<a id="muc-11-04"></a>
+## 11.4. USB trên STM32F1: USB Device FS và OTG_FS
+
+STM32F1 không có một USB peripheral giống nhau trên mọi dòng.
+
+### STM32F102 / STM32F103
+
+Dùng:
+
+```text
+USB 2.0 Full-Speed Device interface
+```
+
+Vai trò:
+
+```text
+Device
+```
+
+Đây là peripheral chính của chương.
+
+### STM32F105 / STM32F107 Connectivity Line
+
+Dùng:
+
+```text
+USB OTG_FS
+```
+
+Kiến trúc này hỗ trợ các vai trò rộng hơn:
+
+```text
+Device
+Host
+OTG / Dual Role
+```
+
+và có register/FIFO architecture khác USB Device FS của F102/F103.
+
+Do đó:
+
+```text
+USB_EPnR / PMA / BTABLE
+→ phần USB Device FS của F102/F103
+```
+
+không được áp dụng máy móc cho:
+
+```text
+STM32F105/F107 OTG_FS
+```
+
+---
+
+<a id="muc-11-05"></a>
+## 11.5. D+ / D- và Differential Signaling
+
+USB Full-Speed dùng hai đường dữ liệu:
+
+```text
+D+
+D-
+```
+
+Trên STM32F103:
+
+```text
+PA11 → USB_DM → D-
+PA12 → USB_DP → D+
+```
+
+USB truyền thông tin bằng trạng thái vi sai giữa hai line thay vì xem từng line như một GPIO logic độc lập.
+
+Khái niệm:
+
+```text
+USB PHY
+   ↓
+D+ / D-
+   ↓
+Cable
+   ↓
+Host PHY
+```
+
+USB peripheral tích hợp PHY Full-Speed, nên firmware không bit-bang từng bit trên PA11/PA12.
+
+Phần cứng USB đảm nhiệm các chức năng low-level như:
+
+```text
+line encoding/decoding
+bit stuffing
+packet recognition
+CRC checking/generation
+handshake generation
+```
+
+CPU làm việc chủ yếu ở tầng endpoint, buffer và protocol state.
+
+---
+
+<a id="muc-11-06"></a>
+## 11.6. Device Attach / Pull-Up / Bus Reset
+
+### Device Attach
+
+Full-Speed Device báo sự hiện diện cho Host bằng pull-up 1.5 kΩ trên D+.
+
+Với STM32F102/F103:
+
+```text
+D+
+ ↑
+1.5 kΩ pull-up ngoài
+ ↑
+3.0 ... 3.6 V domain phù hợp
+```
+
+Pull-up làm Host nhận biết:
+
+```text
+một Full-Speed Device đã attach
+```
+
+### Bus Reset
+
+Sau khi phát hiện Device, Host có thể tạo USB reset.
+
+Luồng khái niệm:
+
+```text
+Device Attach
+     ↓
+Host Detect
+     ↓
+USB Bus Reset
+     ↓
+Device trở về default USB state
+     ↓
+Address = 0
+     ↓
+EP0 được chuẩn bị
+```
+
+Trên STM32 USB peripheral, bus reset tạo `RESET` event trong `USB_ISTR` nếu interrupt tương ứng được enable.
+
+Sau reset, firmware phải chuẩn bị lại Default Control Endpoint để Host bắt đầu enumeration.
+
+---
+
+<a id="muc-11-07"></a>
+## 11.7. USB là Host-Centric Protocol
+
+USB Device không tự quyết định lúc nào mình được phát packet lên bus.
+
+Ví dụ Device có data muốn gửi:
+
+```text
+Application có data
+       ↓
+firmware đặt data vào IN endpoint
+       ↓
+endpoint ở trạng thái sẵn sàng
+       ↓
+Host gửi IN token
+       ↓
+Device mới trả DATA packet
+```
+
+Nếu Host không gửi IN token:
+
+```text
+Device không tự truyền DATA packet
+```
+
+Đây là khác biệt lớn với UART:
+
+```text
+UART transmitter
+→ có thể chủ động phát khi muốn
+
+USB Device
+→ phải chờ transaction do Host lập lịch
+```
+
+---
+
+<a id="muc-11-08"></a>
+## 11.8. Packet / Transaction / Transfer
+
+Ba khái niệm này nằm ở các tầng khác nhau.
+
+```text
+Transfer
+   ↓ gồm
+Transaction
+   ↓ gồm
+Packet
+```
+
+### Packet
+
+Packet là đơn vị protocol thấp hơn, ví dụ:
+
+```text
+IN token
+OUT token
+DATA0
+ACK
+```
+
+### Transaction
+
+Transaction là một lần trao đổi hoàn chỉnh ở mức token/data/handshake.
+
+Ví dụ IN transaction:
+
+```text
+Host
+ ↓ IN Token
+Device
+ ↓ DATA packet
+Host
+ ↓ ACK
+```
+
+### Transfer
+
+Transfer là hoạt động logic ở tầng cao hơn và có thể gồm nhiều transaction.
+
+Ví dụ:
+
+```text
+Control Transfer
+Bulk Transfer
+Interrupt Transfer
+Isochronous Transfer
+```
+
+Không nên gọi mọi packet là một "transfer".
+
+---
+
+<a id="muc-11-09"></a>
+## 11.9. Token Packet / Data Packet / Handshake Packet
+
+Các nhóm packet cần nhận diện:
+
+### Token Packet
+
+```text
+IN
+OUT
+SETUP
+SOF
+```
+
+Token cho biết Host muốn thực hiện loại transaction nào và với endpoint nào.
+
+### Data Packet
+
+Các PID dữ liệu điển hình:
+
+```text
+DATA0
+DATA1
+```
+
+USB 2.0 còn có các PID data khác cho một số mode, nhưng khi học Full-Speed Device cơ bản cần chắc DATA0/DATA1 trước.
+
+### Handshake Packet
+
+```text
+ACK
+NAK
+STALL
+```
+
+Handshake phản ánh kết quả/trạng thái của transaction.
+
+### Ví dụ OUT Transaction
+
+```text
+Host
+ ↓ OUT Token
+Host
+ ↓ DATA packet
+Device
+ ↓ ACK / NAK / STALL
+```
+
+---
+
+<a id="muc-11-10"></a>
+## 11.10. IN / OUT theo góc nhìn của Host
+
+USB luôn đặt tên direction theo **góc nhìn của Host**.
+
+```text
+IN
+→ Device → Host
+
+OUT
+→ Host → Device
+```
+
+Ví dụ PC đọc data từ STM32:
+
+```text
+STM32 Device
+    ↓
+   IN
+    ↓
+PC Host
+```
+
+PC gửi data xuống STM32:
+
+```text
+PC Host
+   ↓
+  OUT
+   ↓
+STM32 Device
+```
+
+Sai lầm phổ biến:
+
+```text
+IN = data đi vào STM32
+```
+
+Đây là cách hiểu sai vì direction không được đặt theo góc nhìn của MCU.
+
+---
+
+<a id="muc-11-11"></a>
+## 11.11. Endpoint là gì?
+
+Endpoint là điểm giao tiếp logic bên trong USB Device.
+
+Có thể hình dung:
+
+```text
+USB Device
+│
+├── Endpoint 0
+├── Endpoint 1 IN
+├── Endpoint 1 OUT
+├── Endpoint 2 IN
+└── ...
+```
+
+Endpoint có các thuộc tính như:
+
+```text
+endpoint number
+direction
+transfer type
+maximum packet size
+current state
+```
+
+Trên STM32F102/F103, USB peripheral có 8 endpoint registers và hỗ trợ tới 8 bidirectional endpoint numbers theo cấu hình phần cứng.
+
+Endpoint không phải một physical pin riêng. Nhiều endpoint logic cùng dùng chung D+/D-.
+
+---
+
+<a id="muc-11-12"></a>
+## 11.12. Endpoint Address và Endpoint 0
+
+Endpoint address được tạo bởi:
+
+```text
+Endpoint Number
++
+Direction
+```
+
+Ví dụ:
+
+```text
+EP1 IN
+EP1 OUT
+```
+
+là hai direction logic khác nhau dù cùng endpoint number 1.
+
+### Endpoint 0
+
+Mọi USB Device phải có:
+
+```text
+Endpoint 0
+```
+
+EP0 là:
+
+```text
+Default Control Endpoint
+```
+
+và được dùng để xử lý:
+
+```text
+GET_DESCRIPTOR
+SET_ADDRESS
+SET_CONFIGURATION
+GET_STATUS
+...
+```
+
+Nếu EP0 sai:
+
+```text
+enumeration thất bại
+```
+
+Host có thể nhìn thấy attach/reset nhưng không hoàn tất nhận dạng Device.
+
+---
+
+<a id="muc-11-13"></a>
+## 11.13. Control / Bulk / Interrupt / Isochronous Transfer
+
+USB có bốn transfer type chính.
+
+| Transfer | Mục tiêu | Đặc điểm điển hình |
+|---|---|---|
+| Control | Configuration/control | Bắt buộc cho EP0; có SETUP/Data/Status stage |
+| Bulk | Data chính xác, throughput khi bus rảnh | Có handshake/retry; không bảo đảm latency |
+| Interrupt | Data nhỏ cần polling định kỳ | Host lập lịch với interval đã descriptor khai báo |
+| Isochronous | Dữ liệu thời gian thực | Ưu tiên timing/bandwidth, không retry transaction lỗi như Bulk |
+
+### Control
+
+Dùng trong enumeration và request điều khiển.
+
+### Bulk
+
+Phù hợp cho payload cần đúng dữ liệu hơn là timing tuyệt đối.
+
+Ví dụ:
+
+```text
+CDC data
+MSC data
+```
+
+### Interrupt
+
+Phù hợp cho event/report nhỏ, ví dụ HID.
+
+### Isochronous
+
+Phù hợp cho stream như audio khi mất một packet thường tốt hơn retry muộn làm phá timing.
+
+---
+
+<a id="muc-11-14"></a>
+## 11.14. ACK / NAK / STALL
+
+### ACK
+
+```text
+ACK
+→ transaction được chấp nhận thành công
+```
+
+### NAK
+
+```text
+NAK
+→ endpoint hiện chưa sẵn sàng
+```
+
+NAK không phải fatal error.
+
+Ví dụ:
+
+```text
+Host gửi IN token
+      ↓
+Device chưa có data
+      ↓
+NAK
+      ↓
+Host có thể thử lại sau
+```
+
+### STALL
+
+```text
+STALL
+→ endpoint không thể/không chấp nhận request theo trạng thái hiện tại
+```
+
+STALL thường cần protocol/software xử lý rõ ràng trước khi endpoint quay lại trạng thái bình thường.
+
+Điểm cần nhớ:
+
+```text
+NAK
+→ flow control bình thường
+
+STALL
+→ trạng thái từ chối/halt có ý nghĩa protocol
+```
+
+---
+
+<a id="muc-11-15"></a>
+## 11.15. DATA0 / DATA1 và Data Toggle
+
+USB dùng data toggle để phân biệt transaction dữ liệu mới với transaction bị lặp lại do retry.
+
+Chuỗi điển hình:
+
+```text
+DATA0
+ ↓
+DATA1
+ ↓
+DATA0
+ ↓
+DATA1
+```
+
+Nếu ACK bị mất, Host/Device có thể retry transaction mà không làm application nhận cùng payload hai lần nhờ cơ chế toggle.
+
+Trên STM32F103 USB endpoint register có:
+
+```text
+DTOG_TX
+DTOG_RX
+```
+
+để phần cứng quản lý trạng thái toggle phía TX/RX.
+
+Không nên tự toggle DATA0/DATA1 bằng application logic ở tầng class; USB peripheral/driver xử lý cơ chế này ở tầng endpoint.
+
+---
+
+<a id="muc-11-16"></a>
+## 11.16. USB Descriptor
+
+Descriptor là các cấu trúc dữ liệu để Device mô tả chính nó cho Host.
+
+Host không cần biết trước firmware STM32 bên trong làm gì. Nó hỏi Device:
+
+```text
+Bạn là loại thiết bị gì?
+Bạn hỗ trợ configuration nào?
+Có interface nào?
+Có endpoint nào?
+Packet size bao nhiêu?
+Class nào?
+```
+
+Device trả lời bằng descriptor.
+
+Cấu trúc logic:
+
+```text
+Device
+└── Configuration
+    ├── Interface
+    │   ├── Endpoint
+    │   └── Endpoint
+    └── Interface
+        └── Endpoint
+```
+
+String Descriptor cung cấp chuỗi như:
+
+```text
+Manufacturer
+Product
+Serial Number
+```
+
+tùy Device khai báo.
+
+---
+
+<a id="muc-11-17"></a>
+## 11.17. Device / Configuration / Interface / Endpoint / String Descriptor
+
+### Device Descriptor
+
+Mô tả Device ở cấp tổng quát:
+
+```text
+USB version
+VID
+PID
+Device class/subclass/protocol
+EP0 maximum packet size
+number of configurations
+string indices
+```
+
+### Configuration Descriptor
+
+Mô tả một configuration và tổng cấu trúc interface bên dưới nó.
+
+### Interface Descriptor
+
+Một configuration có thể có một hoặc nhiều interface.
+
+Ví dụ CDC thường có nhiều interface logic để tách control và data function.
+
+### Endpoint Descriptor
+
+Mô tả endpoint không phải EP0, gồm các thông tin như:
+
+```text
+endpoint address
+IN / OUT
+transfer type
+maximum packet size
+interval
+```
+
+### String Descriptor
+
+Mô tả text Unicode theo format USB, ví dụ manufacturer/product/serial string.
+
+Điểm cần nhớ:
+
+> **Descriptor hierarchy phải nhất quán. Host dựa vào descriptor để biết sẽ giao tiếp với Device như thế nào.**
+
+---
+
+<a id="muc-11-18"></a>
+## 11.18. Enumeration
+
+Enumeration là quá trình Host nhận diện và cấu hình Device sau khi attach.
+
+Luồng khái niệm:
+
+```text
+Device Attach
+     ↓
+Host Detect
+     ↓
+Bus Reset
+     ↓
+Device Address = 0
+     ↓
+EP0 hoạt động
+     ↓
+GET_DESCRIPTOR
+     ↓
+SET_ADDRESS
+     ↓
+đọc Configuration / Interface / Endpoint descriptors
+     ↓
+SET_CONFIGURATION
+     ↓
+Configured State
+```
+
+Sau `SET_CONFIGURATION`, các endpoint application cần thiết được đưa vào trạng thái hoạt động theo configuration.
+
+### Không nên hard-code thứ tự quá chặt
+
+Host implementation có thể đọc descriptor theo những sequence hợp lệ khác nhau.
+
+Firmware Device phải xử lý request theo USB specification thay vì giả định:
+
+```text
+request A luôn đúng một lần
+rồi mới request B
+```
+
+---
+
+<a id="muc-11-19"></a>
+## 11.19. SETUP Packet và Control Transfer
+
+Control Transfer có ba stage:
+
+```text
+SETUP Stage
+    ↓
+Data Stage
+(có thể không có)
+    ↓
+Status Stage
+```
+
+### SETUP Packet
+
+SETUP data có 8 byte:
+
+```text
+bmRequestType  1 byte
+bRequest       1 byte
+wValue         2 byte
+wIndex         2 byte
+wLength        2 byte
+```
+
+### `bmRequestType`
+
+Mô tả:
+
+```text
+direction
+type
+recipient
+```
+
+### `bRequest`
+
+Cho biết request cụ thể, ví dụ:
+
+```text
+GET_DESCRIPTOR
+SET_ADDRESS
+SET_CONFIGURATION
+```
+
+### `wValue / wIndex / wLength`
+
+```text
+wValue
+→ request-specific value
+
+wIndex
+→ interface/endpoint hoặc tham số phụ
+
+wLength
+→ độ dài Data Stage
+```
+
+### Ví dụ GET_DESCRIPTOR
+
+```text
+SETUP
+ ↓
+Data IN: descriptor
+ ↓
+Status OUT
+```
+
+---
+
+<a id="muc-11-20"></a>
+## 11.20. Standard USB Requests
+
+Các standard request quan trọng:
+
+```text
+GET_STATUS
+CLEAR_FEATURE
+SET_FEATURE
+SET_ADDRESS
+GET_DESCRIPTOR
+SET_DESCRIPTOR
+GET_CONFIGURATION
+SET_CONFIGURATION
+GET_INTERFACE
+SET_INTERFACE
+SYNCH_FRAME
+```
+
+Trong giai đoạn đầu cần chắc nhất:
+
+### GET_DESCRIPTOR
+
+```text
+Host
+→ yêu cầu Device gửi descriptor
+```
+
+### SET_ADDRESS
+
+Host gán USB address cho Device.
+
+Trên STM32F103, address được ghi vào:
+
+```text
+USB_DADDR.ADD
+```
+
+### SET_CONFIGURATION
+
+Host chọn một configuration mà Device đã mô tả.
+
+Sau đó Device thường chuyển sang:
+
+```text
+Configured State
+```
+
+và application endpoints được sử dụng.
+
+---
+
+<a id="muc-11-21"></a>
+## 11.21. USB Device Classes: CDC / HID / MSC / DFU
+
+Sau khi USB core/enumeration đã rõ, application thường dùng một USB class.
+
+### CDC
+
+`CDC`:
+
+```text
+Communication Device Class
+```
+
+Một ứng dụng quen thuộc:
+
+```text
+USB CDC ACM
+→ Virtual COM Port
+```
+
+### HID
+
+`HID`:
+
+```text
+Human Interface Device
+```
+
+Ví dụ:
+
+```text
+Keyboard
+Mouse
+Custom report-based HID
+```
+
+### MSC
+
+`MSC`:
+
+```text
+Mass Storage Class
+```
+
+Device xuất hiện giống storage device và thường sử dụng Bulk transfer cho data path.
+
+### DFU
+
+`DFU`:
+
+```text
+Device Firmware Upgrade
+```
+
+Dùng để nâng cấp firmware qua USB theo class protocol tương ứng.
+
+### Thứ tự học
+
+```text
+USB Core
+ ↓
+EP0 + Enumeration
+ ↓
+Class Descriptor / Class Request
+ ↓
+Class Data Path
+```
+
+Không nên học CDC/HID trước khi hiểu EP0 và descriptor.
+
+---
+
+<a id="muc-11-22"></a>
+## 11.22. USB Clock 48 MHz trên STM32F1
+
+USB Full-Speed peripheral cần clock chính xác:
+
+```text
+48 MHz
+```
+
+Trên STM32F102/F103, USB clock được lấy từ PLL clock qua `USBPRE`.
+
+```text
+PLLCLK
+  ↓
+USBPRE
+  ↓
+USBCLK = 48 MHz
+```
+
+`RCC_CFGR.USBPRE`:
+
+```text
+USBPRE = 0
+→ PLLCLK / 1.5
+
+USBPRE = 1
+→ PLLCLK không chia
+```
+
+### Ví dụ quen thuộc
+
+```text
+HSE = 8 MHz
+ ↓
+PLL × 9
+ ↓
+PLLCLK = 72 MHz
+ ↓ USBPRE = 0
+72 / 1.5
+ ↓
+USBCLK = 48 MHz
+```
+
+### Thứ tự cấu hình
+
+`USBPRE` phải có giá trị đúng trước khi enable USB peripheral clock trong RCC.
+
+Luồng:
+
+```text
+HSE / PLL
+   ↓
+PLLCLK đúng
+   ↓
+USBPRE
+   ↓
+48 MHz
+   ↓
+USBEN
+```
+
+Điểm cần nhớ:
+
+> **SYSCLK đúng không tự động bảo đảm USBCLK đúng. USB là một peripheral rất nhạy với clock accuracy.**
+
+---
+
+<a id="muc-11-23"></a>
+## 11.23. GPIO và phần cứng USB trên STM32F103
+
+### Data Pins
+
+```text
+PA11 → USB_DM
+PA12 → USB_DP
+```
+
+Khi USB peripheral điều khiển các chân này, chúng không được xử lý như hai GPIO data thông thường.
+
+### D+ Pull-Up
+
+STM32F102/F103 cần:
+
+```text
+1.5 kΩ pull-up ngoài trên USB_DP / D+
+```
+
+để báo Full-Speed attach cho Host.
+
+Trên board thực tế, pull-up có thể được nối cố định hoặc được điều khiển bằng transistor/GPIO tùy thiết kế để phần mềm chủ động disconnect/reconnect.
+
+### Connector
+
+Nếu Device dùng connector USB phù hợp:
+
+```text
+VBUS
+D-
+D+
+GND
+```
+
+phải được route đúng.
+
+### PCB
+
+Ở mức thực hành cần chú ý:
+
+```text
+D+ / D- differential routing
+ESD protection
+đường trace ngắn/hợp lý
+return path tốt
+connector wiring đúng
+```
+
+Chi tiết impedance/PCB layout phải theo hardware guideline của ST và USB specification, không suy ra chỉ từ register map.
+
+---
+
+<a id="muc-11-24"></a>
+## 11.24. STM32F103 USB Peripheral Architecture
+
+Mô hình khái niệm:
+
+```text
+D+ / D-
+   ↓
+USB Transceiver / PHY
+   ↓
+Serial Interface Engine
+   ↓
+Endpoint Logic
+   ↓
+Packet Buffer Interface
+   ↓
+PMA
+   ↕
+Cortex-M3 software
+```
+
+### Serial Interface Engine
+
+Xử lý nhiều công việc protocol low-level:
+
+```text
+packet detection
+PID recognition
+CRC
+bit stuffing
+handshake
+SOF/reset/suspend detection
+```
+
+### Endpoint Logic
+
+Mỗi endpoint có state/register riêng để quản lý:
+
+```text
+endpoint number
+endpoint type
+TX state
+RX state
+data toggle
+correct-transfer flags
+```
+
+### Packet Buffer Interface
+
+Quản lý việc chuyển packet giữa endpoint logic và PMA.
+
+CPU không cần copy từng bit từ D+/D-. CPU đọc/ghi packet ở buffer memory và cập nhật endpoint state.
+
+---
+
+<a id="muc-11-25"></a>
+## 11.25. Endpoint Registers: USB_EPnR
+
+STM32F103 có các endpoint register:
+
+```text
+USB_EP0R
+USB_EP1R
+...
+USB_EP7R
+```
+
+Các field quan trọng:
+
+```text
+EA[3:0]
+→ Endpoint Address/Number
+
+EP_TYPE
+→ Control / Bulk / Interrupt / Isochronous
+
+STAT_TX
+→ TX endpoint state
+
+STAT_RX
+→ RX endpoint state
+
+DTOG_TX
+DTOG_RX
+→ data toggle state
+
+CTR_TX
+CTR_RX
+→ correct transfer occurred
+
+SETUP
+→ packet nhận được là SETUP transaction
+```
+
+### Endpoint Status
+
+`STAT_TX/STAT_RX` có thể biểu diễn các trạng thái như:
+
+```text
+DISABLED
+STALL
+NAK
+VALID
+```
+
+Ví dụ IN endpoint:
+
+```text
+software chuẩn bị TX buffer
+      ↓
+set TX count
+      ↓
+STAT_TX → VALID
+      ↓
+Host gửi IN token
+      ↓
+USB peripheral truyền packet
+      ↓
+CTR_TX
+```
+
+### Register Semantics đặc biệt
+
+`USB_EPnR` không phải register R/W thông thường. Một số bit là:
+
+```text
+toggle-on-write
+rc_w0
+hardware-updated
+```
+
+Do đó phải tuân theo sequence/macro được thiết kế riêng cho USB endpoint register.
+
+Không nên dùng read-modify-write tùy ý như:
+
+```c
+USB->EP0R |= mask;
+```
+
+cho mọi field mà không hiểu semantics, vì có thể vô tình toggle/clear bit khác.
+
+---
+
+<a id="muc-11-26"></a>
+## 11.26. Packet Memory Area — PMA
+
+STM32F102/F103 dùng SRAM chuyên dụng cho USB packet buffering.
+
+Trong các device STM32F103 thuộc nhóm tương ứng:
+
+```text
+PMA / shared USB-CAN SRAM
+→ 512 byte
+```
+
+PMA không phải main SRAM buffer thông thường của application.
+
+Mô hình:
+
+```text
+Main SRAM
+→ application variables
+
+USB PMA
+→ USB endpoint packet buffers
+→ Buffer Descriptor Table
+```
+
+Một cách bố trí khái niệm:
+
+```text
+PMA
+├── BTABLE
+├── EP0 TX Buffer
+├── EP0 RX Buffer
+├── EP1 TX Buffer
+├── EP1 RX Buffer
+└── ...
+```
+
+Software phải bảo đảm các vùng buffer:
+
+```text
+không overlap
+đúng alignment
+đủ kích thước
+```
+
+Nếu bố trí PMA sai, USB có thể enumerate thất bại hoặc packet data bị corruption.
+
+---
+
+<a id="muc-11-27"></a>
+## 11.27. Buffer Descriptor Table — BTABLE
+
+`USB_BTABLE` xác định vị trí Buffer Descriptor Table trong PMA.
+
+Mỗi endpoint có descriptor entries mô tả buffer.
+
+Về mặt khái niệm:
+
+```text
+Endpoint n
+├── ADDRn_TX
+├── COUNTn_TX
+├── ADDRn_RX
+└── COUNTn_RX
+```
+
+### TX
+
+```text
+ADDRn_TX
+→ vị trí TX buffer trong PMA
+
+COUNTn_TX
+→ số byte endpoint sẽ truyền ở IN transaction tiếp theo
+```
+
+### RX
+
+```text
+ADDRn_RX
+→ vị trí RX buffer trong PMA
+
+COUNTn_RX
+→ chứa/cấu hình thông tin receive buffer và số byte nhận theo format phần cứng
+```
+
+Luồng TX:
+
+```text
+CPU copy payload → PMA TX buffer
+        ↓
+set COUNT_TX
+        ↓
+STAT_TX = VALID
+        ↓
+Host IN token
+        ↓
+USB hardware đọc PMA và phát packet
+```
+
+Luồng RX:
+
+```text
+Host OUT/SETUP
+      ↓
+USB hardware ghi PMA RX buffer
+      ↓
+CTR_RX
+      ↓
+CPU đọc payload từ PMA
+      ↓
+re-arm RX endpoint
+```
+
+---
+
+<a id="muc-11-28"></a>
+## 11.28. USB_CNTR / USB_ISTR / USB_FNR / USB_DADDR
+
+Ngoài endpoint register, các global register quan trọng gồm:
+
+### `USB_CNTR`
+
+Điều khiển peripheral và interrupt mask.
+
+Các chức năng cần nhận diện:
+
+```text
+FRES
+→ force USB reset
+
+PDWN
+→ power down
+
+LP_MODE / FSUSP
+→ suspend-related control
+
+RESETM / CTRM / SUSPM / WKUPM / SOFM ...
+→ interrupt mask
+```
+
+### `USB_ISTR`
+
+Status/interrupt events:
+
+```text
+CTR
+→ Correct Transfer
+
+RESET
+→ USB Reset
+
+SUSP
+→ Suspend request
+
+WKUP
+→ Wakeup activity
+
+SOF
+→ Start Of Frame
+
+PMAOVR
+→ PMA over/underrun condition
+
+ERR
+→ error condition
+```
+
+`DIR` và `EP_ID` giúp xác định endpoint/direction liên quan khi `CTR` xảy ra.
+
+### `USB_FNR`
+
+Chứa thông tin frame, gồm frame number/state liên quan tới USB timing.
+
+### `USB_DADDR`
+
+```text
+ADD[6:0]
+→ USB Device Address
+
+EF
+→ Enable Function
+```
+
+Sau USB reset:
+
+```text
+Device Address = 0
+```
+
+Sau `SET_ADDRESS`, firmware cập nhật address theo đúng control-transfer timing yêu cầu.
+
+---
+
+<a id="muc-11-29"></a>
+## 11.29. USB Interrupt
+
+USB Device FS hoạt động chủ yếu theo event/interrupt.
+
+Luồng:
+
+```text
+USB Bus Event
+    ↓
+USB_ISTR flag
+    ↓
+USB_CNTR mask enable
+    ↓
+USB IRQ
+    ↓
+ISR
+```
+
+Các event quan trọng:
+
+```text
+RESET
+CTR
+SUSP
+WKUP
+SOF
+ERR
+PMAOVR
+```
+
+### RESET
+
+Khi Host reset bus:
+
+```text
+RESET = 1
+```
+
+Firmware phải đưa USB function về default state và chuẩn bị EP0.
+
+### CTR
+
+`Correct Transfer` cho biết một endpoint đã hoàn tất transaction hợp lệ.
+
+Software dùng:
+
+```text
+EP_ID
+DIR
+USB_EPnR.CTR_RX / CTR_TX
+SETUP
+```
+
+để biết cần phục vụ endpoint nào.
+
+### ISR Design
+
+Không nên đưa application processing nặng vào USB ISR.
+
+ISR nên:
+
+```text
+xử lý protocol event cần thiết
+copy/arm buffer đúng thời điểm
+update state
+đánh dấu event cho tầng application
+```
+
+---
+
+<a id="muc-11-30"></a>
+## 11.30. Suspend / Resume / Wakeup
+
+USB hỗ trợ suspend khi bus không có traffic trong thời gian được protocol quy định.
+
+Trên STM32F103, USB peripheral có thể phát hiện suspend request.
+
+Luồng:
+
+```text
+không có USB traffic
+      ↓
+SUSP event
+      ↓
+firmware đưa USB/MCU vào trạng thái power phù hợp
+```
+
+Khi activity xuất hiện trở lại:
+
+```text
+WKUP
+→ resume processing
+```
+
+### Remote Wakeup
+
+Nếu Device và configuration cho phép remote wakeup, Device có thể yêu cầu Host resume theo protocol USB.
+
+Không được tự phát resume chỉ vì application muốn; capability phải được Host enable đúng chuẩn.
+
+### Debug lưu ý
+
+Breakpoint kéo dài trong USB event handling có thể làm Host timeout/retry hoặc reset Device, vì Host vẫn tiếp tục chạy trong khi CPU STM32 bị halt.
+
+---
+
+<a id="muc-11-31"></a>
+## 11.31. Quy trình khởi tạo USB Device
+
+Một quy trình tổng quát cho STM32F103:
+
+```text
+1. Thiết kế hardware D+/D-/pull-up đúng
+        ↓
+2. Cấu hình clock tree
+        ↓
+3. Bảo đảm USBCLK = 48 MHz
+        ↓
+4. Enable USB peripheral clock
+        ↓
+5. Khởi tạo/reset USB peripheral
+        ↓
+6. Clear pending status cần thiết
+        ↓
+7. Cấu hình PMA / BTABLE
+        ↓
+8. Chuẩn bị EP0 RX/TX buffers
+        ↓
+9. Cấu hình EP0 = Control
+        ↓
+10. Enable USB function ở address 0
+        ↓
+11. Enable USB interrupts
+        ↓
+12. Device attach
+        ↓
+13. Chờ Host reset/enumeration
+```
+
+### Không nhảy thẳng tới CDC endpoint
+
+Trước khi CDC/Bulk endpoint hoạt động:
+
+```text
+EP0
+→ phải enumeration thành công
+```
+
+Do đó khi Device không được PC nhận:
+
+```text
+không debug CDC payload trước
+```
+
+mà kiểm tra EP0/enumeration trước.
+
+---
+
+<a id="muc-11-32"></a>
+## 11.32. Luồng Enumeration trên STM32
+
+Có thể theo dõi enumeration theo state machine:
+
+```text
+Attach
+  ↓
+RESET interrupt
+  ↓
+EP0 initialized
+Device address = 0
+  ↓
+SETUP: GET_DESCRIPTOR
+  ↓
+CTR_RX + SETUP
+  ↓
+parse setup packet
+  ↓
+copy descriptor vào EP0 TX PMA buffer
+  ↓
+STAT_TX = VALID
+  ↓
+Host IN
+  ↓
+CTR_TX
+  ↓
+...
+  ↓
+SET_ADDRESS
+  ↓
+USB_DADDR updated
+  ↓
+GET_CONFIGURATION descriptors
+  ↓
+SET_CONFIGURATION
+  ↓
+application endpoints enabled
+```
+
+### EP0 State Machine
+
+Một control request phải theo:
+
+```text
+SETUP
+ ↓
+optional DATA
+ ↓
+STATUS
+```
+
+Firmware phải biết mình đang ở stage nào để cấu hình đúng TX/RX endpoint state.
+
+### Short Packet
+
+Trong USB, packet ngắn hơn maximum packet size có thể mang ý nghĩa kết thúc data stage tùy transfer/protocol context. Driver phải xử lý đúng thay vì mặc định luôn nhận đủ một packet size cố định.
+
+---
+
+<a id="muc-11-33"></a>
+## 11.33. Luồng truyền/nhận dữ liệu Endpoint
+
+### IN Endpoint — Device gửi lên Host
+
+```text
+Application có data
+       ↓
+copy data vào PMA TX buffer
+       ↓
+set COUNT_TX
+       ↓
+STAT_TX = VALID
+       ↓
+Host gửi IN token
+       ↓
+USB peripheral phát DATA packet
+       ↓
+Host ACK
+       ↓
+CTR_TX
+       ↓
+software chuẩn bị packet tiếp theo
+```
+
+Nếu chưa có data:
+
+```text
+endpoint có thể NAK
+```
+
+### OUT Endpoint — Host gửi xuống Device
+
+```text
+RX endpoint đã VALID
+       ↓
+Host OUT token + DATA
+       ↓
+USB peripheral ghi PMA
+       ↓
+ACK
+       ↓
+CTR_RX
+       ↓
+software đọc COUNT_RX + PMA data
+       ↓
+processing
+       ↓
+re-arm endpoint = VALID
+```
+
+Nếu software không re-arm RX endpoint đúng lúc:
+
+```text
+Host có thể gặp NAK
+```
+
+cho tới khi Device sẵn sàng lại.
+
+---
+
+<a id="muc-11-34"></a>
+## 11.34. Ví dụ USB CDC Virtual COM Port
+
+CDC ACM là ví dụ tốt để nối kiến thức USB với UART.
+
+Mục tiêu:
+
+```text
+PC
+ ↕ USB CDC
+STM32F103
+```
+
+Host OS có thể tạo một virtual serial port.
+
+### Cấu trúc logic điển hình
+
+```text
+CDC Function
+├── Communication / Control Interface
+│   └── Interrupt IN Endpoint
+│
+└── Data Interface
+    ├── Bulk OUT Endpoint
+    └── Bulk IN Endpoint
+```
+
+EP0 vẫn dùng cho:
+
+```text
+standard requests
+CDC class-specific control requests
+```
+
+Data path:
+
+```text
+PC → Bulk OUT → STM32 RX buffer
+STM32 TX buffer → Bulk IN → PC
+```
+
+### CDC không phải UART vật lý
+
+Virtual COM Port chỉ là cách OS/application nhìn interface.
+
+```text
+USB CDC
+≠
+USART peripheral
+```
+
+CDC có thể bridge tới UART:
+
+```text
+PC
+ ↓ USB CDC
+STM32
+ ↓ USART
+External Device
+```
+
+nhưng hai protocol độc lập.
+
+---
+
+<a id="muc-11-35"></a>
+## 11.35. USB và CAN trên STM32F103
+
+Đây là giới hạn phần cứng quan trọng khi nối Chương 10 và Chương 11.
+
+Trên các STM32F103 low/medium/high/XL-density tương ứng, USB Device FS và bxCAN dùng chung dedicated SRAM 512 byte cho data transmit/receive.
+
+```text
+USB Device FS
+      ↘
+   Shared 512-byte SRAM
+      ↗
+bxCAN
+```
+
+Hệ quả:
+
+```text
+USB và CAN
+→ có thể tồn tại trong cùng application image
+→ nhưng không được hoạt động đồng thời
+```
+
+Do đó kiến trúc:
+
+```text
+STM32F103
+USB CDC ↔ CAN bridge
+```
+
+không phải lựa chọn phù hợp nếu yêu cầu hai peripheral chạy concurrently.
+
+STM32F105/F107 connectivity line có kiến trúc USB OTG_FS/CAN khác, nên không áp dụng giới hạn này theo cách của F103.
+
+Điểm cần nhớ:
+
+> **Khi chọn MCU, phải kiểm tra resource sharing ở cấp silicon; chỉ thấy cả hai peripheral trong danh sách tính năng chưa đủ để kết luận chúng chạy đồng thời được.**
+
+---
+
+<a id="muc-11-36"></a>
+## 11.36. Debug USB bằng ST-Link / Wireshark / USB Analyzer
+
+USB nên được debug theo từng lớp.
+
+### Lớp 1 — Clock / Hardware
+
+```text
+Target powered?
+USBCLK = 48 MHz?
+PA11/PA12 đúng?
+D+/D- có bị đảo?
+D+ pull-up đúng?
+Host detect attach?
+```
+
+### Lớp 2 — USB Reset
+
+Kiểm tra:
+
+```text
+USB_ISTR.RESET có xuất hiện?
+ISR có xử lý RESET?
+EP0 có được reinitialize?
+DADDR = address 0 + EF đúng?
+```
+
+### Lớp 3 — EP0 / Enumeration
+
+Theo dõi:
+
+```text
+SETUP packet
+GET_DESCRIPTOR
+SET_ADDRESS
+SET_CONFIGURATION
+```
+
+Nếu có packet capture:
+
+```text
+Wireshark + USB capture backend
+hoặc
+USB protocol analyzer
+```
+
+sẽ cho thấy request nào thất bại.
+
+### Lớp 4 — Class/Data Endpoint
+
+Chỉ debug CDC/HID/MSC data sau khi:
+
+```text
+Device đã enumerate thành công
+```
+
+### ST-Link và breakpoint
+
+Breakpoint trong USB ISR có thể làm Host tiếp tục gửi token trong lúc STM32 bị halt.
+
+Kết quả có thể là:
+
+```text
+NAK/retry
+timeout
+USB reset
+disconnect/re-enumeration
+```
+
+Vì vậy với timing-sensitive bug, ưu tiên:
+
+```text
+trace/log nhẹ
+state variable
+USB packet capture
+hardware analyzer
+```
+
+thay vì halt lâu giữa transaction.
+
+---
+
+<a id="muc-11-37"></a>
+## 11.37. Các lỗi USB thường gặp
+
+| Symptom | Nguyên nhân đáng kiểm tra | Mục liên quan |
+|---|---|---|
+| PC không detect Device | D+ pull-up, D+/D-, nguồn, connector | **11.5**, **11.6**, **11.23** |
+| Detect nhưng enumeration fail | EP0, descriptor, USB clock, control state machine | **11.18**, **11.19**, **11.22**, **11.32** |
+| `Device Descriptor Request Failed` | EP0 không trả descriptor đúng/timing lỗi | **11.12**, **11.17**, **11.32** |
+| USB hoạt động không ổn định | 48 MHz clock không chính xác, signal integrity | **11.22**, **11.23** |
+| IN endpoint không gửi | TX buffer/count/status chưa đúng, Host chưa IN | **11.7**, **11.25**, **11.33** |
+| OUT data không tới application | RX endpoint chưa VALID/re-arm, PMA sai | **11.25**–**11.27**, **11.33** |
+| Endpoint bị kẹt | `USB_EPnR` bị modify sai do toggle semantics | **11.25** |
+| Data corruption | PMA overlap/alignment/count sai | **11.26**, **11.27** |
+| Device reset khi breakpoint | Host timeout/retry/reset trong lúc CPU halt | **11.30**, **11.36** |
+| USB fail khi CAN cùng chạy trên F103 | Shared USB/CAN SRAM | **11.35** |
+
+### Checklist ngắn khi PC không nhận Device
+
+```text
+48 MHz?
+ ↓
+D+ pull-up?
+ ↓
+RESET event?
+ ↓
+EP0 initialized?
+ ↓
+SETUP received?
+ ↓
+Device descriptor valid?
+ ↓
+SET_ADDRESS?
+ ↓
+SET_CONFIGURATION?
+```
+
+---
+
+<a id="muc-11-38"></a>
+## 11.38. Câu hỏi tự kiểm tra
+
+1. USB khác UART ở vai trò điều khiển bus như thế nào?
+2. Host, Device và Hub có vai trò gì?
+3. Full-Speed có signaling rate bao nhiêu và vì sao không được nhầm với USB clock 48 MHz?
+4. STM32F102/F103 dùng USB peripheral loại nào, và khác STM32F105/F107 OTG_FS ở điểm nào?
+5. PA11 và PA12 tương ứng với USB signal nào trên STM32F103?
+6. Vì sao STM32F102/F103 cần pull-up 1.5 kΩ trên D+?
+7. Vì sao nói USB là host-centric protocol?
+8. Hãy phân biệt Packet, Transaction và Transfer.
+9. Token, Data và Handshake packet có vai trò gì?
+10. IN và OUT được định nghĩa theo góc nhìn của ai?
+11. Endpoint là gì và vì sao EP0 đặc biệt?
+12. Bốn USB transfer type là gì, và mỗi loại ưu tiên điều gì?
+13. ACK, NAK và STALL khác nhau thế nào?
+14. DATA0/DATA1 giúp giải quyết vấn đề gì?
+15. Device, Configuration, Interface và Endpoint Descriptor có quan hệ phân cấp thế nào?
+16. Hãy mô tả luồng enumeration từ Attach tới `SET_CONFIGURATION`.
+17. Control Transfer gồm những stage nào và SETUP packet có các field chính nào?
+18. Ba standard request quan trọng nhất trong enumeration là gì?
+19. CDC, HID, MSC và DFU dùng cho loại chức năng nào?
+20. Với PLLCLK = 72 MHz, phải cấu hình `USBPRE` thế nào để có 48 MHz?
+21. `USB_EPnR` có những field quan trọng nào và vì sao không được read-modify-write tùy ý?
+22. PMA và BTABLE có vai trò gì trong data path của STM32F103 USB?
+23. `USB_ISTR.RESET` và `USB_ISTR.CTR` biểu thị hai nhóm event nào?
+24. Vì sao USB và CAN không được chạy đồng thời trên các STM32F103 dùng shared 512-byte SRAM?
+25. Khi PC không enumerate Device, hãy mô tả thứ tự debug từ hardware/clock tới EP0 và descriptor.
+
+---
+
+## 11.39. Tóm tắt
+
+USB architecture:
+
+```text
+Host
+ ↓
+USB Transaction Scheduling
+ ↓
+D+ / D-
+ ↓
+USB Device
+ ↓
+Endpoint
+ ↓
+PMA
+ ↓
+Application
+```
+
+Direction:
+
+```text
+IN
+→ Device → Host
+
+OUT
+→ Host → Device
+```
+
+Protocol hierarchy:
+
+```text
+Transfer
+ ↓
+Transaction
+ ↓
+Packet
+```
+
+Enumeration:
+
+```text
+Attach
+ ↓
+Bus Reset
+ ↓
+Address 0 + EP0
+ ↓
+GET_DESCRIPTOR
+ ↓
+SET_ADDRESS
+ ↓
+Configuration Descriptors
+ ↓
+SET_CONFIGURATION
+```
+
+STM32F103:
+
+```text
+PA11 → USB_DM
+PA12 → USB_DP
+D+ external 1.5 kΩ pull-up
+USBCLK = 48 MHz
+8 endpoint registers
+PMA = dedicated/shared 512-byte packet SRAM
+```
+
+Core registers:
+
+```text
+USB_EPnR
+→ endpoint state
+
+USB_CNTR
+→ control / interrupt mask
+
+USB_ISTR
+→ status / interrupt
+
+USB_FNR
+→ frame information
+
+USB_DADDR
+→ device address / enable
+
+USB_BTABLE
+→ buffer descriptor table base
+```
+
+Data path:
+
+```text
+IN:
+Application → PMA → Endpoint → Host
+
+OUT:
+Host → Endpoint → PMA → Application
+```
+
+Resource limit trên STM32F103:
+
+```text
+USB + bxCAN
+→ share 512-byte SRAM
+→ không chạy concurrently
+```
+
+> **Điểm cần nhớ:** USB Device không tự truyền khi muốn; Host lập lịch transaction. Muốn hiểu USB STM32F103 phải đi từ EP0/enumeration xuống endpoint/PMA/register, không học register tách rời protocol. Khi Device không được nhận, ưu tiên kiểm tra `48 MHz → D+/D-/pull-up → RESET → EP0 → SETUP → descriptor → address/configuration` theo đúng thứ tự.
+
+[↑ Về mục lục](#muc-luc)
+
+
+---
+
+<a id="chuong-12"></a>
+# 12. Debug bằng ST-Link
 
 Chương này dùng một mục chính cho mỗi khái niệm debug. Các mục xử lý lỗi và quy trình chỉ áp dụng lại cơ chế đã nêu và dẫn chiếu về mục chính để tránh lặp nội dung.
 
@@ -19907,8 +22116,8 @@ Tên register/bit giữ nguyên ký hiệu STM32F1/Cortex-M3 như `AFIO_MAPR.SWJ
 
 ---
 
-<a id="muc-11-01"></a>
-## 11.1. Debug là gì? Programming và Debugging
+<a id="muc-12-01"></a>
+## 12.1. Debug là gì? Programming và Debugging
 
 ST-Link có thể phục vụ cả **programming** và **debugging**, nhưng hai thao tác này có mục tiêu khác nhau.
 
@@ -19979,12 +22188,12 @@ machine-code address
 
 Raw `.bin` chỉ là byte image và không tự mang đầy đủ symbol/source-level debug information như ELF.
 
-Phân biệt host, debugger, debug server, probe và target được trình bày tại **11.2**.
+Phân biệt host, debugger, debug server, probe và target được trình bày tại **12.2**.
 
 ---
 
-<a id="muc-11-02"></a>
-## 11.2. ST-Link là gì?
+<a id="muc-12-02"></a>
+## 12.2. ST-Link là gì?
 
 **ST-Link** là debug/programming probe dùng để nối host với STM32 target.
 
@@ -20051,12 +22260,12 @@ có thể được nối thêm.
 
 `VTref` cho probe biết mức điện áp logic của target. Không mặc định ST-Link luôn là nguồn cấp điện cho board; cách cấp nguồn phụ thuộc probe/board cụ thể.
 
-Các chân và chức năng của SWD/JTAG được tách tại **11.3–11.4**.
+Các chân và chức năng của SWD/JTAG được tách tại **12.3–12.4**.
 
 ---
 
-<a id="muc-11-03"></a>
-## 11.3. SWD và JTAG
+<a id="muc-12-03"></a>
+## 12.3. SWD và JTAG
 
 STM32F1 với Cortex-M3 hỗ trợ Serial Wire/JTAG Debug Port.
 
@@ -20129,14 +22338,14 @@ PA14
 
 cho SWD.
 
-Cách chọn trạng thái JTAG/SWD trên STM32F1 nằm tại **11.5**.
+Cách chọn trạng thái JTAG/SWD trên STM32F1 nằm tại **12.5**.
 
 ---
 
-<a id="muc-11-04"></a>
-## 11.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
+<a id="muc-12-04"></a>
+## 12.4. Các chân Debug: SWDIO / SWCLK / NRST / SWO
 
-Mục này tập trung vào vai trò từng tín hiệu; mapping SWD/JTAG đã được nêu tại **11.3**.
+Mục này tập trung vào vai trò từng tín hiệu; mapping SWD/JTAG đã được nêu tại **12.3**.
 
 ### `SWDIO`
 
@@ -20172,7 +22381,7 @@ Connect Under Reset
 recovery khi firmware chạy lỗi rất sớm
 ```
 
-`Connect Under Reset` được áp dụng tại **11.19**, nên không lặp lại quy trình recovery tại đây.
+`Connect Under Reset` được áp dụng tại **12.19**, nên không lặp lại quy trình recovery tại đây.
 
 ### `SWO`
 
@@ -20197,12 +22406,12 @@ muốn SWO trace
 → cần pin/wiring + trace configuration phù hợp
 ```
 
-Trace được trình bày tại **11.18**.
+Trace được trình bày tại **12.18**.
 
 ---
 
-<a id="muc-11-05"></a>
-## 11.5. SWJ và AFIO_MAPR.SWJ_CFG
+<a id="muc-12-05"></a>
+## 12.5. SWJ và AFIO_MAPR.SWJ_CFG
 
 STM32F1 dùng:
 
@@ -20249,12 +22458,12 @@ cho SWD.
 
 Cơ chế AFIO và pin remapping đã được trình bày tại **3.13**; tại đây chỉ tập trung vào ảnh hưởng của `SWJ_CFG` tới debug connection.
 
-Nếu firmware disable cả JTAG và SWD, probe có thể mất kết nối sau khi code đó chạy. Cách recovery bằng `NRST`/Connect Under Reset được xử lý tại **11.19**.
+Nếu firmware disable cả JTAG và SWD, probe có thể mất kết nối sau khi code đó chạy. Cách recovery bằng `NRST`/Connect Under Reset được xử lý tại **12.19**.
 
 ---
 
-<a id="muc-11-06"></a>
-## 11.6. Debug Session hoạt động như thế nào?
+<a id="muc-12-06"></a>
+## 12.6. Debug Session hoạt động như thế nào?
 
 Một debug session điển hình:
 
@@ -20290,7 +22499,7 @@ peripheral registers
 variables / Call Stack
 ```
 
-`PC` giúp xác định execution context hiện tại; cách sử dụng `PC/LR/SP` nằm tại **11.12**.
+`PC` giúp xác định execution context hiện tại; cách sử dụng `PC/LR/SP` nằm tại **12.12**.
 
 ### Halt không có nghĩa toàn hệ thống dừng
 
@@ -20314,12 +22523,12 @@ motor / power stage ngoài MCU
 
 Đây là nguyên nhân breakpoint có thể làm timing của hệ thống khác với free-running execution.
 
-Cơ chế dừng peripheral được hỗ trợ nằm tại **11.14**.
+Cơ chế dừng peripheral được hỗ trợ nằm tại **12.14**.
 
 ---
 
-<a id="muc-11-07"></a>
-## 11.7. Breakpoint
+<a id="muc-12-07"></a>
+## 12.7. Breakpoint
 
 **Breakpoint** dừng processor khi execution đạt vị trí đã chọn.
 
@@ -20354,14 +22563,14 @@ Số comparator phần cứng có giới hạn, vì vậy số hardware breakpoi
 
 ### Ảnh hưởng của breakpoint
 
-Tác động hệ thống khi halt đã được trình bày tại **11.6**. Vì vậy khi debug code phụ thuộc timing, peripheral hoặc external device, không nên giả định trạng thái sau một breakpoint hoàn toàn giống trạng thái khi firmware chạy tự do.
+Tác động hệ thống khi halt đã được trình bày tại **12.6**. Vì vậy khi debug code phụ thuộc timing, peripheral hoặc external device, không nên giả định trạng thái sau một breakpoint hoàn toàn giống trạng thái khi firmware chạy tự do.
 
-Watchpoint là cơ chế khác, dựa trên memory access, và được trình bày tại **11.9**.
+Watchpoint là cơ chế khác, dựa trên memory access, và được trình bày tại **12.9**.
 
 ---
 
-<a id="muc-11-08"></a>
-## 11.8. Step Into / Step Over / Step Out / Continue
+<a id="muc-12-08"></a>
+## 12.8. Step Into / Step Over / Step Out / Continue
 
 Các lệnh stepping được hiểu ở mức debugger/source view:
 
@@ -20425,12 +22634,12 @@ remove
 merge
 ```
 
-Do đó hành vi source stepping phụ thuộc debug information và compiler optimization. Phần optimization được tập trung tại **11.17**.
+Do đó hành vi source stepping phụ thuộc debug information và compiler optimization. Phần optimization được tập trung tại **12.17**.
 
 ---
 
-<a id="muc-11-09"></a>
-## 11.9. Watchpoint
+<a id="muc-12-09"></a>
+## 12.9. Watchpoint
 
 Cần phân biệt:
 
@@ -20481,12 +22690,12 @@ biến bị ghi ngoài dự kiến
 
 Giống hardware breakpoint, số comparator watchpoint có giới hạn.
 
-`PC` và Call Stack dùng để truy nguồn instruction ghi dữ liệu được trình bày tại **11.12**.
+`PC` và Call Stack dùng để truy nguồn instruction ghi dữ liệu được trình bày tại **12.12**.
 
 ---
 
-<a id="muc-11-10"></a>
-## 11.10. Registers / Memory / Peripheral Registers
+<a id="muc-12-10"></a>
+## 12.10. Registers / Memory / Peripheral Registers
 
 Debugger có thể quan sát ba lớp chính:
 
@@ -20521,7 +22730,7 @@ SP
 xPSR
 ```
 
-Cách đọc chúng khi debug nằm tại **11.12**.
+Cách đọc chúng khi debug nằm tại **12.12**.
 
 ### Memory
 
@@ -20594,8 +22803,8 @@ Vì vậy:
 
 ---
 
-<a id="muc-11-11"></a>
-## 11.11. Variables / Watch / Expressions
+<a id="muc-12-11"></a>
+## 12.11. Variables / Watch / Expressions
 
 Debugger dùng debug information để biểu diễn object/source-level state như:
 
@@ -20643,7 +22852,7 @@ Debugger khi đó có thể hiển thị:
 <optimized out>
 ```
 
-Đây không tự động chứng minh firmware sai; quan hệ giữa source và optimized machine code được trình bày tại **11.17**.
+Đây không tự động chứng minh firmware sai; quan hệ giữa source và optimized machine code được trình bày tại **12.17**.
 
 ### Live Watch
 
@@ -20651,8 +22860,8 @@ Một số tool cho phép đọc biến khi processor vẫn chạy. Việc này 
 
 ---
 
-<a id="muc-11-12"></a>
-## 11.12. Call Stack / PC / LR / SP
+<a id="muc-12-12"></a>
+## 12.12. Call Stack / PC / LR / SP
 
 Định nghĩa kiến trúc của `PC`, `LR`, `SP`, MSP/PSP và exception stack frame đã được trình bày tại **Chương 1**. Mục này tập trung vào **cách dùng chúng khi debug**.
 
@@ -20738,12 +22947,12 @@ disassembly
 fault status nếu có
 ```
 
-HardFault-specific analysis nằm tại **11.16**.
+HardFault-specific analysis nằm tại **12.16**.
 
 ---
 
-<a id="muc-11-13"></a>
-## 11.13. Debug Interrupt
+<a id="muc-12-13"></a>
+## 12.13. Debug Interrupt
 
 Cơ chế exception, NVIC, priority, masking và peripheral pending flag đã được trình bày tại **Chương 4**. Khi debug một interrupt không chạy, kiểm tra theo đúng các tầng đó thay vì định nghĩa lại cơ chế interrupt.
 
@@ -20801,12 +23010,12 @@ priority grouping / priority
 
 ### Breakpoint trong ISR
 
-Ảnh hưởng của processor Halt đã được nêu tại **11.6**. Khi dừng trong ISR, external event, DMA hoặc peripheral không được freeze có thể tiếp tục thay đổi state. Vì vậy phải thận trọng khi suy luận timing từ một run có breakpoint trong ISR.
+Ảnh hưởng của processor Halt đã được nêu tại **12.6**. Khi dừng trong ISR, external event, DMA hoặc peripheral không được freeze có thể tiếp tục thay đổi state. Vì vậy phải thận trọng khi suy luận timing từ một run có breakpoint trong ISR.
 
 ---
 
-<a id="muc-11-14"></a>
-## 11.14. DBGMCU và Freeze Peripheral
+<a id="muc-12-14"></a>
+## 12.14. DBGMCU và Freeze Peripheral
 
 STM32F1 có khối:
 
@@ -20899,12 +23108,12 @@ freeze toàn bộ MCU
 
 Chỉ peripheral có debug freeze support/bit tương ứng mới chịu cơ chế này. Thiết bị ngoài MCU không bị DBGMCU freeze.
 
-Low-power debug qua `DBGMCU_CR` được tách tại **11.15**.
+Low-power debug qua `DBGMCU_CR` được tách tại **12.15**.
 
 ---
 
-<a id="muc-11-15"></a>
-## 11.15. Debug trong Sleep / Stop / Standby
+<a id="muc-12-15"></a>
+## 12.15. Debug trong Sleep / Stop / Standby
 
 `DBGMCU_CR` có các bit:
 
@@ -20951,12 +23160,12 @@ Interrupt / Event
 
 theo low-power mode đang sử dụng.
 
-Nếu target vào Stop/Standby quá sớm làm probe khó attach, cách recovery được xử lý tại **11.19**.
+Nếu target vào Stop/Standby quá sớm làm probe khó attach, cách recovery được xử lý tại **12.19**.
 
 ---
 
-<a id="muc-11-16"></a>
-## 11.16. Debug HardFault
+<a id="muc-12-16"></a>
+## 12.16. Debug HardFault
 
 Exception stack frame đã được trình bày tại **1.9** và exception/fault model liên quan nằm trong **Chương 4**. Mục này tập trung vào quy trình thu thập bằng chứng khi firmware vào `HardFault_Handler()`.
 
@@ -21111,8 +23320,8 @@ Không nên chỉ reset target ngay khi vào HardFault vì sẽ làm mất bằn
 
 ---
 
-<a id="muc-11-17"></a>
-## 11.17. Debug với Compiler Optimization
+<a id="muc-12-17"></a>
+## 12.17. Debug với Compiler Optimization
 
 Compiler optimization thay đổi quan hệ giữa source code và machine code.
 
@@ -21136,7 +23345,7 @@ Call Stack khó đọc hơn
 breakpoint source-line không nằm đúng nơi trực giác mong đợi
 ```
 
-Điều này liên hệ trực tiếp tới **11.8**, **11.11** và **11.12**; không cần định nghĩa lại stepping/Watch/Call Stack tại đây.
+Điều này liên hệ trực tiếp tới **12.8**, **12.11** và **12.12**; không cần định nghĩa lại stepping/Watch/Call Stack tại đây.
 
 ### `volatile`
 
@@ -21189,8 +23398,8 @@ có thể chỉ lộ ra khi dùng optimization gần cấu hình release.
 
 ---
 
-<a id="muc-11-18"></a>
-## 11.18. SWO / Trace
+<a id="muc-12-18"></a>
+## 12.18. SWO / Trace
 
 Breakpoint/watchpoint có thể làm processor halt. Trace được dùng khi cần quan sát event/instrumentation mà không dừng CPU cho từng event.
 
@@ -21239,7 +23448,7 @@ software instrumentation vẫn có cost
 
 ### SWO pin
 
-Pin `PB3 / TRACESWO` đã được nêu tại **11.4**. Nếu PB3 đã được giải phóng để dùng làm GPIO/peripheral khác bằng SWJ configuration, muốn dùng SWO phải cấu hình lại pin/debug function phù hợp.
+Pin `PB3 / TRACESWO` đã được nêu tại **12.4**. Nếu PB3 đã được giải phóng để dùng làm GPIO/peripheral khác bằng SWJ configuration, muốn dùng SWO phải cấu hình lại pin/debug function phù hợp.
 
 ### SWO khác UART logging
 
@@ -21259,19 +23468,19 @@ Hai data path độc lập.
 
 ---
 
-<a id="muc-11-19"></a>
-## 11.19. Các lỗi kết nối ST-Link thường gặp
+<a id="muc-12-19"></a>
+## 12.19. Các lỗi kết nối ST-Link thường gặp
 
 Mục này chỉ tổng hợp triệu chứng và trỏ về cơ chế đã giải thích.
 
 | Triệu chứng | Kiểm tra chính | Dẫn chiếu |
 |---|---|---|
-| `No target found` | Target power, `VTref`, GND, `SWDIO`, `SWCLK`, wiring | **11.2–11.4** |
-| Kết nối chập chờn | SWD clock quá cao so với wiring/signal integrity | **11.3–11.4** |
-| Kết nối mất ngay sau reset | Firmware thay `SWJ_CFG`, chiếm/debug pin hoặc disable SWD | **11.5** |
-| Target vào Stop/Standby quá sớm | Low-power path và debug configuration | **11.15** |
-| Target reset khi đang dừng breakpoint | Watchdog/peripheral không được freeze | **11.14** |
-| Firmware crash rất sớm | Dùng reset/recovery rồi debug fault/startup | **11.16** |
+| `No target found` | Target power, `VTref`, GND, `SWDIO`, `SWCLK`, wiring | **12.2–12.4** |
+| Kết nối chập chờn | SWD clock quá cao so với wiring/signal integrity | **12.3–12.4** |
+| Kết nối mất ngay sau reset | Firmware thay `SWJ_CFG`, chiếm/debug pin hoặc disable SWD | **12.5** |
+| Target vào Stop/Standby quá sớm | Low-power path và debug configuration | **12.15** |
+| Target reset khi đang dừng breakpoint | Watchdog/peripheral không được freeze | **12.14** |
+| Firmware crash rất sớm | Dùng reset/recovery rồi debug fault/startup | **12.16** |
 | Debug access bị hạn chế | Option Bytes / protection configuration | kiểm tra đúng device/reference manual |
 
 ### Connect Under Reset
@@ -21297,7 +23506,7 @@ vào low-power rất sớm
 crash/reset loop trước khi attach bình thường
 ```
 
-`NRST` đã được định nghĩa tại **11.4**, nên mục này chỉ áp dụng nó cho recovery.
+`NRST` đã được định nghĩa tại **12.4**, nên mục này chỉ áp dụng nó cho recovery.
 
 ### Protection
 
@@ -21305,8 +23514,8 @@ Khi thay Option Bytes hoặc protection level, phải hiểu hậu quả trướ
 
 ---
 
-<a id="muc-11-20"></a>
-## 11.20. Quy trình Debug có hệ thống
+<a id="muc-12-20"></a>
+## 12.20. Quy trình Debug có hệ thống
 
 Mục tiêu của debug có hệ thống là **thu hẹp lỗi bằng bằng chứng**, không thay nhiều cấu hình cùng lúc rồi thử lại.
 
@@ -21340,7 +23549,7 @@ Không định nghĩa lại peripheral tại đây; dùng các chương tương 
 |---|---|---|
 | RCC/Clock | source ready → SYSCLK/HCLK/PCLK → peripheral clock enable | **Chương 2** |
 | GPIO | clock → `MODE/CNF` → `IDR/ODR` → AFIO/remap | **Chương 3** |
-| Interrupt | source flag → source enable → NVIC → masking/priority → vector/ISR | **Chương 4**, **11.13** |
+| Interrupt | source flag → source enable → NVIC → masking/priority → vector/ISR | **Chương 4**, **12.13** |
 | Timer/PWM | `TIMxCLK` → PSC/ARR/CNT → flag/channel → GPIO AF | **Chương 5** |
 | USART | clock/GPIO → BRR → UE/TE/RE → TXE/RXNE/TC/error | **Chương 6** |
 | SPI | clock/GPIO → mode/timing → TXE/RXNE/BSY/error → CS/NSS | **Chương 7** |
@@ -21348,7 +23557,7 @@ Không định nghĩa lại peripheral tại đây; dùng các chương tương 
 | ADC | ADCCLK/GPIO → sampling/sequence/trigger → EOC/result/DMA | **Chương 8** |
 | DMA | mapping → peripheral request → address/count/direction/width → HT/TC/TE | **Chương 9** |
 | CAN | PCLK1/GPIO/transceiver → `CAN_BTR` → mode/filter → TX/RX FIFO → `CAN_ESR` | **Chương 10** |
-| HardFault | HFSR/CFSR → valid fault address → stacked PC/LR → disassembly | **11.16** |
+| HardFault | HFSR/CFSR → valid fault address → stacked PC/LR → disassembly | **12.16** |
 
 ### Nguyên tắc kiểm chứng
 
@@ -21377,12 +23586,12 @@ Nếu các bit đều đúng:
 → chuyển sang GPIO/BRR/data path
 ```
 
-Khi debugger có thể ảnh hưởng hệ thống, đặc biệt do Halt hoặc read side effect, phải xét các lưu ý tại **11.6**, **11.10** và **11.14** trước khi kết luận.
+Khi debugger có thể ảnh hưởng hệ thống, đặc biệt do Halt hoặc read side effect, phải xét các lưu ý tại **12.6**, **12.10** và **12.14** trước khi kết luận.
 
 ---
 
-<a id="muc-11-21"></a>
-## 11.21. Câu hỏi tự kiểm tra
+<a id="muc-12-21"></a>
+## 12.21. Câu hỏi tự kiểm tra
 
 1. Programming và Debugging khác nhau ở mục tiêu nào?
 2. Host, debugger, debug server, ST-Link và target nằm ở các lớp nào?
@@ -21411,7 +23620,7 @@ Khi debugger có thể ảnh hưởng hệ thống, đặc biệt do Halt hoặc
 
 ---
 
-## 11.22. Tóm tắt
+## 12.22. Tóm tắt
 
 Kiến trúc debug:
 
