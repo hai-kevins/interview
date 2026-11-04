@@ -12,8 +12,9 @@
 2. [Trình bày System Architecture](#2-trình-bày-system-architecture)
 3. [Phân tích Developer/CI → Release Server](#3-phân-tích-developerci--release-server)
 4. [Phân tích Release Server → ESP32 Gateway](#4-phân-tích-release-server--esp32-gateway)
-5. [Kiến thức trong project](#5-kiến-thức-trong-project)
-6. [Câu hỏi trọng tâm](#6-câu-hỏi-trọng-tâm)
+5. [Phân tích ESP32 Gateway → STM32 Application](#5-phân-tích-esp32-gateway--stm32-application)
+6. [Kiến thức trong project](#6-kiến-thức-trong-project)
+7. [Câu hỏi trọng tâm](#7-câu-hỏi-trọng-tâm)
 
 ---
 
@@ -391,11 +392,322 @@ ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thốn
 
 ---
 
-## 5. Kiến thức trong project
+## 5. Phân tích ESP32 Gateway → STM32 Application
+
+> **Mục tiêu:** Hiểu cách **ESP32 Gateway** truyền gói cập nhật **SDOT** xuống **STM32 Application** qua **UART**, cách STM32 lưu dữ liệu vào **External Flash W25Q** qua **SPI**, và cách hệ thống xử lý lỗi truyền, **Retry**, **Resume** trước khi bàn giao cho **STM32 Bootloader**.
+>
+> **Phân chia trách nhiệm:** **STM32 Application** nhận, kiểm tra và lưu **gói cập nhật SDOT**; **STM32 Bootloader** xác thực chữ ký, xử lý Full/Delta OTA và cài đặt **firmware mới** vào Internal Flash.
+
+### Sơ đồ luồng hoạt động
+
+```text
+             ESP32 Gateway
+                   |
+          1. Đọc SDOT từ Flash cache
+                   |
+          2. HELLO / QUERY
+                   v
+            STM32 Application
+                   |
+         Thông tin thiết bị, trạng thái,
+         update_id, offset nhận tiếp theo
+                   |
+                   v
+             ESP32 Gateway
+                   |
+          3. START / RESUME
+          4. DATA (COBS + CRC32)
+                   v
+            STM32 Application
+                   |
+          5. Kiểm tra CRC32,
+             Sequence, Offset
+          6. Ghi dữ liệu qua SPI
+                   v
+          External Flash W25Q
+                   |
+          7. ACK / NACK (+ Retry)
+                   v
+             ESP32 Gateway
+                   |
+          8. FINISH: kiểm tra toàn bộ SDOT
+          9. INSTALL: ghi Metadata,
+             ACK rồi reset
+                   v
+            STM32 Bootloader
+```
+
+### Bước 1. ESP32 Gateway chuẩn bị truyền gói cập nhật SDOT
+
+Sau khi tải gói **SDOT** qua HTTPS và kiểm tra **kích thước/CRC32**, ESP32 Gateway đã lưu gói vào vùng **Flash cache** nội bộ. Gateway đọc dữ liệu từ cache để truyền qua UART, thay vì yêu cầu STM32 tự tải firmware qua mạng.
+
+**Cấu hình UART trong repository:**
+
+| Thông số | Giá trị |
+|---|---|
+| Giao thức | UART, **115200 8-N-1** |
+| Data bits / Parity / Stop bits | 8 / None / 1 |
+| Flow control | None |
+| STM32 USART | USART1 |
+| STM32 TX / RX | PA9 / PA10 |
+| ESP32 UART mặc định | UART2 |
+| ESP32 TX / RX mặc định | GPIO17 / GPIO16 |
+
+Trước khi gửi DATA, Gateway cần kiểm tra trạng thái hiện tại của STM32 để quyết định **START** hay **RESUME**.
+
+### Bước 2. ESP32 Gateway gửi HELLO và QUERY
+
+ESP32 trao đổi các lệnh **`HELLO`** và **`QUERY`** với STM32 Application. Phản hồi cung cấp các thông tin phục vụ nhận diện thiết bị và đồng bộ tiến độ, ví dụ:
+
+| Thông tin | Ý nghĩa |
+|---|---|
+| `application_version` | Phiên bản firmware đang chạy |
+| `bootloader_version` | Phiên bản STM32 Bootloader |
+| `product_id` | Mã sản phẩm |
+| `hardware_revision` | Phiên bản phần cứng |
+| `capability_flags` | Các tính năng OTA được hỗ trợ |
+| `update_state` | Trạng thái cập nhật hiện tại |
+| `active_update_id` | Định danh bản cập nhật đang xử lý |
+| `next_expected_offset` | Vị trí dữ liệu STM32 chờ nhận tiếp |
+
+**Tại sao cần QUERY?** Vì STM32 có thể chưa nhận dữ liệu, đang nhận dở hoặc đã nhận hoàn tất gói SDOT. Thông tin trả về giúp ESP32 tránh bắt đầu lại không cần thiết và chọn đúng bước tiếp theo.
+
+### Bước 3. ESP32 Gateway gửi START hoặc RESUME
+
+**`START`** được dùng khi bắt đầu nhận gói cập nhật mới. Các thông tin quan trọng bao gồm:
+
+- `update_id`: Định danh bản cập nhật.
+- `artifact_type`: Full OTA hoặc Delta OTA.
+- `base_version`: Phiên bản firmware gốc.
+- `target_version`: Phiên bản firmware đích.
+- `artifact_size`: Kích thước toàn bộ gói SDOT.
+- `artifact_crc32`: CRC32 của toàn bộ gói SDOT.
+
+STM32 Application kiểm tra thông tin yêu cầu, trạng thái hiện tại và giới hạn dung lượng vùng **Incoming** của External Flash W25Q. Nếu chấp nhận, STM32 phản hồi **ACK** cùng offset bắt đầu (thông thường là `0`).
+
+**`RESUME`** được dùng khi quá trình nhận trước đó bị gián đoạn. STM32 kiểm tra tính phù hợp của **`update_id`** và thông tin gói SDOT, sau đó cung cấp offset có thể tiếp tục an toàn để ESP32 truyền tiếp.
+
+### Bước 4. ESP32 Gateway truyền DATA qua UART
+
+ESP32 chia SDOT thành các **DATA packet**, mỗi packet mang tối đa **256 bytes payload**. Cấu trúc packet ở mức khái quát:
+
+```text
++---------------------------+
+| Magic                     | 2 bytes
++---------------------------+
+| Protocol Version          | 1 byte
++---------------------------+
+| Command                   | 1 byte
++---------------------------+
+| Update ID                 | 4 bytes
++---------------------------+
+| Offset                    | 4 bytes
++---------------------------+
+| Sequence                  | 2 bytes
++---------------------------+
+| Payload Length            | 2 bytes
++---------------------------+
+| Payload                   | 0–256 bytes
++---------------------------+
+| Packet CRC32              | 4 bytes
++---------------------------+
+```
+
+Packet được **mã hóa COBS** và phân tách trên luồng UART bằng byte kết thúc **`0x00`**.
+
+| Cơ chế | Vai trò |
+|---|---|
+| **COBS** | Đóng khung và phân tách các packet trên luồng byte UART |
+| **CRC32** | Phát hiện lỗi dữ liệu packet |
+| **Sequence** | Theo dõi thứ tự packet |
+| **Offset** | Chỉ vị trí ghi dữ liệu trong toàn bộ gói SDOT |
+| **Update ID** | Gắn packet với đúng quá trình cập nhật |
+
+**Ví dụ** với payload 256 bytes/packet:
+
+```text
+ESP32 Gateway                      STM32 Application
+
+DATA (offset = 0)   -------------> Kiểm tra, ghi W25Q
+                   <------------- ACK (offset = 256)
+DATA (offset = 256) -------------> Kiểm tra, ghi W25Q
+                   <------------- ACK (offset = 512)
+DATA (offset = 512) -------------> Kiểm tra, ghi W25Q
+                   <------------- ACK (offset = 768)
+```
+
+> **Ghi nhớ:** CRC32 phát hiện lỗi truyền/lưu dữ liệu, **không** xác thực nguồn phát hành firmware; xác thực bảo mật do STM32 Bootloader thực hiện sau đó.
+
+### Bước 5. STM32 Application kiểm tra và lưu vào External Flash W25Q
+
+Khi nhận DATA packet, STM32 Application thực hiện theo thứ tự:
+
+1. Giải mã **COBS** để lấy packet gốc.
+2. Kiểm tra **CRC32** của packet.
+3. Kiểm tra `update_id`, **Sequence** và **Offset**.
+4. Xác định địa chỉ thuộc phân vùng **Incoming** trên External Flash W25Q.
+5. Xóa sector khi cần và ghi dữ liệu qua **SPI**.
+6. Kiểm tra dữ liệu đã ghi và phản hồi kết quả.
+
+```text
+Receive DATA → Decode COBS → Verify CRC32
+             → Check Update ID / Sequence / Offset
+             → Write W25Q via SPI → Verify → ACK / NACK
+```
+
+**Vì sao lưu vào External Flash W25Q thay vì ghi thẳng Internal Flash?** Internal Flash chứa STM32 Application đang hoạt động. Việc nhận đầy đủ SDOT vào vùng lưu trữ riêng trước khi cài đặt giảm rủi ro ghi đè ứng dụng đang chạy nếu mất nguồn hoặc truyền bị gián đoạn.
+
+### Bước 6. STM32 Application phản hồi ACK/NACK và ESP32 Retry
+
+| Phản hồi | Ý nghĩa |
+|---|---|
+| **ACK** | DATA packet đã được chấp nhận và xử lý thành công |
+| **NACK** | DATA packet bị từ chối do lỗi dữ liệu, trạng thái, thứ tự, offset hoặc ghi Flash |
+
+ESP32 chỉ chuyển sang packet tiếp theo khi đã nhận phản hồi phù hợp. Nếu nhận **NACK** hoặc quá thời gian chờ (**timeout**), Gateway có thể **Retry** theo giới hạn cấu hình.
+
+| Thông số | Giá trị mô tả trong giao thức |
+|---|---|
+| Response timeout | **1500 ms** |
+| Maximum retries | **5** |
+| DATA payload | Tối đa **256 bytes** |
+
+Nếu ACK bị mất và ESP32 gửi lại packet cũ, STM32 có thể nhận diện **DATA trùng hợp lệ** và trả ACK tương ứng; không được ghi lại một cách mù quáng làm sai tiến độ.
+
+### Bước 7. Resume khi truyền bị gián đoạn
+
+STM32 Application sử dụng **Download Checkpoint** trong External Flash W25Q để lưu tiến độ nhận OTA. Checkpoint được ghi theo ranh giới sector **4 KB**.
+
+**Ví dụ minh họa:**
+
+```text
+Gói SDOT 20 KB
+    |
+    | Đã nhận khoảng 10 KB
+    v
+Checkpoint an toàn gần nhất: 8 KB
+    |
+    | Reset bất ngờ
+    v
+STM32 khởi động lại, đọc Checkpoint
+    |
+    v
+ESP32 gửi RESUME và truyền lại từ offset 8192
+```
+
+**Phân biệt:** **ACK** xác nhận một packet đã được xử lý trong phiên truyền hiện tại; **Checkpoint** là mốc tiến độ đã lưu bền vững để phục hồi sau reset. Offset được ACK gần nhất **không nhất thiết** là offset có thể Resume sau khi mất nguồn.
+
+### Bước 8. ESP32 Gateway gửi FINISH
+
+Sau khi truyền đủ toàn bộ SDOT, ESP32 gửi **`FINISH`**. STM32 Application kiểm tra:
+
+1. **Kích thước** dữ liệu nhận được có đúng với `artifact_size` không.
+2. **CRC32 toàn bộ gói SDOT** có khớp với giá trị dự kiến không.
+
+Nếu hợp lệ, STM32 chuyển sang trạng thái **`ARTIFACT_READY`** của phiên nhận OTA.
+
+> **Phân biệt quan trọng:** `FINISH` xác nhận rằng SDOT đã được **nhận đầy đủ**. Nó **chưa** yêu cầu cài đặt, chưa ghi trạng thái bàn giao `UPDATE_ARTIFACT_READY` vào Internal Flash Metadata và chưa reset STM32.
+
+### Bước 9. ESP32 Gateway gửi INSTALL, STM32 bàn giao cho Bootloader
+
+Khi `FINISH` thành công, ESP32 gửi **`INSTALL`**. STM32 Application:
+
+1. Kiểm tra trạng thái **`ARTIFACT_READY`** và `update_id`.
+2. Kiểm tra thông tin định dạng container SDOT ở mức cần thiết để bàn giao.
+3. Ghi trạng thái **`UPDATE_ARTIFACT_READY`** vào **Internal Flash Metadata A/B**.
+4. Gửi **ACK** cho ESP32 Gateway.
+5. **Reset** để STM32 Bootloader xử lý bản cập nhật.
+
+```text
+ESP32 Gateway
+      |
+      | INSTALL
+      v
+STM32 Application
+      |
+      | Kiểm tra ARTIFACT_READY / Update ID / SDOT
+      v
+Internal Flash Metadata A/B
+      |
+      | Commit UPDATE_ARTIFACT_READY
+      v
+Send ACK → Reset STM32 → STM32 Bootloader
+```
+
+**Đây là điểm bàn giao giữa Application và Bootloader.** STM32 Application không xác thực chữ ký ECDSA P-256 để quyết định cài đặt ở bước này; đó là nhiệm vụ của STM32 Bootloader sau reset.
+
+### Bài nói khi phỏng vấn: ESP32 Gateway → STM32 Application
+
+- **ESP32 Gateway → STM32 Application:** Sau khi tải và kiểm tra thành công gói cập nhật SDOT, ESP32 Gateway truyền dữ liệu xuống STM32 Application thông qua UART.
+
+  Đầu tiên, ESP32 sử dụng lệnh **QUERY** để kiểm tra phiên bản firmware, trạng thái cập nhật và offset hiện tại của STM32, từ đó quyết định bắt đầu truyền mới hay **Resume** nếu quá trình trước đó bị gián đoạn.
+
+  Tiếp theo, ESP32 chia gói SDOT thành các **DATA packet**, mỗi packet chứa tối đa **256 bytes payload**, sử dụng **COBS** để đóng khung dữ liệu và **CRC32** để phát hiện lỗi truyền.
+
+  Ở phía STM32, Application kiểm tra **CRC32**, **Sequence** và **Offset**, sau đó ghi dữ liệu vào **External Flash W25Q** thông qua **SPI**. Nếu thành công, STM32 phản hồi **ACK**; ngược lại trả về **NACK** để ESP32 xử lý truyền lại.
+
+  Ngoài ra, hệ thống sử dụng **Checkpoint** để lưu tiến độ nhận dữ liệu, giúp quá trình truyền có thể **Resume** khi xảy ra reset bất ngờ.
+
+  Sau khi truyền đủ dữ liệu, ESP32 gửi **FINISH** để STM32 kiểm tra kích thước và CRC32 của toàn bộ SDOT.
+
+  Cuối cùng, ESP32 gửi **INSTALL**. STM32 Application cập nhật **Metadata** và reset để chuyển quyền xử lý cho **STM32 Bootloader**.
+
+### Câu hỏi ôn tập: ESP32 Gateway → STM32 Application
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Tại sao ESP32 và STM32 giao tiếp qua UART? | Kết nối đơn giản giữa hai vi điều khiển, không yêu cầu STM32 tự xử lý kết nối mạng. |
+| Tại sao cần COBS? | Để đóng khung packet UART và dùng `0x00` làm byte phân tách. |
+| CRC32 dùng để làm gì? | Phát hiện lỗi dữ liệu trong truyền và lưu trữ, không dùng để xác thực chữ ký. |
+| Sequence khác Offset thế nào? | Sequence theo dõi thứ tự packet; Offset xác định vị trí byte trong SDOT. |
+| Tại sao cần ACK/NACK? | Xác nhận dữ liệu đã xử lý thành công hoặc báo lỗi để Retry. |
+| Nếu ACK bị mất thì sao? | ESP32 có thể gửi lại; STM32 có cơ chế nhận diện packet trùng hợp lệ. |
+| Retry giải quyết vấn đề gì? | Khắc phục lỗi truyền và timeout tạm thời. |
+| Resume hoạt động như thế nào? | STM32 đọc Checkpoint và thông báo offset an toàn để ESP32 truyền tiếp. |
+| Tại sao Checkpoint theo sector 4 KB? | Phù hợp với đơn vị sector của W25Q, hỗ trợ phục hồi tiến độ nhận. |
+| Tại sao dùng External Flash W25Q? | Lưu trữ trọn SDOT mà không ghi đè Application đang chạy. |
+| FINISH khác INSTALL thế nào? | FINISH xác nhận nhận đủ SDOT; INSTALL ghi Metadata bàn giao và reset. |
+| Ai xác thực chữ ký ECDSA P-256? | STM32 Bootloader, sau khi nhận gói SDOT và bàn giao. |
+
+### Điểm cần ghi nhớ
+
+- **UART + COBS + CRC32 + ACK/NACK + Retry:** Hỗ trợ truyền packet có kiểm tra lỗi; UART cơ bản không tự bảo đảm toàn bộ gói firmware ở tầng ứng dụng.
+- **ACK khác Checkpoint:** ACK theo packet; Checkpoint lưu mốc phục hồi bền vững, vì vậy Resume có thể phải truyền lại dữ liệu đã từng ACK.
+- **FINISH khác INSTALL:** FINISH xác minh gói SDOT đã nhận đầy đủ; INSTALL bàn giao cho STM32 Bootloader bằng **Metadata + Reset**.
+
+**Tóm tắt thứ tự lệnh:**
+
+```text
+HELLO / QUERY
+      |
+START / RESUME
+      |
+     DATA
+      |
+CRC32 / Sequence / Offset
+      |
+Write External Flash W25Q
+      |
+ACK / NACK + Retry
+      |
+    FINISH
+      |
+   INSTALL
+      |
+Metadata + Reset
+      |
+STM32 Bootloader
+```
+
+**Tài liệu đối chiếu trong repository:** `docs/uart-ota-protocol.md`, `docs/architecture.md`, `node-stm32f103/application/src/ota_receiver.c`.
+
+---
+
+## 6. Kiến thức trong project
 
 *Chưa có nội dung trong tài liệu gốc.*
 
-## 6. Câu hỏi trọng tâm
+## 7. Câu hỏi trọng tâm
 
 *Chưa có nội dung trong tài liệu gốc.*
 
