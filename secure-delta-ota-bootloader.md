@@ -26,6 +26,7 @@
 6. [Ôn tập kiến thức kỹ thuật](#phan-6)
    - [6.1. STM32F103 & ARM Cortex-M3](#chuong-6-1)
    - [6.2. Boot Process, Vector Table & Linker Script](#chuong-6-2)
+   - [6.3. STM32 Internal Flash Programming](#chuong-6-3)
 7. [Câu hỏi phỏng vấn trọng tâm](#phan-7)
 
 ### Quy ước thuật ngữ
@@ -2103,13 +2104,13 @@ Những ràng buộc này bảo vệ tính nhất quán của State Machine: **m
 <a id="phan-6"></a>
 ## Phần 6. Ôn tập kiến thức kỹ thuật
 
-> **Tiến độ:** **Chương 6.1 và 6.2 đã được phát triển thành bài học chi tiết** theo trình tự **nguyên lý → liên hệ project → mã nguồn → tình huống lỗi → câu hỏi phỏng vấn**. Các chương **6.3–6.10** vẫn là đề cương và sẽ được phát triển tiếp; không xem chúng là nội dung đã học xong.
+> **Tiến độ:** **Chương 6.1, 6.2 và 6.3 đã được phát triển thành bài học chi tiết** theo trình tự **nguyên lý → liên hệ project → mã nguồn → tình huống lỗi → câu hỏi phỏng vấn**. Các chương **6.4–6.10** vẫn là đề cương và sẽ được phát triển tiếp; không xem chúng là nội dung đã học xong.
 
 | Chương | Chủ đề | Kiến thức trọng tâm | Liên hệ project | Trạng thái |
 |---|---|---|---|---|
 | **[6.1](#chuong-6-1)** | STM32F103 & ARM Cortex-M3 | Memory Map, MSP/PSP, NVIC, Clock, Reset | Nền tảng STM32 Bootloader/Application. | **Đã triển khai** |
 | **[6.2](#chuong-6-2)** | Boot Process, Vector Table & Linker Script | Reset Handler, VTOR, `.data`/`.bss`, Linker Script, Application Jump | `boot-jump.md`, startup assembly, `application_jump.c`. | **Đã triển khai** |
-| **6.3** | STM32 Internal Flash Programming | Erase 1 KB, Program Half-word 16-bit, Verify | `image_installer.c`. | Đề cương |
+| **[6.3](#chuong-6-3)** | STM32 Internal Flash Programming | Page Erase 1 KiB, Half-word Program, Page Verify, Checkpoint | `image_installer.c`, `install_progress.c`. | **Đã triển khai** |
 | **6.4** | External SPI Flash W25Q | Page Program, Sector Erase, WIP/WEL, phân vùng | Incoming, Reconstructed, Backup. | Đề cương |
 | **6.5** | UART Communication & OTA Protocol | UART framing, COBS, CRC32, ACK/NACK, Retry, Resume | ESP32 Gateway ↔ STM32 Application. | Đề cương |
 | **6.6** | SPI Communication | SCK, MOSI, MISO, CS, CPOL/CPHA, timing | STM32 ↔ External Flash W25Q. | Đề cương |
@@ -2835,6 +2836,392 @@ p/x $pc             # PC hiện tại
 | [`node-stm32f103/bootloader/src/boot_decision.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/boot_decision.c) | Quyết định nhánh boot hoặc phục hồi theo Metadata. |
 
 > **Tự kiểm tra cuối chương:** Hãy giải thích bằng lời **vì sao một image được link tại `0x08000000` không thể chỉ chép sang `0x08006000` rồi jump**, và **vì sao `SCB->VTOR` + MSP vẫn chưa đủ nếu SysTick/NVIC chưa được dọn**. Hai câu này nối trực tiếp kiến thức startup, linker và bảo đảm an toàn khi Bootloader chạy Application.
+
+---
+
+<a id="chuong-6-3"></a>
+### 6.3. STM32 Internal Flash Programming
+
+> **Mục tiêu:** Giải thích được **vì sao phải Erase trước khi Program**, tại sao STM32F103 dùng **trang xóa 1 KiB** và **đơn vị ghi half-word 16-bit**, cách Bootloader ghi firmware mới từ **W25Q Reconstructed Image** vào **Internal Flash Application** và xác minh kết quả. Quan trọng nhất: giải thích được cơ chế **Checkpoint theo trang** để phục hồi an toàn khi mất nguồn giữa quá trình ghi.
+>
+> **Phạm vi và nguồn:** Các địa chỉ, hàm `FLASH_ErasePage()`, `FLASH_ProgramHalfWord()`, luồng `ProgramBufferedApplicationPage()`, `ResumePageCheckpointedCopy()` và hành vi kiểm tra/commit dưới đây được đối chiếu với **repository**. Những phần diễn giải cơ chế Flash, ví dụ byte/half-word và đoạn *pseudocode* được đánh dấu là **kiến thức giải thích hoặc mô phỏng**, không phải đoạn code sao chép nguyên văn. Chương này nối tiếp **6.1** (Memory Map), **6.2** (Boot Process) và **5.4** (Backup → Install → Verify).
+
+#### Sơ đồ tổng quan: Ghi Application vào Internal Flash
+
+```mermaid
+flowchart TD
+    READY["UPDATE_IMAGE_READY<br/>Firmware ứng viên đã được xác minh"] --> BACKUP["UPDATE_BACKING_UP<br/>Sao lưu Application cũ sang W25Q"]
+    BACKUP --> BCHECK{"Backup đã xác minh?"}
+    BCHECK -->|"Không"| STOP["Không bắt đầu ghi đè Application"]
+    BCHECK -->|"Có"| STATE["Commit UPDATE_INSTALLING<br/>copy_offset = 0"]
+    STATE --> READ["Đọc 1 trang firmware từ<br/>W25Q Reconstructed Image vào RAM"]
+    READ --> ERASE["Unlock Flash → Erase trang 1 KiB"]
+    ERASE --> PROGRAM["Program từng half-word 16-bit"]
+    PROGRAM --> PAGEVERIFY["Đọc lại và so sánh từng byte"]
+    PAGEVERIFY -->|"Sai"| ERROR["Báo lỗi; không tiến Checkpoint"]
+    PAGEVERIFY -->|"Đúng"| COMMIT["Lưu copy_offset mới<br/>vào Internal Metadata A/B"]
+    COMMIT --> MORE{"Còn trang cần ghi?"}
+    MORE -->|"Có"| READ
+    MORE -->|"Hết"| ALL["UPDATE_VERIFYING_INSTALL<br/>CRC toàn image + Vector Table"]
+    ALL -->|"Hợp lệ"| TRIAL["UPDATE_TRIAL_BOOT"]
+    ALL -->|"Không hợp lệ"| FAIL["Xử lý lỗi / phục hồi theo Boot State Machine"]
+```
+
+**Bốn ý cần nắm trước khi đọc chi tiết:**
+
+1. **Erase** tác động lên **cả trang 1 KiB**; không thể an toàn coi thao tác này là xóa một byte đơn lẻ.
+2. **Program** trong luồng hiện tại thực hiện theo **half-word 16-bit** (2 byte/lần).
+3. **Verify** diễn ra **trước** khi tiến độ được lưu bền vững; `copy_offset` chỉ đại diện cho trang đã ghi thành công và được kiểm tra.
+4. **CRC32 toàn image và kiểm tra vector** diễn ra sau bước ghi các trang; đây là bước riêng với kiểm tra từng trang.
+
+#### Bước 1. Hiểu nguyên lý Internal Flash và Erase/Program
+
+**Kiến thức nền về NOR Flash:** Sau khi xóa, các bit của vùng được xóa ở trạng thái logic `1` (đọc thường thấy `0xFF`). Quá trình lập trình chuyển các bit được chọn từ `1` sang `0`; để trở về `1`, cần **Erase** đúng đơn vị xóa. Vì vậy không nên giả định có thể ghi tùy ý một firmware mới đè lên dữ liệu cũ mà bỏ qua Erase.
+
+Ví dụ đơn giản **mang tính minh họa**, không phải một thao tác thực thi trên chip:
+
+```text
+Sau Erase:             1111 1111   (0xFF)
+Program dữ liệu:       1010 0101   (0xA5)
+Kết quả:               1010 0101
+Muốn trở lại 0xFF:     Phải Erase đơn vị xóa liên quan
+```
+
+Với **STM32F103C8T6 medium-density** mà repository nhắm đến:
+
+| Thuộc tính | Giá trị / ý nghĩa | Liên hệ project |
+|---|---|---|
+| Internal Flash | **64 KiB** | Chứa Bootloader, Application, Metadata A/B. |
+| Đơn vị xóa | **1 KiB / page** | `FLASH_ErasePage()` xóa một trang theo địa chỉ trang. |
+| Đơn vị lập trình | **16 bit / half-word** | `FLASH_ProgramHalfWord()` ghi 2 byte tại địa chỉ phù hợp. |
+| RAM | **20 KiB SRAM** | Dùng bộ đệm trang, stack và dữ liệu vận hành; không lưu tiến độ sau mất nguồn. |
+| Dữ liệu sau khi xóa | **`0xFF`** | Hữu ích khi xử lý byte đệm và kiểm tra vùng chưa ghi. |
+
+> **Phân biệt:** **1 KiB** là kích thước trang xóa **Internal Flash của STM32F103**. **4 KiB** ở Chương 6.4/5.4 là kích thước sector xóa **External Flash W25Q** dùng trong sao lưu/nhận OTA. Đừng nhầm đơn vị checkpoint của hai thao tác này.
+
+**Câu hỏi “Vì sao không ghi trực tiếp từng byte?”** Phần cứng dòng STM32F103 được dùng ở đây có thao tác program half-word; do đó firmware ghép mỗi cặp byte thành một `uint16_t`. Cần địa chỉ **căn chỉnh 2 byte** và kiểm tra trạng thái hoàn thành do flash controller trả về.
+
+#### Bước 2. Đọc Memory Map để không xóa nhầm Bootloader hoặc Metadata
+
+Internal Flash của project có bốn vùng quan trọng, theo `shared/include/memory_map.h` và `docs/memory-map.md`:
+
+```text
+STM32F103 Internal Flash (64 KiB)
+
+0x08000000  +------------------------------+
+            | Bootloader       24 KiB     |
+0x08006000  +------------------------------+
+            | Application      38 KiB     |  <-- Chỉ vùng này được Install/Rollback
+            | 38 trang xóa x 1 KiB       |
+0x0800F800  +------------------------------+  <-- End-exclusive của Application
+            | Metadata A        1 KiB     |
+0x0800FC00  +------------------------------+
+            | Metadata B        1 KiB     |
+0x08010000  +------------------------------+  <-- End-exclusive của toàn Flash
+```
+
+| Vùng | Địa chỉ bắt đầu | Địa chỉ cuối (inclusive) | Dung lượng |
+|---|---|---|---:|
+| Bootloader | `0x08000000` | `0x08005FFF` | 24 KiB |
+| Application | `0x08006000` | `0x0800F7FF` | **38 KiB** |
+| Metadata A | `0x0800F800` | `0x0800FBFF` | 1 KiB |
+| Metadata B | `0x0800FC00` | `0x0800FFFF` | 1 KiB |
+
+**Cách tính quan trọng khi phỏng vấn:**
+
+- Địa chỉ bắt đầu Application: **`0x08006000`**.
+- Dung lượng tối đa Application: **`38 × 1024 = 38.912 bytes`**.
+- End-exclusive: **`0x08006000 + 0x9800 = 0x0800F800`**.
+- Nếu `page_offset = 0x800`, trang tương ứng bắt đầu tại **`0x08006800`**.
+- Với firmware có kích thước không chia hết 1 KiB, trang cuối vẫn là một **trang xóa 1 KiB**, nhưng chỉ lập trình/kiểm tra số byte có dữ liệu thuộc image.
+
+**Quy tắc an toàn:** Kiểm tra `image_size <= APPLICATION_MAX_SIZE`; địa chỉ/offset hợp lệ; không xóa chạm vùng Metadata hoặc Bootloader. Trong code, phải đọc cả `memory_map.h` và nơi **gọi** Flash API, vì chỉ ghi đúng `APPLICATION_START_ADDRESS` chưa đủ nếu kích thước hoặc offset sai.
+
+#### Bước 3. Tại sao phải xác minh firmware và Backup trước khi Erase?
+
+Khi chuẩn bị OTA, Bootloader đã đọc gói **SDOT** ở vùng **Incoming W25Q**, xác thực chữ ký/phần thông tin cần thiết và, nếu là Delta OTA, tái tạo firmware vào **Reconstructed Image**. Chỉ khi image ứng viên được đánh giá hợp lệ mới chuyển sang giai đoạn Backup/Install.
+
+```mermaid
+flowchart LR
+    SDOT["SDOT ở Incoming"] --> VALID["ECDSA P-256 / SHA-256<br/>Kiểm tra base nếu Delta"]
+    VALID --> TARGET["Firmware mới đã chuẩn bị<br/>W25Q Reconstructed Image"]
+    OLD["Firmware cũ<br/>Internal Flash Application"] --> BACK["Backup sang W25Q<br/>và kiểm tra CRC"]
+    TARGET --> GATE{"Firmware mới và Backup hợp lệ?"}
+    BACK --> GATE
+    GATE -->|"Có"| INSTALL["Cho phép Erase/Program<br/>Application Internal Flash"]
+    GATE -->|"Không"| SAFE["Chưa ghi đè Application cũ"]
+```
+
+**Tại sao cần thứ tự này?** Khi Erase trang đầu của vùng Application, bản firmware đang chạy cũ **không còn nguyên vẹn**. Do đó phải có bản Backup đủ tin cậy **trước** khi ghi đè. `image_installer.c` xác minh bản Backup rồi mới chuyển Metadata sang `UPDATE_INSTALLING`.
+
+| Điều kiện | Nếu thiếu thì có rủi ro gì? |
+|---|---|
+| Gói SDOT được xác thực | Có thể cài dữ liệu không được tin cậy / không đúng sản phẩm. |
+| Target image đã được chuẩn bị và kiểm tra | Cài image lỗi, sai base hoặc không tái tạo đầy đủ. |
+| Backup hợp lệ | Khi Trial Boot thất bại không có bản firmware cũ đáng tin cậy để Rollback. |
+| Metadata tiến độ hợp lệ | Không biết sau Reset phải làm lại trang nào. |
+
+> **Phân biệt:** CRC32 dùng trong Backup/Install giúp phát hiện **sai khác dữ liệu**. Nó **không tự xác thực nguồn phát hành** như chữ ký ECDSA. Không nên dùng “CRC thành công” để thay cho “firmware đã được xác thực”.
+
+#### Bước 4. Erase → Program half-word → Read-back Verify của một trang
+
+Trong repository, `ProgramAndVerifyCandidatePage()` nạp một trang từ nguồn firmware vào **`g_install_page_buffer`**, sau đó gọi `ProgramBufferedApplicationPage()`. Hàm sau thực hiện chuỗi **lưu PRIMASK → tạm vô hiệu hóa IRQ → Unlock → ClearFlag → Erase → Program half-word → Lock → khôi phục PRIMASK → so sánh byte**.
+
+**Các thao tác thực tế có trong source:**
+
+| Thao tác | API / cơ chế | Ý nghĩa |
+|---|---|---|
+| Giữ trạng thái ngắt | `GetPrimask()` | Sau thao tác có thể trả về đúng trạng thái trước đó. |
+| Vô hiệu hóa IRQ trong đoạn Flash | `__disable_irq()` | Tránh xử lý interrupt maskable trong lúc thao tác có tác động lớn đến Flash. |
+| Mở Flash controller | `FLASH_Unlock()` | Cho phép Erase/Program. |
+| Xóa cờ trạng thái | `FLASH_ClearFlag(...)` | Làm sạch các cờ lỗi/hoàn thành được quản lý. |
+| Xóa trang đích | `FLASH_ErasePage(APPLICATION_START_ADDRESS + page_offset)` | Erase đúng trang Application. |
+| Ghi dữ liệu | `FLASH_ProgramHalfWord(address, halfword)` | Ghi lần lượt 2 byte. |
+| Khóa lại Flash | `FLASH_Lock()` | Tránh giữ bộ điều khiển ở trạng thái mở ghi. |
+| Khôi phục trạng thái ngắt | `RestorePrimask(primask)` | Không bật ngắt vô điều kiện nếu trước đó đã bị khóa. |
+| Đọc và so sánh | So sánh từng byte với buffer | Xác nhận trang đã lập trình khớp nguồn. |
+
+**Pseudocode để hiểu luồng (không phải source nguyên văn):**
+
+```c
+// MÔ PHỎNG KHÁI NIỆM — không dùng thay cho driver của repository.
+status_t install_one_page(uint32_t offset, const uint8_t *src,
+                          uint32_t actual_length)
+{
+    // Trước đó: đã kiểm tra bounds/alignment và nạp đúng dữ liệu trang.
+    uint32_t addr = APPLICATION_START_ADDRESS + offset;
+    uint32_t saved_primask = read_primask();
+    disable_maskable_interrupts();
+    flash_unlock();
+
+    if (flash_erase_page(addr) != OK) goto flash_error;
+    for (uint32_t i = 0; i < actual_length; i += 2U) {
+        uint8_t hi = (i + 1U < actual_length) ? src[i + 1U] : 0xFFU;
+        uint16_t hw = (uint16_t)src[i] | ((uint16_t)hi << 8U);
+        if (flash_program_halfword(addr + i, hw) != OK) goto flash_error;
+    }
+    flash_lock();
+    restore_primask(saved_primask);
+
+    for (uint32_t i = 0; i < actual_length; ++i)
+        if (*(volatile const uint8_t *)(addr + i) != src[i]) return VERIFY_FAIL;
+    return OK;
+
+flash_error:
+    flash_lock();
+    restore_primask(saved_primask);
+    return FLASH_FAIL;
+}
+```
+
+**Lưu ý về đoạn minh họa:** Các hàm `flash_erase_page`, `flash_program_halfword`, `read_primask` trong *pseudocode* **không phải tên API thực tế** của STM32 trong repository. Hãy xem `FLASH_ErasePage()` và `FLASH_ProgramHalfWord()` trong `image_installer.c` để biết lệnh thực tế và nhánh lỗi cụ thể.
+
+**Tại sao ghép 2 byte theo thứ tự thấp trước?** Với STM32F103 (little-endian), hai byte trong ảnh firmware được đóng gói vào half-word: byte ở offset `i` là 8 bit thấp, byte ở `i+1` là 8 bit cao. Ví dụ `[0x34, 0x12]` trở thành **`0x1234`**.
+
+**Trang cuối có số byte lẻ thì sao?** Nếu `page_length` lẻ, code lấy **`0xFF` làm byte cao đệm** cho half-word cuối. Vòng so sánh sau khi ghi chỉ so sánh **số byte thực tế của image**. Không được đọc vượt nguồn để lấy byte thứ hai không tồn tại.
+
+> **Phỏng vấn hay hỏi:** Tại sao phải dùng `FLASH_Lock()` và khôi phục PRIMASK cả khi lỗi? Vì lỗi ghi Flash không được để bộ điều khiển ở trạng thái mở và không được vô tình thay đổi chính sách ngắt của Bootloader sau khi trở về.
+
+#### Bước 5. Checkpoint theo trang: cập nhật `copy_offset` lúc nào?
+
+Trong `ResumePageCheckpointedCopy()`, Bootloader dùng `InstallProgress_Validate()`, `InstallProgress_PageLength()` và `InstallProgress_NextCheckpoint()` để chia image thành các trang; **chỉ sau khi** `ProgramAndVerifyCandidatePage()` thành công, nó mới cập nhật `metadata->copy_offset` và gọi `CommitMetadata()`.
+
+Ví dụ một image **2.501 byte** (3 trang xóa, nhưng trang cuối chỉ có 453 byte dữ liệu):
+
+| Bước | `page_offset` trước khi ghi | Dữ liệu ghi thực | `copy_offset` sau Verify + Commit |
+|---|---:|---:|---:|
+| Trang 1 | 0 | 1.024 byte | 1.024 |
+| Trang 2 | 1.024 | 1.024 byte | 2.048 |
+| Trang 3 | 2.048 | 453 byte (+ 1 byte đệm khi Program half-word cuối) | **2.501** |
+
+Đây là hai quy tắc về `copy_offset` được mã `install_progress.c` sử dụng:
+
+- **Checkpoint trung gian:** phải nằm đúng **ranh giới trang 1 KiB**.
+- **Checkpoint cuối cùng:** có thể bằng **kích thước image thực** và **không cần chia hết 1 KiB**.
+
+```mermaid
+sequenceDiagram
+    participant BL as STM32 Bootloader
+    participant W as W25Q Reconstructed Image
+    participant IF as STM32 Internal Flash
+    participant M as Internal Metadata A/B
+    BL->>M: Đọc UPDATE_INSTALLING + copy_offset = 1024
+    BL->>W: Đọc trang tại offset 1024
+    W-->>BL: Buffer 1024 byte
+    BL->>IF: Erase page + Program half-word
+    BL->>IF: Read-back Verify
+    IF-->>BL: Nội dung khớp
+    BL->>M: Commit copy_offset = 2048
+    M-->>BL: Metadata mới hợp lệ
+    Note over BL,M: Chỉ sau commit, trang này mới là tiến độ bền vững
+```
+
+**Phân biệt ba cấp độ xác minh:**
+
+| Cấp | Thời điểm | Cơ chế/ý nghĩa |
+|---|---|---|
+| **Verify trang** | Sau khi Erase/Program mỗi trang | So sánh byte trong Internal Flash với page buffer. |
+| **Verify toàn image đã cài** | Sau khi hoàn tất copy | Kiểm tra CRC của image và hai word vector (MSP/Reset_Handler), kèm kiểm tra Application Jump. |
+| **Xác thực an ninh firmware** | Trước Install, ở bước xác thực SDOT | Chữ ký ECDSA P-256 / SHA-256 và kiểm tra điều kiện firmware. |
+
+#### Bước 6. Nếu mất nguồn giữa một trang Flash thì điều gì xảy ra?
+
+Đây là tình huống **quan trọng nhất** khi giải thích Power-loss Recovery trong project.
+
+Ví dụ Bootloader đã hoàn thành **hai trang** và `copy_offset = 2048`. Khi đang Erase hoặc mới Program một phần **trang thứ ba**, thiết bị mất nguồn:
+
+```text
+Metadata: UPDATE_INSTALLING, copy_offset = 2048
+
+Trang 1:    [Verified + committed]
+Trang 2:    [Verified + committed]
+Trang 3:    [Erase/Program dở] <-- MẤT NGUỒN
+Trang 4...: [Chưa xử lý]
+
+Sau Reset:
+  Bootloader đọc Metadata hợp lệ
+     → Boot Decision chọn RESUME_INSTALL
+     → Tiếp tục tại offset 2048
+     → Erase lại TOÀN BỘ trang 3
+     → Program lại trang 3 từ W25Q
+     → Verify rồi mới commit offset tiếp theo
+```
+
+**Tại sao không Resume đúng byte vừa ghi dở?** Vì tiến độ byte/half-word chưa commit có thể không đáng tin cậy sau mất nguồn. Lặp lại từ **ranh giới trang chưa được xác minh** cho phép xóa sạch phần bị ghi dở và lập trình lại từ bản nguồn đã lưu.
+
+**Tại sao không xóa và ghi lại từ trang 1?** Các trang đã được Verify và được ghi nhận bằng Metadata có thể giữ lại. Cách này tiết kiệm thao tác Flash và thời gian cập nhật, miễn các điều kiện khôi phục và nguồn firmware vẫn hợp lệ.
+
+**Source tương ứng:** `image_installer.c` giữ `copy_offset` ở trang đã xác minh trước đó khi mô phỏng reset trong trang; có các nhánh fault injection như `INSTALL_FAULT_INJECT_OFFSET`/`HIL_FAULT_INSTALL_OFFSET` hỗ trợ kiểm tra trên phần cứng. `BootDecision_Evaluate()` ánh xạ `UPDATE_INSTALLING` sang `BOOT_ACTION_RESUME_INSTALL`.
+
+**Điểm dễ nhầm:** *Power-loss Recovery* không tự động có nghĩa *Rollback*. Nếu vẫn có nguồn candidate hợp lệ và trạng thái cho phép Resume, Bootloader tiếp tục ghi trang chưa hoàn chỉnh. **Rollback** là con đường phục hồi Application cũ khi cần, sử dụng **Backup Image đã xác minh**.
+
+#### Bước 7. Verify toàn image, kiểm tra vector và chuyển sang Trial Boot
+
+Sau khi đã ghi đủ `image_size`, Bootloader chuyển tới `UPDATE_VERIFYING_INSTALL` và chạy xác minh **trên dữ liệu thực tế trong Internal Flash**. Trong hàm `VerifyInstalledApplication()`, code thực hiện các bước:
+
+1. Tính **CRC32** trên số byte của image đã cài, so sánh với `source->image_crc32`.
+2. Đọc hai word đầu tại **`APPLICATION_START_ADDRESS`** (Initial MSP và Reset Handler).
+3. Kiểm tra vector với `FullImage_ValidateVector()` và `ApplicationJump_Validate()`.
+4. Nếu hợp lệ, cho phép tiến tới **`UPDATE_TRIAL_BOOT`**; nếu không, trả trạng thái lỗi tương ứng.
+
+**Tại sao cần cả Verify từng trang lẫn Verify toàn image?** So sánh từng trang phát hiện lỗi cục bộ ngay lúc Program; Verify toàn image kiểm tra kết quả cuối cùng ở mức gói firmware cài đặt và tính khả dụng của vector khởi động. Hai bước bảo vệ hai thời điểm khác nhau.
+
+**Tại sao kiểm tra vector?** Dù byte đã ghi khớp, một image không có MSP/Reset_Handler hợp lệ vẫn không thể Jump an toàn. Xem Chương 6.2 về địa chỉ `0x08006000`, Thumb bit và điều kiện SRAM.
+
+**Cập nhật thành công chưa kết thúc tại đây:** `UPDATE_TRIAL_BOOT` mới là trạng thái **chạy thử**. Application phải **Confirm** để chấp nhận phiên bản mới; nếu thất bại sau các lần thử cho phép thì Bootloader xử lý **Rollback** (Phần 5.5).
+
+#### Bước 8. Metadata A/B cũng phải Erase/Program: khác với ghi Application ở đâu?
+
+Metadata nằm trong **Internal Flash** nhưng có nhiệm vụ khác với firmware image:
+
+| Đặc điểm | Application Image | Metadata A/B |
+|---|---|---|
+| Vùng | `0x08006000` – `0x0800F7FF` | A: `0x0800F800`; B: `0x0800FC00` |
+| Mục đích | Chứa code Application | Lưu state, `copy_offset`, version, generation, CRC32... |
+| Đơn vị Erase | 1 KiB/page | Mỗi slot A và B là **một trang 1 KiB** |
+| Khi cập nhật | Ghi các trang image ứng viên | Commit bản ghi metadata mới vào **slot không được chọn** |
+| An toàn mất nguồn | Verify trang rồi tiến Checkpoint | Giữ bản metadata hợp lệ hiện tại cho đến khi bản mới được ghi và kiểm tra |
+
+**Commit Metadata A/B** theo mô tả của repo: đọc hai bản, chọn generation hợp lệ mới nhất, ghi bản mới vào trang cũ/không được chọn, read-back và verify CRC/bytes. Nếu mất nguồn giữa commit, bản được chọn trước đó vẫn có cơ hội tồn tại nguyên vẹn; bản mới ghi dở bị loại do không hợp lệ.
+
+**Giải thích cần phân biệt:** Dù cả hai thao tác đều dùng Internal Flash, việc ghi **Application** thay đổi firmware thực thi, còn việc ghi **Metadata** thay đổi **quyết định boot và tiến độ phục hồi**. Xóa nhầm một trang Metadata có thể làm mất lịch sử cập nhật; xóa nhầm trang Bootloader có thể làm mất đường khởi động. Vì vậy địa chỉ và giới hạn vùng phải là các hằng số/điều kiện rõ ràng.
+
+#### Bước 9. Đọc mã nguồn thật trong repository theo thứ tự nào?
+
+| Thứ tự | File / hàm | Câu hỏi nên tự trả lời |
+|---|---|---|
+| 1 | `shared/include/memory_map.h` | `APPLICATION_START_ADDRESS`/`APPLICATION_MAX_SIZE` là bao nhiêu? Metadata ở đâu? |
+| 2 | `docs/memory-map.md` | Vì sao Application còn 38 KiB, không phải 40 KiB? |
+| 3 | `shared/src/install_progress.c` | Offset trung gian được phép có giá trị nào? Trang cuối xử lý thế nào? |
+| 4 | `image_installer.c` → `LoadCandidatePage()` | Trang mới lấy từ phân vùng W25Q nào và nạp vào đâu? |
+| 5 | `image_installer.c` → `ProgramBufferedApplicationPage()` | Có đúng Unlock → Erase → Program → Lock → Verify không? |
+| 6 | `image_installer.c` → `ResumePageCheckpointedCopy()` | `copy_offset` được commit **trước hay sau** khi Verify trang? |
+| 7 | `image_installer.c` → `VerifyInstalledApplication()` | Verify CRC và vector ở thời điểm nào? |
+| 8 | `docs/metadata-and-boot-decision.md` | Khi reset ở `UPDATE_INSTALLING`, ai chọn `RESUME_INSTALL`? |
+| 9 | `node-stm32f103/bootloader/src/boot_manager.c` | Trạng thái đó được điều phối đến nhánh xử lý nào? |
+
+**Đoạn cần tự lần theo khi đọc code:** `ProgramAndVerifyCandidatePage()` → `ProgramBufferedApplicationPage()` → `ResumePageCheckpointedCopy()` → `VerifyInstalledApplication()`; sau đó nối với **Boot State Machine** ở Chương 5.4.
+
+#### Tình huống lỗi thực tế và hướng suy luận
+
+| Hiện tượng | Khả năng cần kiểm tra đầu tiên | Liên hệ source |
+|---|---|---|
+| `FLASH_ErasePage()` không hoàn tất | Địa chỉ page, lỗi controller, trạng thái khóa/flag | `IMAGE_INSTALLER_FLASH_ERASE_FAILED` |
+| `FLASH_ProgramHalfWord()` thất bại | Căn chỉnh, dữ liệu và trạng thái Flash | `IMAGE_INSTALLER_FLASH_PROGRAM_FAILED` |
+| Verify một trang sai | Flash vừa ghi không khớp buffer nguồn | `IMAGE_INSTALLER_PAGE_VERIFY_FAILED` |
+| CRC toàn image sai | Nội dung ghi cuối cùng khác image nguồn đã chuẩn bị | `IMAGE_INSTALLER_VERIFY_CRC_FAILED` |
+| CRC đúng nhưng không Jump | MSP/Reset Handler hoặc điều kiện vector/handoff không hợp lệ | `IMAGE_INSTALLER_VERIFY_VECTOR_FAILED` và Chương 6.2 |
+| Reset giữa trang 3 | Trang 3 đang dở, checkpoint vẫn ở đầu trang 3 | Re-erase/re-program từ `copy_offset` |
+| Offset không căn chỉnh ở trang trung gian | Metadata tiến độ không hợp lệ | `InstallProgress_Validate()` |
+| Install đủ byte nhưng Application chưa được chấp nhận | Đang ở Trial Boot, chưa Confirm | `UPDATE_TRIAL_BOOT` |
+| Nguồn candidate/backup không còn hợp lệ | Không thể Resume/Restore một cách mù quáng | Boot Manager/Installer báo lỗi theo state và chính sách recovery |
+
+> **Lưu ý an toàn khi debug:** Không thử Erase trực tiếp địa chỉ `0x08000000` hoặc các trang `0x0800F800`/`0x0800FC00` trên thiết bị đang chứa firmware quan trọng. Các lệnh thử nghiệm Flash cần dùng vùng thử nghiệm được bảo vệ/ràng buộc đúng địa chỉ và có phương án nạp lại qua SWD.
+
+#### Bài nói khi phỏng vấn: STM32 Internal Flash Programming (khoảng 90 giây)
+
+> Dạ, khi cài firmware mới, STM32 Bootloader của em không ghi thẳng gói SDOT vừa nhận vào Internal Flash. Firmware mới đã được xác thực và chuẩn bị trong vùng Reconstructed Image của External Flash W25Q. Bootloader sao lưu và xác minh Application cũ trước, rồi mới chuyển sang `UPDATE_INSTALLING`.
+>
+> STM32F103 dùng đơn vị xóa là một trang Internal Flash 1 KiB và đơn vị lập trình là half-word 16-bit. Vì vậy Bootloader đọc dữ liệu firmware mới theo từng trang vào RAM, Unlock Flash, Erase đúng trang Application, Program từng half-word, sau đó Lock và đọc lại để so sánh từng byte.
+>
+> Khi một trang được ghi và Verify thành công, Bootloader mới lưu `copy_offset` vào Metadata A/B. Nếu thiết bị mất nguồn giữa một trang, sau reset Bootloader đọc Checkpoint và xóa/ghi lại trang chưa hoàn chỉnh thay vì coi nó đã hợp lệ.
+>
+> Sau khi ghi toàn image, Bootloader kiểm tra CRC32 và vector của Application trong Internal Flash rồi mới cho chạy Trial Boot. Nếu Application xác nhận thành công thì bản cập nhật được chấp nhận; nếu thất bại, hệ thống xử lý Rollback từ Backup đã lưu.
+
+#### Câu hỏi ôn tập: STM32 Internal Flash Programming
+
+| STT | Câu hỏi | Ý chính cần trả lời |
+|---:|---|---|
+| 1 | Internal Flash khác RAM ở điểm nào? | Flash không mất dữ liệu khi tắt nguồn; ghi/xóa có đơn vị và giới hạn riêng, RAM mất trạng thái sau reset/power-off. |
+| 2 | Tại sao Erase trước Program? | NOR Flash không cho phép tùy ý biến bit `0` về `1` bằng Program thông thường. |
+| 3 | Đơn vị Erase trên STM32F103 trong project là bao nhiêu? | **1 KiB mỗi trang**. |
+| 4 | Đơn vị Program là bao nhiêu? | **Half-word 16-bit**, tương đương 2 byte. |
+| 5 | Vì sao không ghi từng byte? | Phải phù hợp đơn vị Program được driver/phần cứng hỗ trợ. |
+| 6 | `APPLICATION_START_ADDRESS` là gì? | `0x08006000`. |
+| 7 | Application chiếm tối đa bao nhiêu? | **38 KiB**, kết thúc trước `0x0800F800`. |
+| 8 | Tại sao phải bảo vệ `0x0800F800`? | Bắt đầu Metadata A; Erase qua ranh giới có thể làm mất trạng thái OTA. |
+| 9 | Dữ liệu mới được đọc từ đâu? | **W25Q Reconstructed Image** vào page buffer, trước khi ghi Internal Flash. |
+| 10 | Tại sao cần Backup trước Install? | Vì Install ghi đè App cũ; cần bản hợp lệ để Rollback. |
+| 11 | `FLASH_Unlock()` và `FLASH_Lock()` có vai trò gì? | Cho phép thao tác ghi rồi khóa lại Flash controller. |
+| 12 | Tại sao phải khôi phục PRIMASK? | Giữ nguyên trạng thái maskable interrupt trước thao tác Flash. |
+| 13 | Chuyển hai byte thành half-word như thế nào? | Byte thấp ở `i`, byte cao ở `i+1` theo little-endian. |
+| 14 | Byte cuối lẻ được xử lý ra sao? | Ghép với byte đệm `0xFF` trước khi Program half-word cuối. |
+| 15 | Vì sao Verify ngay sau ghi trang? | Phát hiện lỗi cục bộ trước khi commit checkpoint. |
+| 16 | `copy_offset` được lưu lúc nào? | Chỉ sau khi trang đã ghi và Verify thành công, rồi Metadata commit. |
+| 17 | Checkpoint cuối có bắt buộc là bội 1 KiB không? | **Không**; được bằng chính `image_size`. |
+| 18 | Mất nguồn giữa trang thì tiếp tục từ đâu? | Từ ranh giới trang chưa được Checkpoint; Erase/Program lại trang đó. |
+| 19 | Vì sao Verify toàn image sau khi hoàn tất? | Kiểm tra CRC32 và vector cuối cùng trong Internal Flash. |
+| 20 | CRC32 có thay cho chữ ký ECDSA không? | **Không**; CRC phát hiện lỗi dữ liệu, ECDSA xác thực chữ ký. |
+| 21 | Verify Installed Image thành công có nghĩa OTA xong chưa? | **Chưa**; cần Trial Boot và Confirm. |
+| 22 | Metadata A/B giúp gì nếu mất nguồn trong commit? | Giữ một bản Metadata hợp lệ khác để Bootloader lựa chọn sau reset. |
+
+#### Điểm cần ghi nhớ
+
+1. **Không nhầm Erase 1 KiB của Internal Flash với sector 4 KiB của External Flash W25Q.**
+2. **Application chỉ nằm trong `0x08006000`–`0x0800F7FF`**, tuyệt đối không để thao tác cài đặt lấn sang Bootloader/Metadata.
+3. **Firmware mới đã được xác thực và chuẩn bị trước khi Install; Backup cũ phải đáng tin cậy trước khi ghi đè.**
+4. **Một trang = Erase → Program half-word → read-back Verify**; nếu lỗi, **không tiến `copy_offset`**.
+5. **Checkpoint là mốc bền vững**, không phải số byte vừa Program gần nhất trong RAM.
+6. **Mất nguồn giữa trang → xóa lại và ghi lại trang đó** theo `copy_offset` đã được lưu; không mặc định Rollback.
+7. **Trang cuối có thể ngắn hơn 1 KiB**, và số byte lẻ được đệm bằng `0xFF` khi ghi half-word cuối.
+8. **Verify trang ≠ Verify toàn image ≠ xác thực chữ ký SDOT.** Mỗi cấp kiểm tra giải quyết một vấn đề khác nhau.
+9. **Install thành công ≠ OTA được Confirm**; còn cần Trial Boot và khả năng Rollback.
+10. **Muốn giải thích đúng project, hãy trích dẫn đường đi của hàm trong `image_installer.c`**, không chỉ mô tả các thao tác Flash theo lý thuyết.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+| File / tài liệu | Vai trò |
+|---|---|
+| [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md) | Vùng 24 KiB Bootloader, 38 KiB Application, hai Metadata page 1 KiB. |
+| [`shared/include/memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h) | Hằng số địa chỉ và `INTERNAL_FLASH_PAGE_SIZE`. |
+| [`shared/src/install_progress.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/src/install_progress.c) | Kiểm tra `copy_offset`, tính `PageLength` và `NextCheckpoint`. |
+| [`node-stm32f103/bootloader/src/image_installer.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/image_installer.c) | Nạp page buffer, Erase/Program/Verify, Resume và kiểm tra image sau khi cài. |
+| [`docs/metadata-and-boot-decision.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/metadata-and-boot-decision.md) | Metadata A/B và cách `UPDATE_INSTALLING` chọn `RESUME_INSTALL`. |
+| [`docs/boot-state-machine.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-state-machine.md) | Các state `BACKING_UP`, `INSTALLING`, `VERIFYING_INSTALL`, `TRIAL_BOOT`. |
+| [`node-stm32f103/bootloader/src/boot_manager.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/boot_manager.c) | Điều phối Boot Decision và Image Installer sau reset. |
+| [STM32F1 Reference Manual RM0008](https://www.st.com/resource/en/reference_manual/cd00171190-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf) | Kiến thức nền Flash controller, Page Erase và Half-word Programming của STM32F1. |
+
+> **Tự kiểm tra cuối chương:** Giả sử firmware mới có `image_size = 2501`, thiết bị mất nguồn sau khi ghi **150 byte vào trang thứ ba**, trong khi Metadata vẫn lưu `copy_offset = 2048`. Hãy giải thích: (1) sau reset Bootloader chọn hành động nào, (2) trang nào được Erase lại, (3) vì sao không bắt đầu từ byte thứ 150, (4) lúc nào `copy_offset` trở thành `2501`, và (5) tại sao **Verify Installed Image** vẫn cần thiết sau khi đã Verify từng trang.
 
 ---
 
