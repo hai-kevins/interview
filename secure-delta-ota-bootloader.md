@@ -2480,19 +2480,6 @@ Những ràng buộc này bảo vệ tính nhất quán của State Machine: **m
 
 > **Tiến độ:** **Chương 6.1–6.10 đã được phát triển thành bài học chi tiết** theo trình tự **nguyên lý → liên hệ project → mã nguồn → tình huống lỗi → câu hỏi phỏng vấn**. **Cả 10 chương đã có nội dung ôn tập chi tiết**. Nội dung được tách rõ giữa hành vi hiện có trong repository, ví dụ minh họa và hướng cải tiến production.
 
-| Chương | Chủ đề | Kiến thức trọng tâm | Liên hệ project | Trạng thái |
-|---|---|---|---|---|
-| **[6.1](#chuong-6-1)** | STM32F103 & ARM Cortex-M3 | Memory Map, MSP/PSP, NVIC, Clock, Reset | Nền tảng STM32 Bootloader/Application. | **Đã triển khai** |
-| **[6.2](#chuong-6-2)** | Boot Process, Vector Table & Linker Script | Reset Handler, VTOR, `.data`/`.bss`, Linker Script, Application Jump | `boot-jump.md`, startup assembly, `application_jump.c`. | **Đã triển khai** |
-| **[6.3](#chuong-6-3)** | STM32 Internal Flash Programming | Page Erase 1 KiB, Half-word Program, Page Verify, Checkpoint | `image_installer.c`, `install_progress.c`. | **Đã triển khai** |
-| **[6.4](#chuong-6-4)** | External SPI Flash W25Q | Page Program 256 B, Sector Erase 4 KiB, WIP/WEL, partition, Resume | `spi_flash.c`, `external_flash_storage.c`, `ota_receiver.c`. | **Đã triển khai** |
-| **[6.5](#chuong-6-5)** | UART Communication & OTA Protocol | UART 115200 8-N-1, COBS, packet CRC32, ACK/NACK, Retry, Resume, FINISH/INSTALL | `ota_protocol.h`, `ota_receiver.c`, Gateway UART OTA. | **Đã triển khai** |
-| **[6.6](#chuong-6-6)** | SPI Communication | Master/Slave, SCK/MOSI/MISO/CS, CPOL/CPHA, SPI Mode 0, TXE/RXNE/BSY, WIP/WEL, SPI transactions | `spi_flash.c`, `external_flash_storage.c`, W25Q. | **Đã triển khai** |
-| **[6.7](#chuong-6-7)** | Full OTA, Delta OTA & JojoDiff | Binary Diff, JojoDiff EQL/MOD/INS/DEL, signed SDOT, exact-base, reconstruct | `jojodiff_patch.py`, `release.py`, `secure_container.c`; W25Q Reconstructed. | **Đã triển khai** |
-| **[6.8](#chuong-6-8)** | Cryptography & Firmware Security | CRC32 vs SHA-256, ECDSA P-256, Signed SDOT, Trust Anchor, Key Provisioning, Anti-rollback, Threat Model | `secure_container.c`, `trusted_key.h`, `keytool.py`, `threat-model.md`. | **Đã triển khai** |
-| **[6.9](#chuong-6-9)** | Metadata, Checkpoint & Fault Tolerance | Internal Flash Metadata A/B và External Flash Metadata A/B, generation, CRC32, commit protocol, 4 KiB/1 KiB Checkpoint, idempotency | `metadata_storage.c`, `boot_decision.c`, `image_installer.c`, recovery. | **Đã triển khai** |
-| **[6.10](#chuong-6-10)** | Watchdog, Debugging & Testing | IWDG/Trial policy, SWD/GDB, fault witnesses, 9/9 physical HIL, GCC/Clang signed benchmark | `trial_boot.c`, `boot_manager.c`, `VALIDATION.md`, `hil-results.md`. | **Đã triển khai** |
-
 **Kiến thức Embedded tổng quát cần ôn song song:** C (pointer, `volatile`, `const`, `static`, bitwise), ngắt, Timer, I2C, debugging, build/link và Git. Đây là nội dung mở rộng phục vụ phỏng vấn; không phải tất cả đều là tính năng đã triển khai trong project.
 
 ---
