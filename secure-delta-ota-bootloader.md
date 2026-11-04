@@ -2,7 +2,7 @@
 
 > **Mục tiêu:** Ôn tập project theo đúng **7 phần** để trình bày và trả lời phỏng vấn **Embedded Firmware Engineer**.  
 > **Nền tảng:** STM32F103 + ESP32 Gateway + External Flash W25Q.  
-> **Nguồn:** Bản ghi chú Markdown v4 và tài liệu `docs/boot-state-machine.md`, `docs/metadata-and-boot-decision.md` của repository.
+> **Nguồn:** Tài liệu `docs/boot-state-machine.md`, `docs/metadata-and-boot-decision.md` của repository.
 
 ## Mục lục
 
