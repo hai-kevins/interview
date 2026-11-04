@@ -76,7 +76,7 @@ Qua project này, em hiểu rõ hơn về bootloader, quản lý bộ nhớ Flas
 <a id="phan-2"></a>
 ## Phần 2. Trình bày System Architecture
 
-> **Mục tiêu:** Giới thiệu kiến trúc tổng thể và luồng cập nhật firmware từ **Developer/CI** đến **STM32 Bootloader** trong khoảng **90 giây**, trước khi đi vào Boot State Machine ở Phần 3. Đây là **sơ đồ tổng quan**, chưa thể hiện toàn bộ giao thức, phân vùng Flash và nhánh xử lý lỗi.
+> **Mục tiêu:** Giới thiệu kiến trúc tổng thể và luồng cập nhật firmware từ **Developer/CI** đến **STM32 Bootloader** trong khoảng **90 giây**, trước khi đi vào Boot State Machine ở Phần 3. Đây là **sơ đồ tổng quan**, chưa thể hiện mọi chi tiết giao thức, phân vùng Flash và nhánh xử lý lỗi.
 
 ### 2.1. Bài nói khi phỏng vấn (khoảng 90 giây)
 
@@ -175,7 +175,9 @@ flowchart TD
 <a id="phan-4"></a>
 ## Phần 4. Phân tích chi tiết System Architecture
 
-> **Mục tiêu:** Đi từ Developer/CI đến Internal Flash của STM32. Mỗi luồng giữ nguyên **sơ đồ → bước xử lý → bài nói phỏng vấn → câu hỏi ôn tập** từ bản v4.
+> **Mục tiêu:** Phân tích sâu **System Architecture** đã giới thiệu ở **Phần 2**, theo cùng bố cục với **Phần 5**: **sơ đồ luồng → các bước xử lý → bài nói khi phỏng vấn → câu hỏi ôn tập → điểm cần ghi nhớ**. Phần 2 dùng để trình bày tổng quan khoảng 90 giây; Phần 4 dùng để giải thích chi tiết từng luồng từ **Developer/CI** đến **STM32 Internal Flash**.
+>
+> **Phạm vi:** Giữ nguyên nội dung và số liệu kỹ thuật trong bản ghi chú; các sơ đồ Mermaid nhấn mạnh luồng chính, không thay thế mọi điều kiện và nhánh lỗi của mã nguồn.
 
 <a id="luong-1"></a>
 ### 4.1. Developer/CI → Release Server
@@ -188,39 +190,20 @@ flowchart TD
 
 #### Sơ đồ luồng hoạt động
 
-```text
-                   Developer/CI
-                        |
-                 1. Build firmware
-                        v
-                application-v2.bin
-                        |
-              +---------+---------+
-              |                   |
-              v                   v
-         2. Full OTA         2. Delta OTA
-         Firmware v2        Firmware v1 + v2
-              |                   |
-              |              JojoDiff Patch
-              |                   |
-              +---------+---------+
-                        |
-          3. Đóng gói SDOT và ký ECDSA P-256
-                        |
-              +---------+---------+
-              |                   |
-              v                   v
-          Full SDOT           Delta SDOT
-              |                   |
-              +---------+---------+
-                        |
-                4. Tạo Manifest
-                   và ký số
-                        |
-              5. Kiểm tra release
-                 và triển khai
-                        v
-                  Release Server
+```mermaid
+flowchart TD
+    CI["Developer / CI"] --> BUILD["Build STM32 Application<br/>application-v2.bin"]
+    BUILD --> FULL["Full OTA<br/>toàn bộ firmware v2"]
+    BUILD --> DELTA["Delta OTA<br/>JojoDiff từ firmware v1 và v2"]
+    DELTA --> TEST["Áp dụng thử patch<br/>đối chiếu với firmware v2"]
+    FULL --> PACK["Đóng gói SDOT<br/>và ký ECDSA P-256"]
+    TEST -->|"Patch phù hợp + đạt ngưỡng tiết kiệm"| PACK
+    PACK --> FS["Full SDOT"]
+    PACK --> DS["Delta SDOT nếu đủ điều kiện"]
+    FS --> MAN["Tạo và ký Manifest"]
+    DS --> MAN
+    MAN --> CHECK["Kiểm tra release"]
+    CHECK --> SERVER["Triển khai lên Release Server"]
 ```
 
 #### Bước 1. Developer/CI build firmware
@@ -342,9 +325,14 @@ Release Server sử dụng bộ release đã triển khai để:
 | Release Server có tạo firmware không? | Không. Developer/CI và release tooling tạo artifact; server xác minh và phân phối. |
 | Release Server có cần private key ký firmware không? | Không cần private key ký firmware để xác minh và phân phối release. |
 
-**Tài liệu đối chiếu trong repository:** `docs/release-process.md`, `tools/release.py`, `tools/secure_container.py`.
+#### Điểm cần ghi nhớ
 
----
+- **Developer/CI tạo artifact; Release Server phân phối**. Kiểm tra release tại máy build không đồng nghĩa đã tự động upload lên server.
+- **Full OTA** có firmware đích hoàn chỉnh; **Delta OTA** dùng patch từ đúng firmware gốc và phải được kiểm tra khả năng tái tạo.
+- **SDOT khác Manifest:** SDOT chứa dữ liệu cập nhật đã ký số; Manifest mô tả release và các artifact.
+- **Private key** ở phía phát hành; STM32 Bootloader dùng public key tin cậy để kiểm tra chữ ký trước cài đặt.
+
+**Tài liệu/code đối chiếu:** `docs/release-process.md`, `tools/release.py`, `tools/secure_container.py`.
 
 ---
 
@@ -357,32 +345,19 @@ Release Server sử dụng bộ release đã triển khai để:
 
 #### Sơ đồ luồng hoạt động
 
-```text
-                  Release Server
-                        |
-          1. Xác minh bản phát hành
-          2. Chọn Full OTA / Delta OTA
-                        |
-              +---------+---------+
-              |                   |
-              v                   v
-         MQTT Broker         HTTPS Server
-              |                   ^
-              | 3. Update command |
-              |    qua MQTTS      |
-              v                   |
-         ESP32 Gateway -----------+
-              |       4. HTTPS GET gói SDOT
-              |
-          5. Kiểm tra kích thước, CRC32
-             và lưu vào Flash cache
-              |
-              v
-       Gói SDOT đã tải hợp lệ
-              |
-              | UART + COBS + CRC32
-              v
-        STM32 Application
+```mermaid
+flowchart TD
+    RELEASE["Release Server<br/>Xác minh Manifest và SDOT"] --> CHOOSE{"Chọn artifact phù hợp"}
+    CHOOSE -->|"Có Delta đúng firmware gốc"| DELTA["Delta SDOT"]
+    CHOOSE -->|"Không có Delta phù hợp"| FULL["Full SDOT nếu được phép"]
+    DELTA --> CMD["Tạo update command"]
+    FULL --> CMD
+    CMD --> BROKER["MQTT Broker"]
+    BROKER -->|"MQTTS: thông báo cập nhật"| ESP["ESP32 Gateway"]
+    CMD --> HTTPS["HTTPS Server<br/>Phục vụ artifact SDOT"]
+    ESP -->|"HTTPS GET URL trong command"| HTTPS
+    HTTPS -->|"Tải SDOT"| CACHE["Flash cache trên ESP32<br/>kiểm tra kích thước + CRC32"]
+    CACHE -->|"UART + COBS + CRC32"| APP["STM32 Application"]
 ```
 
 #### Bước 1. Release Server xác minh bản phát hành
@@ -474,9 +449,14 @@ ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thốn
 | Tại sao phải lưu vào Flash cache? | Để có gói SDOT hoàn chỉnh, đã kiểm tra, trước khi truyền xuống STM32 qua UART. |
 | MQTT QoS 1 nghĩa là gì? | Đảm bảo gửi ít nhất một lần; có thể có thông điệp trùng. |
 
-**Tài liệu đối chiếu trong repository:** `server/README.md`, `gateway-esp32/README.md`, `server/app/services/firmware_service.py`.
+#### Điểm cần ghi nhớ
 
----
+- **MQTTS dùng cho lệnh/trạng thái; HTTPS dùng để tải SDOT**. Không truyền toàn bộ firmware trong lệnh MQTT.
+- **Release Server** chọn gói phù hợp với phiên bản được cung cấp; **STM32 Bootloader** vẫn phải tự kiểm tra phiên bản và firmware gốc khi cài đặt.
+- **ESP32 Gateway** tải và lưu SDOT vào Flash cache, kiểm tra kích thước và CRC32 trước khi truyền xuống STM32.
+- **CRC32 không phải chữ ký số**; việc xác thực ECDSA P-256 và hash bảo mật khi quyết định cài đặt thuộc STM32 Bootloader.
+
+**Tài liệu/code đối chiếu:** `server/README.md`, `gateway-esp32/README.md`, `server/app/services/firmware_service.py`.
 
 ---
 
@@ -489,41 +469,21 @@ ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thốn
 
 #### Sơ đồ luồng hoạt động
 
-```text
-             ESP32 Gateway
-                   |
-          1. Đọc SDOT từ Flash cache
-                   |
-          2. HELLO / QUERY
-                   v
-            STM32 Application
-                   |
-         Thông tin thiết bị, trạng thái,
-         update_id, offset nhận tiếp theo
-                   |
-                   v
-             ESP32 Gateway
-                   |
-          3. START / RESUME
-          4. DATA (COBS + CRC32)
-                   v
-            STM32 Application
-                   |
-          5. Kiểm tra CRC32,
-             Sequence, Offset
-          6. Ghi dữ liệu qua SPI
-                   v
-          External Flash W25Q
-                   |
-          7. ACK / NACK (+ Retry)
-                   v
-             ESP32 Gateway
-                   |
-          8. FINISH: kiểm tra toàn bộ SDOT
-          9. INSTALL: ghi Metadata,
-             ACK rồi reset
-                   v
-            STM32 Bootloader
+```mermaid
+flowchart TD
+    ESP["ESP32 Gateway<br/>SDOT đã có trong Flash cache"] -->|"HELLO / QUERY"| APP["STM32 Application"]
+    APP -->|"Thông tin thiết bị, trạng thái,<br/>update_id, offset"| ESP
+    ESP -->|"START / RESUME"| RX["STM32 OTA Receiver"]
+    ESP -->|"DATA: UART + COBS + CRC32"| RX
+    RX --> VALID{"CRC32, Sequence, Offset hợp lệ?"}
+    VALID -->|"Không"| NACK["NACK / Retry"]
+    NACK --> ESP
+    VALID -->|"Có"| W25Q["SPI: ghi Incoming vào W25Q"]
+    W25Q -->|"ACK + Download Checkpoint"| ESP
+    ESP -->|"FINISH"| FINISH["Kiểm tra kích thước<br/>và CRC32 toàn SDOT"]
+    FINISH -->|"Thành công"| READY["ARTIFACT_READY<br/>trong receiver runtime"]
+    READY -->|"INSTALL"| META["Commit UPDATE_ARTIFACT_READY<br/>vào Metadata A/B"]
+    META -->|"ACK + Reset"| BOOT["STM32 Bootloader"]
 ```
 
 #### Bước 1. ESP32 Gateway chuẩn bị truyền gói cập nhật SDOT
@@ -786,9 +746,7 @@ Metadata + Reset
 STM32 Bootloader
 ```
 
-**Tài liệu đối chiếu trong repository:** `docs/uart-ota-protocol.md`, `docs/architecture.md`, `node-stm32f103/application/src/ota_receiver.c`.
-
----
+**Tài liệu/code đối chiếu:** `docs/uart-ota-protocol.md`, `docs/architecture.md`, `node-stm32f103/application/src/ota_receiver.c`.
 
 ---
 
@@ -801,60 +759,23 @@ STM32 Bootloader
 
 #### Sơ đồ luồng hoạt động
 
-```text
-                STM32 Application
-                       |
-               1. Nhận INSTALL
-               2. Kiểm tra điều kiện
-               3. Commit Metadata
-                       |
-                       v
-                  Reset STM32
-                       |
-                       v
-                STM32 Bootloader
-                       |
-              4. Đọc Metadata A/B
-                 + Boot Decision
-                       |
-                       v
-              5. Xác thực SDOT
-                 ECDSA P-256 / SHA-256
-                       |
-                 +-----+-----+
-                 |           |
-              Full OTA    Delta OTA
-                 |           |
-                 |       Verify Base
-                 |       Apply Patch
-                 |           |
-                 +-----+-----+
-                       |
-              6. Reconstructed Image
-                 Verify Target Hash
-                       |
-                       v
-                 IMAGE_READY
-                       |
-             7. Backup firmware cũ
-                       |
-             8. Install firmware mới
-                       |
-             9. Verify Installed Image
-                       |
-                       v
-                  TRIAL_BOOT
-                       |
-                 Application mới
-                       |
-             +---------+---------+
-             |                   |
-         Confirmed           Không xác nhận
-             |               sau số lần thử
-             v                   |
-            IDLE              ROLLBACK
-                                 |
-                       Khôi phục Backup → IDLE
+```mermaid
+flowchart TD
+    APP["STM32 Application"] -->|"INSTALL hợp lệ<br/>Commit Metadata + Reset"| BOOT["STM32 Bootloader"]
+    BOOT --> META["Đọc Metadata A/B<br/>Boot Decision"]
+    META --> VERIFY["Xác thực SDOT<br/>ECDSA P-256 + SHA-256"]
+    VERIFY --> TYPE{"Full OTA hay Delta OTA?"}
+    TYPE -->|"Full OTA"| PREP["Chuẩn bị firmware mới"]
+    TYPE -->|"Delta OTA"| BASE["Kiểm tra firmware gốc"]
+    BASE --> PATCH["Áp dụng Delta Patch"]
+    PATCH --> PREP
+    PREP --> HASH["Kiểm tra Target Hash<br/>IMAGE_READY"]
+    HASH --> BACKUP["Backup firmware hiện tại"]
+    BACKUP --> INSTALL["Install firmware mới<br/>vào Internal Flash"]
+    INSTALL --> CHECK["Verify Installed Image"]
+    CHECK --> TRIAL["TRIAL_BOOT"]
+    TRIAL -->|"Application Confirm"| CONF["CONFIRMED → IDLE"]
+    TRIAL -->|"Hết lượt thử / không hợp lệ"| ROLLBACK["ROLLBACK<br/>Restore Backup → IDLE"]
 ```
 
 > **Lưu ý:** Sơ đồ trên mô tả luồng thành công và nhánh Rollback chính. **Boot State Machine** còn các trạng thái xử lý lỗi và phục hồi sau reset; không phải mọi lỗi đều tự động Rollback.
@@ -1115,9 +1036,7 @@ INSTALL → Metadata + Reset
             IDLE
 ```
 
-**Tài liệu đối chiếu trong repository:** `docs/boot-state-machine.md`, `docs/metadata-and-boot-decision.md`, `docs/firmware-container.md`, `docs/memory-map.md`, `node-stm32f103/bootloader/src/boot_manager.c`, `node-stm32f103/bootloader/src/boot_decision.c`, `node-stm32f103/bootloader/src/secure_container.c`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/trial_boot.c`.
-
----
+**Tài liệu/code đối chiếu:** `docs/boot-state-machine.md`, `docs/metadata-and-boot-decision.md`, `docs/firmware-container.md`, `docs/memory-map.md`, `node-stm32f103/bootloader/src/boot_manager.c`, `node-stm32f103/bootloader/src/boot_decision.c`, `node-stm32f103/bootloader/src/secure_container.c`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/trial_boot.c`.
 
 ---
 
@@ -1130,55 +1049,24 @@ INSTALL → Metadata + Reset
 
 #### Sơ đồ luồng hoạt động
 
-```text
-                 STM32 Bootloader
-                        |
-                   Kiểm tra Backup
-                        |
-                        v
-                  UPDATE_INSTALLING
-                        |
-                        v
-             External Flash W25Q
-               Reconstructed Image
-                        |
-                    SPI Read
-                        v
-                  SRAM Page Buffer
-                        | 1 KB / trang
-                        v
-                STM32 Internal Flash
-             Application Region (38 KB)
-                        |
-            +-----------+-----------+
-            |  Erase page (1 KB)    |
-            |  Program (16-bit)     |
-            |  Read-back Verify     |
-            +-----------+-----------+
-                        |
-                 Commit Checkpoint
-                        |
-              Lặp đến hết firmware
-                        |
-                        v
-              UPDATE_VERIFYING_INSTALL
-                        |
-               CRC32 + Vector Table
-                        |
-                        v
-                 UPDATE_TRIAL_BOOT
-                        |
-              Jump to STM32 Application
-                        |
-              +---------+---------+
-              |                   |
-           Confirm             Failure
-              |                   |
-              v                   v
-        UPDATE_CONFIRMED     UPDATE_ROLLBACK
-              |                   |
-              v                   v
-             IDLE            Restore Backup
+```mermaid
+flowchart TD
+    BOOT["STM32 Bootloader"] --> READY["Reconstructed Image + Backup hợp lệ"]
+    READY --> INSTALL["UPDATE_INSTALLING"]
+    INSTALL --> READ["SPI Read Reconstructed Image<br/>từ External Flash W25Q"]
+    READ --> BUFFER["SRAM Page Buffer: 1 KB"]
+    BUFFER --> ERASE["Erase Application Flash Page: 1 KB"]
+    ERASE --> PROGRAM["Program Half-word: 16-bit"]
+    PROGRAM --> VERIFY{"Read-back Verify?"}
+    VERIFY -->|"Không đạt"| ERR["Xử lý lỗi / Recovery theo trạng thái"]
+    VERIFY -->|"Đạt"| CP["Commit Checkpoint"]
+    CP --> MORE{"Còn trang chưa cài đặt?"}
+    MORE -->|"Có"| READ
+    MORE -->|"Không"| FINAL["UPDATE_VERIFYING_INSTALL<br/>CRC32 + Vector Table"]
+    FINAL -->|"Hợp lệ"| TRIAL["UPDATE_TRIAL_BOOT<br/>Jump Application"]
+    FINAL -->|"Không hợp lệ"| ERR
+    TRIAL -->|"Confirm"| CONF["UPDATE_CONFIRMED → IDLE"]
+    TRIAL -->|"Không Confirm sau ngưỡng"| RB["UPDATE_ROLLBACK<br/>Restore Backup"]
 ```
 
 **Điểm cần nhớ:** STM32 Bootloader **không** ghi trực tiếp dữ liệu UART từ ESP32 vào Internal Flash. Firmware hoàn chỉnh đã được chuẩn bị và kiểm tra ở **External Flash W25Q** trước khi bắt đầu Install.
@@ -1440,9 +1328,7 @@ Trial Boot
       +---- Failure ----> Rollback
 ```
 
-**Tài liệu đối chiếu trong repository:** `docs/memory-map.md`, `docs/boot-state-machine.md`, `docs/boot-jump.md`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/application_jump.c`, `node-stm32f103/bootloader/src/metadata_storage.c`.
-
----
+**Tài liệu/code đối chiếu:** `docs/memory-map.md`, `docs/boot-state-machine.md`, `docs/boot-jump.md`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/application_jump.c`, `node-stm32f103/bootloader/src/metadata_storage.c`.
 
 ---
 
