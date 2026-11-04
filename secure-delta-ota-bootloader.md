@@ -45,6 +45,7 @@
 >
 > **Cách học:** Với mỗi thuật ngữ, thử trả lời ba câu: **(1) Nó là gì? (2) Nó hoạt động ra sao? (3) Tại sao project cần nó?** Nếu muốn đi sâu, dùng liên kết "Học kỹ" ở cuối mỗi nhóm để đến chương tương ứng.
 
+<a id="phu-luc-a-0"></a>
 ### A.0. Quy ước thuật ngữ thống nhất cho toàn tài liệu
 
 > **Nguyên tắc:** Chọn một cách gọi chính cho từng khái niệm; khi cần, dùng tiếng Việt giải thích trong ngoặc ở lần đầu. **Không đồng nhất các khái niệm khác nhau chỉ vì chúng có tên gần giống nhau.** Các định danh viết trong `code`, tên file, enum, API, macro, tiêu đề tài liệu gốc và trường protocol được giữ đúng chính tả của repository.
@@ -1660,8 +1661,8 @@ Trong repository, chức năng này gắn với `ApplicationJump_Execute()`.
 | `node-stm32f103/bootloader/src/image_installer.c` | Backup, Install, Verify, Rollback; xóa/ghi Flash và Checkpoint |
 | `node-stm32f103/bootloader/src/boot_manager.c` | Điều phối Boot State Machine |
 | `node-stm32f103/bootloader/src/application_jump.c` | Kiểm tra Vector Table và Jump sang Application |
-| `node-stm32f103/bootloader/src/metadata_storage.c` | Đọc/ghi Metadata A/B |
-| `node-stm32f103/shared/include/memory_map.h` | Khai báo phân vùng Internal Flash |
+| `node-stm32f103/bootloader/storage/metadata_storage.c` | Đọc/ghi Metadata A/B |
+| `shared/include/memory_map.h` | Khai báo phân vùng Internal Flash |
 
 Các hàm đáng đọc trong `image_installer.c`:
 
@@ -1711,7 +1712,7 @@ Trial Boot
       +---- Failure ----> Rollback
 ```
 
-**Tài liệu/code đối chiếu:** `docs/memory-map.md`, `docs/boot-state-machine.md`, `docs/boot-jump.md`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/application_jump.c`, `node-stm32f103/bootloader/src/metadata_storage.c`.
+**Tài liệu/code đối chiếu:** `docs/memory-map.md`, `docs/boot-state-machine.md`, `docs/boot-jump.md`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/application_jump.c`, `node-stm32f103/bootloader/storage/metadata_storage.c`.
 
 ---
 
@@ -2784,7 +2785,7 @@ void example_read_application_vectors(uint32_t *initial_msp,
 | [`shared/include/memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h) | Các hằng địa chỉ thực sự dùng trong code. |
 | [`docs/boot-jump.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-jump.md) | Trình tự kiểm tra vector, dọn NVIC/SysTick, RCC, VTOR và assembly handoff. |
 | [`node-stm32f103/bootloader/src/application_jump.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/application_jump.c) | Kiểm tra MSP/Reset Handler và C-side cleanup trước khi Jump. |
-| [`node-stm32f103/bootloader/src/application_handoff.s`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/application_handoff.s) | Cách chuyển stack, control và branch trong assembly. |
+| [`node-stm32f103/bootloader/startup/application_handoff.s`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/startup/application_handoff.s) | Cách chuyển stack, control và branch trong assembly. |
 | [`node-stm32f103/application/linker/application.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/linker/application.ld) | Vùng đặt Application và địa chỉ vector table trong linker script. |
 | [`node-stm32f103/bootloader/linker/bootloader.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/linker/bootloader.ld) | Vùng đặt Bootloader và SRAM. |
 | [ST STM32F103C8 Product Overview](https://www.st.com/en/microcontrollers-microprocessors/stm32f103c8.html) | Thông số chip: Cortex-M3, 64 KiB Flash, 20 KiB SRAM, tốc độ tối đa, HSI. |
