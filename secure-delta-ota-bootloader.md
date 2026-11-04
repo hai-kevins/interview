@@ -248,9 +248,13 @@ Release Server sử dụng bộ release đã triển khai để:
 
 ### Bài nói khi phỏng vấn: Developer/CI và Release Server
 
-- **Developer/CI:** Đầu tiên, Developer/CI sẽ build STM32 Application để tạo firmware mới. Sau đó, công cụ release chuẩn bị hai loại gói cập nhật là Full OTA và Delta OTA. Với Delta OTA, hệ thống sử dụng JojoDiff để tạo phần thay đổi giữa firmware cũ và firmware mới. Các gói cập nhật tiếp tục được đóng gói theo định dạng SDOT và ký số bằng ECDSA P-256. Đồng thời, hệ thống tạo và ký Manifest chứa thông tin của bản phát hành.
-
-- **Release Server:** Sau khi các file release được kiểm tra và triển khai lên server, Release Server sẽ sử dụng chúng để xác minh và phân phối các gói cập nhật SDOT. Server cung cấp artifact qua HTTPS và gửi thông báo cập nhật qua MQTTS đến ESP32 Gateway.
+> **Developer/CI → Release Server:** Đầu tiên, Developer/CI sẽ build STM32 Application để tạo file firmware mới dạng binary.
+>
+> Tiếp theo, công cụ release chuẩn bị gói cập nhật Full OTA từ toàn bộ firmware mới. Với Delta OTA, hệ thống sử dụng JojoDiff để tạo Delta Patch từ firmware cũ sang firmware mới, sau đó áp dụng thử Patch để kiểm tra khả năng tái tạo chính xác.
+>
+> Sau đó, các gói cập nhật được đóng gói theo định dạng SDOT và ký số bằng ECDSA P-256. Hệ thống cũng tạo và ký Manifest chứa thông tin phiên bản, kích thước, hash và đường dẫn đến các gói SDOT.
+>
+> Cuối cùng, công cụ release kiểm tra các file đã tạo. Bộ release hợp lệ được triển khai lên Release Server để xác minh và phân phối cho thiết bị. Như vậy, Developer/CI chịu trách nhiệm tạo và ký gói cập nhật, còn Release Server chịu trách nhiệm phân phối.
 
 ### Câu hỏi ôn tập: Developer/CI → Release Server
 
@@ -374,9 +378,15 @@ ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thốn
 
 ### Bài nói khi phỏng vấn: Release Server và ESP32 Gateway
 
-- **Release Server:** Tiếp theo, Release Server chịu trách nhiệm xác minh và phân phối các gói cập nhật SDOT. Dựa trên phiên bản firmware hiện tại, Server sẽ ưu tiên lựa chọn Delta OTA nếu có bản phù hợp; ngược lại sẽ sử dụng Full OTA. Sau đó, Server gửi thông báo cập nhật qua MQTTS, trong đó chứa thông tin phiên bản, kích thước, CRC32 và đường dẫn HTTPS để tải gói cập nhật.
-
-- **ESP32 Gateway:** Khi nhận được thông báo cập nhật qua MQTTS, ESP32 Gateway sẽ kiểm tra thông tin và tải gói cập nhật SDOT từ Release Server thông qua HTTPS. Sau khi tải xong, ESP32 kiểm tra kích thước và CRC32, rồi lưu gói cập nhật vào Flash cache. Cuối cùng, ESP32 truyền gói cập nhật xuống STM32 Application thông qua UART, sử dụng COBS để đóng khung dữ liệu và CRC32 để phát hiện lỗi truyền.
+> **Release Server → ESP32 Gateway:** Sau khi bộ release được triển khai, Release Server xác minh Manifest và các gói cập nhật SDOT trước khi phân phối.
+>
+> Đầu tiên, dựa trên thông tin phiên bản firmware hiện tại, Server sẽ ưu tiên lựa chọn Delta OTA nếu có gói phù hợp; nếu không, Server sử dụng Full OTA.
+>
+> Tiếp theo, Server gửi lệnh cập nhật đến ESP32 Gateway qua MQTTS. Lệnh này chứa các thông tin như phiên bản đích, kích thước, CRC32 và đường dẫn HTTPS của gói SDOT.
+>
+> Khi nhận được lệnh, ESP32 Gateway sử dụng HTTPS để tải gói SDOT và lưu dữ liệu vào Flash cache. Sau khi tải xong, ESP32 kiểm tra kích thước và CRC32 để đảm bảo dữ liệu đã nhận đầy đủ trước khi truyền xuống STM32 Application.
+>
+> Như vậy, **MQTTS** được sử dụng để gửi lệnh cập nhật, còn **HTTPS** được sử dụng để tải dữ liệu. Việc xác thực chữ ký firmware trước khi cài đặt vẫn do STM32 Bootloader thực hiện.
 
 ### Câu hỏi ôn tập: Release Server → ESP32 Gateway
 
@@ -640,19 +650,17 @@ Send ACK → Reset STM32 → STM32 Bootloader
 
 ### Bài nói khi phỏng vấn: ESP32 Gateway → STM32 Application
 
-- **ESP32 Gateway → STM32 Application:** Sau khi tải và kiểm tra thành công gói cập nhật SDOT, ESP32 Gateway truyền dữ liệu xuống STM32 Application thông qua UART.
-
-  Đầu tiên, ESP32 sử dụng lệnh **QUERY** để kiểm tra phiên bản firmware, trạng thái cập nhật và offset hiện tại của STM32, từ đó quyết định bắt đầu truyền mới hay **Resume** nếu quá trình trước đó bị gián đoạn.
-
-  Tiếp theo, ESP32 chia gói SDOT thành các **DATA packet**, mỗi packet chứa tối đa **256 bytes payload**, sử dụng **COBS** để đóng khung dữ liệu và **CRC32** để phát hiện lỗi truyền.
-
-  Ở phía STM32, Application kiểm tra **CRC32**, **Sequence** và **Offset**, sau đó ghi dữ liệu vào **External Flash W25Q** thông qua **SPI**. Nếu thành công, STM32 phản hồi **ACK**; ngược lại trả về **NACK** để ESP32 xử lý truyền lại.
-
-  Ngoài ra, hệ thống sử dụng **Checkpoint** để lưu tiến độ nhận dữ liệu, giúp quá trình truyền có thể **Resume** khi xảy ra reset bất ngờ.
-
-  Sau khi truyền đủ dữ liệu, ESP32 gửi **FINISH** để STM32 kiểm tra kích thước và CRC32 của toàn bộ SDOT.
-
-  Cuối cùng, ESP32 gửi **INSTALL**. STM32 Application cập nhật **Metadata** và reset để chuyển quyền xử lý cho **STM32 Bootloader**.
+> **ESP32 Gateway → STM32 Application:** Sau khi tải và kiểm tra gói SDOT thành công, ESP32 Gateway bắt đầu truyền dữ liệu xuống STM32 Application thông qua UART.
+>
+> Đầu tiên, ESP32 sử dụng lệnh HELLO và QUERY để lấy thông tin thiết bị, trạng thái cập nhật và Offset hiện tại. Từ đó, ESP32 quyết định gửi START để bắt đầu nhận mới hoặc RESUME nếu quá trình truyền trước đó bị gián đoạn.
+>
+> Tiếp theo, ESP32 chia gói SDOT thành các DATA packet, mỗi packet có tối đa 256 bytes Payload, sử dụng COBS để đóng khung và CRC32 để phát hiện lỗi truyền.
+>
+> Ở phía STM32, Application kiểm tra CRC32, Sequence và Offset, sau đó ghi dữ liệu vào External Flash W25Q qua SPI. Nếu xử lý thành công, STM32 trả về ACK; nếu có lỗi, STM32 trả về NACK để ESP32 Retry.
+>
+> Ngoài ra, STM32 lưu Checkpoint theo ranh giới sector 4 KB để có thể Resume từ vị trí an toàn sau reset, thay vì phải truyền lại toàn bộ gói SDOT.
+>
+> Cuối cùng, ESP32 gửi FINISH để STM32 kiểm tra toàn bộ dữ liệu đã nhận, sau đó gửi INSTALL. STM32 Application cập nhật Metadata và reset để bàn giao quá trình cập nhật cho STM32 Bootloader.
 
 ### Câu hỏi ôn tập: ESP32 Gateway → STM32 Application
 
@@ -952,19 +960,17 @@ Bootloader chuyển sang **`UPDATE_ROLLBACK`**, dùng **Backup Image** để kh�
 
 ### Bài nói khi phỏng vấn: STM32 Application → STM32 Bootloader
 
-- **STM32 Application → STM32 Bootloader:** Sau khi nhận đủ gói cập nhật SDOT, STM32 Application nhận lệnh **INSTALL** từ ESP32 Gateway, kiểm tra điều kiện và ghi trạng thái **`UPDATE_ARTIFACT_READY`** vào **Metadata**, sau đó reset thiết bị.
-
-  Khi khởi động, **STM32 Bootloader** đọc **Metadata A/B** để xác định trạng thái cập nhật và quyết định hành động thông qua **Boot State Machine**.
-
-  Tiếp theo, Bootloader đọc gói SDOT từ **External Flash W25Q**, xác thực chữ ký **ECDSA P-256** và kiểm tra tính toàn vẹn bằng **SHA-256**.
-
-  Nếu là **Full OTA**, Bootloader chuẩn bị firmware mới từ Payload. Còn nếu là **Delta OTA**, Bootloader kiểm tra firmware gốc và áp dụng **Delta Patch** để tái tạo firmware mới.
-
-  Sau khi firmware mới hợp lệ, Bootloader sao lưu firmware hiện tại vào **External Flash W25Q**, rồi cài đặt firmware mới vào **Internal Flash** theo từng trang **1 KB** và kiểm tra lại kết quả.
-
-  Cuối cùng, Bootloader cho Application mới chạy ở chế độ **Trial Boot**. Nếu Application xác nhận thành công, bản cập nhật được chấp nhận; nếu không được xác nhận sau số lần thử cho phép, Bootloader **Rollback** về firmware đã sao lưu.
-
-  Ngoài ra, hệ thống sử dụng **Metadata** và **Checkpoint** để có thể khôi phục quá trình cập nhật khi mất nguồn hoặc reset bất ngờ.
+> **STM32 Application → STM32 Bootloader:** Sau khi nhận đủ gói SDOT, STM32 Application nhận lệnh INSTALL từ ESP32 Gateway, kiểm tra điều kiện bàn giao rồi ghi trạng thái `UPDATE_ARTIFACT_READY` vào Metadata và reset thiết bị.
+>
+> Khi khởi động lại, STM32 Bootloader đọc Metadata A/B, chọn bản hợp lệ mới nhất và sử dụng Boot State Machine để quyết định bước xử lý tiếp theo.
+>
+> Đầu tiên, Bootloader đọc gói SDOT từ External Flash W25Q, xác thực chữ ký ECDSA P-256 và kiểm tra tính toàn vẹn bằng SHA-256. Nếu là Full OTA, Bootloader chuẩn bị firmware mới từ Payload. Nếu là Delta OTA, Bootloader kiểm tra phiên bản và hash của firmware gốc, sau đó áp dụng Delta Patch để tái tạo firmware mới.
+>
+> Tiếp theo, sau khi kiểm tra firmware mới hợp lệ, Bootloader sao lưu firmware hiện tại vào External Flash W25Q, rồi cài đặt bản mới vào Internal Flash và kiểm tra lại kết quả.
+>
+> Cuối cùng, Bootloader cho Application mới chạy ở chế độ Trial Boot. Nếu Application xác nhận thành công, bản cập nhật được chấp nhận. Nếu không xác nhận sau số lần thử cho phép, Bootloader sẽ Rollback về firmware đã sao lưu.
+>
+> Trong toàn bộ quá trình, Metadata và Checkpoint được sử dụng để khôi phục tiến độ cập nhật khi có mất nguồn hoặc reset bất ngờ.
 
 ### Câu hỏi ôn tập: STM32 Application → STM32 Bootloader
 
