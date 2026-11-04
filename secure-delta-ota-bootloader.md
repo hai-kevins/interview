@@ -13,8 +13,9 @@
 3. [Phân tích Developer/CI → Release Server](#3-phân-tích-developerci--release-server)
 4. [Phân tích Release Server → ESP32 Gateway](#4-phân-tích-release-server--esp32-gateway)
 5. [Phân tích ESP32 Gateway → STM32 Application](#5-phân-tích-esp32-gateway--stm32-application)
-6. [Kiến thức trong project](#6-kiến-thức-trong-project)
-7. [Câu hỏi trọng tâm](#7-câu-hỏi-trọng-tâm)
+6. [Phân tích STM32 Application → STM32 Bootloader](#6-phân-tích-stm32-application--stm32-bootloader)
+7. [Kiến thức trong project](#7-kiến-thức-trong-project)
+8. [Câu hỏi trọng tâm](#8-câu-hỏi-trọng-tâm)
 
 ---
 
@@ -703,11 +704,339 @@ STM32 Bootloader
 
 ---
 
-## 6. Kiến thức trong project
+## 6. Phân tích STM32 Application → STM32 Bootloader
+
+> **Mục tiêu:** Hiểu cách **STM32 Application** bàn giao gói cập nhật **SDOT** cho **STM32 Bootloader** thông qua **Metadata + Reset**; cách Bootloader xác thực, chuẩn bị firmware mới, sao lưu, cài đặt và quyết định **Trial Boot / Rollback**.
+>
+> **Phân chia trách nhiệm:** **STM32 Application** nhận và lưu SDOT, sau đó yêu cầu cài đặt. **STM32 Bootloader** đọc Metadata, xác thực chữ ký, xử lý **Full OTA / Delta OTA**, cài đặt firmware mới vào **Internal Flash** và thực hiện các bước phục hồi khi cần.
+
+### Sơ đồ luồng hoạt động
+
+```text
+                STM32 Application
+                       |
+               1. Nhận INSTALL
+               2. Kiểm tra điều kiện
+               3. Commit Metadata
+                       |
+                       v
+                  Reset STM32
+                       |
+                       v
+                STM32 Bootloader
+                       |
+              4. Đọc Metadata A/B
+                 + Boot Decision
+                       |
+                       v
+              5. Xác thực SDOT
+                 ECDSA P-256 / SHA-256
+                       |
+                 +-----+-----+
+                 |           |
+              Full OTA    Delta OTA
+                 |           |
+                 |       Verify Base
+                 |       Apply Patch
+                 |           |
+                 +-----+-----+
+                       |
+              6. Reconstructed Image
+                 Verify Target Hash
+                       |
+                       v
+                 IMAGE_READY
+                       |
+             7. Backup firmware cũ
+                       |
+             8. Install firmware mới
+                       |
+             9. Verify Installed Image
+                       |
+                       v
+                  TRIAL_BOOT
+                       |
+                 Application mới
+                       |
+             +---------+---------+
+             |                   |
+         Confirmed           Không xác nhận
+             |               sau số lần thử
+             v                   |
+            IDLE              ROLLBACK
+                                 |
+                       Khôi phục Backup → IDLE
+```
+
+> **Lưu ý:** Sơ đồ trên mô tả luồng thành công và nhánh Rollback chính. **Boot State Machine** còn các trạng thái xử lý lỗi và phục hồi sau reset; không phải mọi lỗi đều tự động Rollback.
+
+### Bước 1. STM32 Application nhận lệnh INSTALL
+
+Sau khi ESP32 Gateway truyền đủ gói **SDOT** qua UART, STM32 Application nhận lệnh **`FINISH`** và kiểm tra **kích thước** cùng **CRC32 của toàn bộ gói SDOT**. Khi kiểm tra thành công, bộ nhận OTA có trạng thái **`ARTIFACT_READY`**.
+
+Tiếp theo, ESP32 Gateway gửi **`INSTALL`**. STM32 Application kiểm tra:
+
+1. Trạng thái nhận OTA hiện tại là **`ARTIFACT_READY`**.
+2. **`update_id`** khớp với phiên cập nhật đang xử lý.
+3. Thông tin cần thiết để bàn giao SDOT là hợp lệ.
+
+**Điểm cần nhớ:** STM32 Application chưa sử dụng **ECDSA P-256** để quyết định tin cậy và cài đặt firmware; đây là nhiệm vụ của **STM32 Bootloader** sau reset.
+
+### Bước 2. STM32 Application ghi Metadata A/B
+
+Khi điều kiện `INSTALL` hợp lệ, STM32 Application ghi trạng thái **`UPDATE_ARTIFACT_READY`** vào **Internal Flash Metadata A/B**.
+
+| Thông tin Metadata | Vai trò |
+|---|---|
+| `state` | Trạng thái hiện tại của quy trình cập nhật. |
+| `active_version` | Phiên bản firmware đã được chấp nhận trước đó. |
+| `pending_version` | Phiên bản firmware đang chờ xử lý. |
+| `active_update_id` | Định danh phiên cập nhật. |
+| `copy_offset` | Tiến độ sao chép/ghi firmware khi có Checkpoint. |
+| `boot_attempts` | Số lần Trial Boot đã được ghi nhận. |
+| `generation` | Phân biệt bản Metadata mới và cũ. |
+| `crc32` | Phát hiện Metadata bị lỗi. |
+
+Hai vùng **Internal Flash Metadata** trong thiết kế:
+
+| Vùng | Địa chỉ | Kích thước |
+|---|---|---:|
+| Metadata A | `0x0800F800` | 1 KB |
+| Metadata B | `0x0800FC00` | 1 KB |
+
+**Tại sao cần Metadata A/B?** Khi cập nhật Metadata, hệ thống có thể ghi bản mới vào vùng còn lại, kiểm tra **CRC32** và sử dụng **generation** để lựa chọn bản hợp lệ mới nhất. Nếu mất nguồn trong lúc ghi, vẫn có khả năng đọc được bản Metadata hợp lệ trước đó.
+
+### Bước 3. STM32 Application reset để bàn giao cho Bootloader
+
+Khi Metadata đã được cập nhật, STM32 Application gửi **ACK** cho ESP32 Gateway, sau đó reset STM32.
+
+```text
+STM32 Application
+      |
+      | INSTALL hợp lệ
+      v
+Commit UPDATE_ARTIFACT_READY
+      |
+      v
+Gửi ACK → Reset STM32
+      |
+      v
+STM32 Bootloader
+```
+
+Trong thiết kế này, vùng Bootloader bắt đầu tại **`0x08000000`**, còn Application bắt đầu tại **`0x08006000`**. Sau reset, STM32 thực thi Bootloader trước và Bootloader dùng Metadata đã lưu để xác định bước tiếp theo.
+
+**Tại sao lưu vào Flash thay vì RAM?** Vì trạng thái trong **RAM** không được đảm bảo tồn tại sau reset hoặc mất nguồn; **Metadata** trong **Internal Flash** là cơ sở cho **Power-loss Recovery**.
+
+### Bước 4. STM32 Bootloader đọc Metadata và đưa ra Boot Decision
+
+STM32 Bootloader khởi tạo các thành phần cần thiết, đọc **Metadata A/B**, chọn bản hợp lệ mới nhất và đưa ra quyết định xử lý bằng logic **Boot Decision**.
+
+| Trạng thái Metadata | Hành động tiêu biểu |
+|---|---|
+| `UPDATE_IDLE` | Kiểm tra và khởi động Application đang có. |
+| `UPDATE_RECEIVING` | Cho Application tiếp tục quy trình tiếp nhận OTA nếu phù hợp. |
+| `UPDATE_ARTIFACT_READY` | Bắt đầu xử lý và xác thực gói SDOT. |
+| `UPDATE_VERIFYING_CONTAINER` | Thực hiện xác thực container. |
+| `UPDATE_PATCHING` | Chuẩn bị hoặc tái tạo firmware mới. |
+| `UPDATE_IMAGE_READY` | Tiến đến bước Backup. |
+| `UPDATE_BACKING_UP` | Tiếp tục hoặc khôi phục bước Backup. |
+| `UPDATE_INSTALLING` | Tiếp tục Install từ Checkpoint an toàn. |
+| `UPDATE_TRIAL_BOOT` | Quản lý khởi động thử Application mới. |
+| `UPDATE_ROLLBACK` | Khôi phục firmware đã sao lưu. |
+| `UPDATE_FAILED` | Ở lại chế độ Recovery, không mặc nhiên nhận OTA mới qua UART. |
+
+Khi Metadata đang ở **`UPDATE_ARTIFACT_READY`**, Bootloader chọn nhánh **xử lý artifact**, từ đó bước vào xác thực gói SDOT.
+
+**Code cần đọc:** `node-stm32f103/bootloader/src/boot_decision.c` và `node-stm32f103/bootloader/src/boot_manager.c`.
+
+### Bước 5. STM32 Bootloader xác thực gói cập nhật SDOT
+
+Bootloader đọc gói **SDOT** từ phân vùng **Incoming** của **External Flash W25Q**, sau đó kiểm tra:
+
+1. **Header** và định dạng container.
+2. Thông tin nhận diện thiết bị như **Product ID** và **Hardware Revision**.
+3. Điều kiện phiên bản, bao gồm chính sách **Anti-rollback / Anti-downgrade** của bản cập nhật.
+4. **CRC32** của dữ liệu ở các bước tương ứng để phát hiện lỗi.
+5. Các giá trị **SHA-256** cần kiểm tra.
+6. **Chữ ký ECDSA P-256** bằng **Public Key tin cậy**.
+
+| Cơ chế | Vai trò |
+|---|---|
+| CRC32 | Phát hiện lỗi dữ liệu, không xác thực nguồn phát hành. |
+| SHA-256 | Tính/đối chiếu hash để kiểm tra tính toàn vẹn. |
+| ECDSA P-256 | Xác thực chữ ký trên dữ liệu được ký. |
+
+> **Lưu ý triển khai:** Repository mặc định **chưa provision Public Key production**. Cần provision khóa tin cậy phù hợp trước khi kiểm tra bản firmware ký số trên thiết bị thật; không nên nhầm cơ chế có trong code với một sản phẩm đã cấu hình khóa hoàn chỉnh.
+
+**Code cần đọc:** `node-stm32f103/bootloader/src/secure_container.c`, `node-stm32f103/bootloader/include/trusted_key.h`.
+
+### Bước 6. STM32 Bootloader xử lý Full OTA hoặc Delta OTA
+
+Sau khi xác thực SDOT, Bootloader dựa vào loại artifact để chuẩn bị **firmware mới**:
+
+| Full OTA | Delta OTA |
+|---|---|
+| Payload chứa firmware mới hoàn chỉnh. | Payload chứa **Delta Patch**. |
+| Chuẩn bị firmware mới từ Payload. | Xác thực **firmware gốc** rồi áp dụng Delta Patch. |
+| Không cần tái tạo từ firmware cũ. | Cần **base version** và **base SHA-256** khớp chính xác. |
+
+Với **Delta OTA**, Bootloader kiểm tra **base version**, tính/đối chiếu **Base SHA-256** rồi áp dụng patch để tái tạo firmware mới. Dữ liệu đầu ra được chuẩn bị trong phân vùng **Reconstructed Image** của **External Flash W25Q**.
+
+Sau đó, Bootloader kiểm tra **Target SHA-256** và các điều kiện hợp lệ của firmware mới. Khi đạt yêu cầu, quá trình chuyển đến **`UPDATE_IMAGE_READY`**.
+
+**Điểm quan trọng:** Đến bước này, Application đang chạy trong **Internal Flash** vẫn chưa bị ghi đè.
+
+### Bước 7. STM32 Bootloader Backup firmware hiện tại
+
+Sau khi firmware mới đã được chuẩn bị và xác minh hợp lệ, Bootloader chuyển sang **`UPDATE_BACKING_UP`** và sao lưu Application hiện tại từ **Internal Flash** sang phân vùng **Backup Image** của **External Flash W25Q**.
+
+```text
+Internal Flash (Application hiện tại)
+                 |
+                 | Đọc firmware hiện tại
+                 v
+          STM32 Bootloader
+                 |
+                 | Ghi qua SPI
+                 v
+External Flash W25Q (Backup Image)
+```
+
+Bước Backup có **Checkpoint** theo ranh giới **sector 4 KB** của W25Q, giúp Bootloader xác định tiến độ an toàn sau reset. Bootloader kiểm tra bản Backup trước khi tiến hành Install.
+
+**Tại sao Backup trước Install?** Vì Install sẽ xóa/ghi đè Application trong **Internal Flash**. Nếu firmware mới không chạy đúng, Bootloader cần bản Backup hợp lệ để **Rollback**.
+
+### Bước 8. STM32 Bootloader Install firmware mới vào Internal Flash
+
+Khi Backup đã được kiểm tra, Bootloader chuyển sang **`UPDATE_INSTALLING`**, đọc firmware mới từ **Reconstructed Image** và thực hiện **Erase + Program** trên vùng Application của **Internal Flash**.
+
+```text
+External Flash W25Q (Reconstructed Image)
+                 |
+                 | Đọc firmware mới
+                 v
+          STM32 Bootloader
+                 |
+                 | Erase + Program
+                 v
+      Internal Flash (Application)
+```
+
+Quá trình Install được thực hiện theo từng **trang Internal Flash 1 KB**, đồng thời lưu **Checkpoint** sau những bước ghi và kiểm tra thành công. Nếu xảy ra mất nguồn, Bootloader đọc Metadata sau reset và tiếp tục từ mốc an toàn thay vì xem firmware chưa hoàn chỉnh là hợp lệ.
+
+Sau khi ghi xong, Bootloader chuyển sang **`UPDATE_VERIFYING_INSTALL`** để kiểm tra firmware đã cài đặt trong **Internal Flash**.
+
+### Bước 9. STM32 Bootloader thực hiện Trial Boot
+
+Nếu kết quả Install hợp lệ, Bootloader chuyển sang **`UPDATE_TRIAL_BOOT`** và cho **STM32 Application mới** chạy thử.
+
+Ở giai đoạn này, Bootloader quản lý **`boot_attempts`** và sử dụng **Watchdog** để xử lý trường hợp Application không tiến đến bước xác nhận. Giới hạn trong repository là **3 lần Trial Boot**.
+
+Application có cơ chế xác nhận sau khoảng **750 ms main loop**. Đây là kiểm tra **khả năng khởi động cơ bản**, **chưa phải health check đầy đủ** của toàn bộ chức năng sản phẩm.
+
+**Điểm cần nhớ:** **Install thành công không có nghĩa cập nhật đã được xác nhận**. Cần hoàn thành Trial Boot và bước Confirm.
+
+### Bước 10. Confirm hoặc Rollback
+
+**Trường hợp 1 — Application xác nhận thành công:**
+
+STM32 Application ghi trạng thái **`UPDATE_CONFIRMED`** và thực hiện bước bàn giao để Bootloader hoàn tất xác nhận. Bootloader cập nhật **`active_version`** và đưa hệ thống về **`UPDATE_IDLE`**; firmware mới trở thành phiên bản được chấp nhận.
+
+**Trường hợp 2 — Application không xác nhận trong số lần thử cho phép:**
+
+Bootloader chuyển sang **`UPDATE_ROLLBACK`**, dùng **Backup Image** để khôi phục Application trước đó vào **Internal Flash**. Quá trình Rollback cũng sử dụng **Checkpoint** để có thể phục hồi khi bị gián đoạn.
+
+> **Phân biệt:** **Power-loss Recovery** là khôi phục/tiếp tục quy trình cập nhật dựa trên Metadata và Checkpoint; **Rollback** là phục hồi firmware đã sao lưu. Không phải cứ mất nguồn là phải Rollback ngay.
+
+### Bài nói khi phỏng vấn: STM32 Application → STM32 Bootloader
+
+- **STM32 Application → STM32 Bootloader:** Sau khi nhận đủ gói cập nhật SDOT, STM32 Application nhận lệnh **INSTALL** từ ESP32 Gateway, kiểm tra điều kiện và ghi trạng thái **`UPDATE_ARTIFACT_READY`** vào **Metadata**, sau đó reset thiết bị.
+
+  Khi khởi động, **STM32 Bootloader** đọc **Metadata A/B** để xác định trạng thái cập nhật và quyết định hành động thông qua **Boot State Machine**.
+
+  Tiếp theo, Bootloader đọc gói SDOT từ **External Flash W25Q**, xác thực chữ ký **ECDSA P-256** và kiểm tra tính toàn vẹn bằng **SHA-256**.
+
+  Nếu là **Full OTA**, Bootloader chuẩn bị firmware mới từ Payload. Còn nếu là **Delta OTA**, Bootloader kiểm tra firmware gốc và áp dụng **Delta Patch** để tái tạo firmware mới.
+
+  Sau khi firmware mới hợp lệ, Bootloader sao lưu firmware hiện tại vào **External Flash W25Q**, rồi cài đặt firmware mới vào **Internal Flash** theo từng trang **1 KB** và kiểm tra lại kết quả.
+
+  Cuối cùng, Bootloader cho Application mới chạy ở chế độ **Trial Boot**. Nếu Application xác nhận thành công, bản cập nhật được chấp nhận; nếu không được xác nhận sau số lần thử cho phép, Bootloader **Rollback** về firmware đã sao lưu.
+
+  Ngoài ra, hệ thống sử dụng **Metadata** và **Checkpoint** để có thể khôi phục quá trình cập nhật khi mất nguồn hoặc reset bất ngờ.
+
+### Câu hỏi ôn tập: STM32 Application → STM32 Bootloader
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Tại sao Application phải reset để chuyển sang Bootloader? | Để Bootloader xử lý cập nhật dựa trên Metadata đã lưu trong Flash. |
+| Tại sao cần Metadata A/B? | Để còn bản Metadata hợp lệ nếu mất nguồn khi ghi bản mới. |
+| Bootloader quyết định hành động tiếp theo thế nào? | Đọc Metadata và đánh giá trạng thái qua logic Boot Decision. |
+| Tại sao cần xác thực SDOT? | Kiểm tra chữ ký, tính toàn vẹn, điều kiện phần cứng và phiên bản trước khi Install. |
+| Full OTA khác Delta OTA thế nào? | Full chứa firmware mới; Delta chứa patch để tái tạo firmware từ base image. |
+| Tại sao cần kiểm tra Base SHA-256? | Đảm bảo Delta Patch được áp dụng lên chính xác firmware gốc. |
+| Tại sao phải Backup trước Install? | Để có firmware hợp lệ phục vụ Rollback nếu bản mới không hoạt động đúng. |
+| Tại sao Install theo trang 1 KB? | Phù hợp đơn vị trang Internal Flash và hỗ trợ Checkpoint an toàn. |
+| Nếu mất nguồn khi Install thì sao? | Bootloader đọc Metadata/Checkpoint và tiếp tục từ mốc an toàn. |
+| Trial Boot dùng để làm gì? | Cho firmware mới chạy thử trước khi chấp nhận chính thức. |
+| Nếu Application mới liên tục reset thì sao? | Bootloader đếm số lần thử, sau ngưỡng thì Rollback nếu có Backup hợp lệ. |
+| Power-loss Recovery khác Rollback thế nào? | Recovery xử lý cập nhật bị gián đoạn; Rollback phục hồi firmware đã sao lưu. |
+
+### Điểm cần ghi nhớ
+
+- **Application không trực tiếp cài đặt firmware mới:** chỉ nhận SDOT, lưu vào External Flash W25Q, ghi Metadata và yêu cầu reset.
+- **Xác thực SDOT trước khi ghi đè Application:** ECDSA P-256, SHA-256 và kiểm tra điều kiện cập nhật thuộc STM32 Bootloader.
+- **Full OTA khác Delta OTA:** Delta cần **firmware gốc chính xác**, sau đó tái tạo ra firmware mới.
+- **Backup trước Install:** Không ghi đè Application cho tới khi firmware mới đã được chuẩn bị và bản Backup hợp lệ.
+- **Install khác Confirm:** Cài đặt xong vẫn cần **Trial Boot** trước khi chấp nhận phiên bản mới.
+- **Recovery khác Rollback:** Mất nguồn không mặc định đồng nghĩa Rollback; xử lý tùy trạng thái và Checkpoint.
+- **Anti-rollback khác Rollback:** Anti-rollback giới hạn phiên bản được phép cài đặt; Rollback phục hồi Backup đã được chấp nhận.
+
+**Tóm tắt luồng chính:**
+
+```text
+INSTALL → Metadata + Reset
+             |
+             v
+         Boot Decision
+             |
+             v
+         Verify SDOT
+             |
+             v
+      Full / Delta OTA
+             |
+             v
+   Verify Reconstructed Image
+             |
+             v
+           Backup
+             |
+             v
+           Install
+             |
+             v
+    Verify Installed Image
+             |
+             v
+          Trial Boot
+         /         \
+    Confirm      Rollback
+       |            |
+       +-----+------+
+             v
+            IDLE
+```
+
+**Tài liệu đối chiếu trong repository:** `docs/boot-state-machine.md`, `docs/metadata-and-boot-decision.md`, `docs/firmware-container.md`, `docs/memory-map.md`, `node-stm32f103/bootloader/src/boot_manager.c`, `node-stm32f103/bootloader/src/boot_decision.c`, `node-stm32f103/bootloader/src/secure_container.c`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/trial_boot.c`.
+
+---
+
+## 7. Kiến thức trong project
 
 *Chưa có nội dung trong tài liệu gốc.*
 
-## 7. Câu hỏi trọng tâm
+## 8. Câu hỏi trọng tâm
 
 *Chưa có nội dung trong tài liệu gốc.*
 
