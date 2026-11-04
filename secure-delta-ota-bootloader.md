@@ -14,8 +14,9 @@
 4. [Phân tích Release Server → ESP32 Gateway](#4-phân-tích-release-server--esp32-gateway)
 5. [Phân tích ESP32 Gateway → STM32 Application](#5-phân-tích-esp32-gateway--stm32-application)
 6. [Phân tích STM32 Application → STM32 Bootloader](#6-phân-tích-stm32-application--stm32-bootloader)
-7. [Kiến thức trong project](#7-kiến-thức-trong-project)
-8. [Câu hỏi trọng tâm](#8-câu-hỏi-trọng-tâm)
+7. [Phân tích STM32 Bootloader → STM32 Internal Flash](#7-phân-tích-stm32-bootloader--stm32-internal-flash)
+8. [Kiến thức trong project](#8-kiến-thức-trong-project)
+9. [Câu hỏi trọng tâm](#9-câu-hỏi-trọng-tâm)
 
 ---
 
@@ -1032,11 +1033,333 @@ INSTALL → Metadata + Reset
 
 ---
 
-## 7. Kiến thức trong project
+## 7. Phân tích STM32 Bootloader → STM32 Internal Flash
+
+> **Mục tiêu:** Hiểu cách **STM32 Bootloader** cài đặt firmware mới vào **STM32 Internal Flash**: đọc firmware từ **External Flash W25Q**, xóa và ghi từng trang, kiểm tra dữ liệu đã ghi, cập nhật **Checkpoint** và chuyển sang **Trial Boot**.
+>
+> **Điều kiện đầu vào:** Gói SDOT đã được xác thực; firmware mới đã nằm trong vùng **Reconstructed Image** của External Flash W25Q; bản **Backup** của firmware hiện tại đã được tạo và kiểm tra. Ở phần này tập trung vào quá trình **Install** thay vì lặp lại quá trình xác thực SDOT hay tạo Delta Patch.
+
+### Sơ đồ luồng hoạt động
+
+```text
+                 STM32 Bootloader
+                        |
+                   Kiểm tra Backup
+                        |
+                        v
+                  UPDATE_INSTALLING
+                        |
+                        v
+             External Flash W25Q
+               Reconstructed Image
+                        |
+                    SPI Read
+                        v
+                  SRAM Page Buffer
+                        | 1 KB / trang
+                        v
+                STM32 Internal Flash
+             Application Region (38 KB)
+                        |
+            +-----------+-----------+
+            |  Erase page (1 KB)    |
+            |  Program (16-bit)     |
+            |  Read-back Verify     |
+            +-----------+-----------+
+                        |
+                 Commit Checkpoint
+                        |
+              Lặp đến hết firmware
+                        |
+                        v
+              UPDATE_VERIFYING_INSTALL
+                        |
+               CRC32 + Vector Table
+                        |
+                        v
+                 UPDATE_TRIAL_BOOT
+                        |
+              Jump to STM32 Application
+                        |
+              +---------+---------+
+              |                   |
+           Confirm             Failure
+              |                   |
+              v                   v
+        UPDATE_CONFIRMED     UPDATE_ROLLBACK
+              |                   |
+              v                   v
+             IDLE            Restore Backup
+```
+
+**Điểm cần nhớ:** STM32 Bootloader **không** ghi trực tiếp dữ liệu UART từ ESP32 vào Internal Flash. Firmware hoàn chỉnh đã được chuẩn bị và kiểm tra ở **External Flash W25Q** trước khi bắt đầu Install.
+
+### Phân vùng STM32 Internal Flash
+
+| Phân vùng | Địa chỉ bắt đầu | Dung lượng | Vai trò |
+|---|---|---:|---|
+| **Bootloader** | `0x08000000` | 24 KB | Chương trình khởi động, xử lý cập nhật và phục hồi |
+| **Application** | `0x08006000` | 38 KB | Chứa firmware hiện tại hoặc firmware mới đang cài đặt |
+| **Metadata A** | `0x0800F800` | 1 KB | Lưu Metadata và Checkpoint |
+| **Metadata B** | `0x0800FC00` | 1 KB | Bản Metadata dự phòng |
+
+```text
+STM32 Internal Flash (64 KB)
+0x08000000  +-----------------------------+
+            | Bootloader (24 KB)          |
+0x08006000  +-----------------------------+
+            | Application (38 KB)         |
+            | <- vùng được cài đặt OTA -> |
+0x0800F800  +-----------------------------+
+            | Metadata A (1 KB)           |
+0x0800FC00  +-----------------------------+
+            | Metadata B (1 KB)           |
+0x08010000  +-----------------------------+
+```
+
+**Tại sao phải phân vùng?** Để quá trình cập nhật chỉ xóa/ghi vùng **Application**, không ghi đè **Bootloader** (phải luôn sẵn sàng khởi động hoặc phục hồi) và vùng **Metadata** (phải lưu được trạng thái sau reset).
+
+### Bước 1. STM32 Bootloader kiểm tra điều kiện trước khi Install
+
+- Firmware mới đã được xác thực và chuẩn bị trong **Reconstructed Image**.
+- Firmware hiện tại đã được sao lưu trong **Backup Image** của External Flash W25Q.
+- Bản Backup đã được kiểm tra hợp lệ; Bootloader mới được phép bắt đầu ghi đè Application.
+- Bootloader chuyển sang trạng thái `UPDATE_INSTALLING`.
+
+**Tại sao Backup trước Install?** Vì quá trình Install phải xóa nội dung Application hiện tại. Nếu firmware mới không hoạt động hoặc cần phục hồi, bản Backup là nguồn dữ liệu để **Rollback**.
+
+### Bước 2. Đọc firmware mới từ External Flash W25Q vào SRAM
+
+Bootloader đọc từng phần của firmware mới trong **Reconstructed Image** qua **SPI**, đưa vào **SRAM Page Buffer** trước khi ghi Internal Flash.
+
+```c
+static uint8_t g_install_page_buffer[INTERNAL_FLASH_PAGE_SIZE];
+```
+
+Trong project, `INTERNAL_FLASH_PAGE_SIZE` tương ứng **1.024 bytes (1 KB)**.
+
+```text
+External Flash W25Q          STM32 Bootloader           STM32 Internal Flash
+Reconstructed Image  --SPI--> SRAM Page Buffer  -----> Application Region
+                              (1 KB)
+```
+
+**Lý do dùng buffer 1 KB:** Phù hợp đơn vị xóa theo trang của STM32F103, không cần giữ toàn bộ firmware trong SRAM hạn chế của vi điều khiển.
+
+### Bước 3. Xóa từng trang Internal Flash
+
+Trước khi ghi firmware mới, Bootloader mở khóa Flash, xóa cờ lỗi và xóa trang Application tương ứng. Ví dụ minh họa:
+
+```c
+FLASH_Unlock();
+FLASH_ClearFlag(FLASH_FLAG_EOP |
+                FLASH_FLAG_PGERR |
+                FLASH_FLAG_WRPRTERR);
+FLASH_ErasePage(0x08006000);  // Trang đầu của Application
+```
+
+Địa chỉ được tính từ `APPLICATION_START_ADDRESS + page_offset`. Trước khi ghi, Bootloader cần bảo đảm địa chỉ nằm trong vùng Application; không được xóa Bootloader hay Metadata.
+
+**Tại sao phải Erase trước Program?** Flash đã lập trình không thể tùy ý đổi bit `0 → 1`. Erase đưa trang về trạng thái xóa (thường là `0xFF`) trước khi lập trình dữ liệu mới.
+
+### Bước 4. Ghi firmware mới theo Half-word 16-bit
+
+Sau khi xóa trang, Bootloader lập trình dữ liệu từ SRAM Page Buffer xuống Internal Flash theo từng **Half-word (2 bytes)** bằng thao tác tương ứng:
+
+```c
+FLASH_ProgramHalfWord(address, halfword);
+```
+
+```text
+SRAM Buffer                  Internal Flash
+Byte 0 + Byte 1  --------->  0x08006000 (16-bit)
+Byte 2 + Byte 3  --------->  0x08006002 (16-bit)
+...
+```
+
+Với dữ liệu có số byte lẻ, byte thiếu trong Half-word cuối có thể được bổ sung bằng `0xFF` khi lập trình. Đây là đơn vị ghi phù hợp với STM32F103.
+
+### Bước 5. Read-back Verify sau mỗi trang
+
+Sau khi ghi xong một trang, Bootloader khóa Flash và **đọc lại** dữ liệu tại vùng Application, so sánh với dữ liệu trong SRAM Page Buffer.
+
+```text
+SRAM Page Buffer (expected)
+            |
+            v
+          Compare <----- Internal Flash (actual)
+            |
+       Match / Mismatch
+```
+
+- **Khớp:** Trang được xác nhận đã ghi thành công.
+- **Không khớp:** Trả về lỗi kiểm tra trang, ví dụ `IMAGE_INSTALLER_PAGE_VERIFY_FAILED`.
+
+**Tại sao cần Read-back Verify?** Vì thao tác Program báo thành công chưa đủ bảo đảm từng byte trong Flash giống dữ liệu mong đợi.
+
+### Bước 6. Lưu Checkpoint sau khi trang đã Verify thành công
+
+Chỉ sau khi trang đã được ghi và kiểm tra thành công, Bootloader mới cập nhật tiến độ `copy_offset` trong **Metadata A/B**.
+
+| Trang | Địa chỉ bắt đầu | Checkpoint sau khi trang được xác nhận |
+|---|---|---:|
+| Page 0 | `0x08006000` | 1.024 bytes |
+| Page 1 | `0x08006400` | 2.048 bytes |
+| Page 2 | `0x08006800` | 3.072 bytes |
+| Page 3 | `0x08006C00` | 4.096 bytes |
+| Page 4 | `0x08007000` | 5.120 bytes |
+
+**Ví dụ Power-loss Recovery:** Thiết bị mất nguồn khi đang ghi **Page 4**. Do Page 4 chưa được Verify, Checkpoint an toàn cuối cùng vẫn là `copy_offset = 4096`. Sau reset, Bootloader đọc Metadata, nhận biết `UPDATE_INSTALLING`, sau đó **xóa và ghi lại Page 4** thay vì tiếp tục từ byte đang ghi dở.
+
+Quá trình Install theo Checkpoint được tổ chức trong `ResumePageCheckpointedCopy()` và việc lưu trạng thái sử dụng `MetadataStorage_Commit()`.
+
+### Bước 7. Kiểm tra toàn bộ firmware đã cài đặt
+
+Khi ghi xong toàn bộ firmware mới, Bootloader chuyển sang `UPDATE_VERIFYING_INSTALL`, sau đó:
+
+1. Tính và so sánh **CRC32** của Application đã ghi với CRC32 mong đợi.
+2. Kiểm tra **Vector Table** của Application, bao gồm **Initial MSP** và **Reset Handler**.
+
+| Địa chỉ | Nội dung |
+|---|---|
+| `0x08006000` | Initial Stack Pointer (MSP) |
+| `0x08006004` | Reset Handler |
+
+Bootloader kiểm tra MSP có thuộc vùng SRAM hợp lệ và căn chỉnh phù hợp; Reset Handler phải trỏ vào vùng Application hợp lệ và có Thumb bit phù hợp.
+
+**Lưu ý:** CRC32 và Vector Table là bước kiểm tra dữ liệu đã cài đặt/khả năng khởi động, **không thay thế ECDSA P-256**. Chữ ký SDOT đã được xác thực ở giai đoạn trước.
+
+### Bước 8. Chuyển sang Trial Boot và nhảy đến STM32 Application
+
+Nếu firmware sau Install hợp lệ, Bootloader cập nhật trạng thái `UPDATE_TRIAL_BOOT` rồi chuẩn bị chuyển quyền điều khiển cho Application mới.
+
+Các việc cần thực hiện gồm ghi nhận số lần thử vào Metadata, thiết lập Watchdog cho Trial Boot, kiểm tra Vector Table và chuẩn bị môi trường CPU trước khi Jump:
+
+- Dừng SysTick, xử lý trạng thái Interrupt/NVIC và cấu hình clock phù hợp.
+- Cập nhật **VTOR** trỏ đến Vector Table của Application.
+- Nạp **MSP** từ từ đầu tiên của Vector Table.
+- Nhảy tới **Reset Handler** từ từ thứ hai của Vector Table.
+
+```text
+STM32 Bootloader
+   | Validate Vector Table
+   | Stop SysTick / prepare IRQs and clock
+   | VTOR <- 0x08006000
+   | MSP  <- *(0x08006000)
+   | Reset_Handler <- *(0x08006004)
+   v
+STM32 Application
+```
+
+Trong repository, chức năng này gắn với `ApplicationJump_Execute()`.
+
+### Bước 9. Application xác nhận hoặc Bootloader thực hiện Rollback
+
+- **Confirm:** Khi Application mới chạy đủ điều kiện xác nhận (trong demo hiện tại là khoảng **750 ms main loop**), Application ghi `UPDATE_CONFIRMED` và reset. Bootloader hoàn tất xác nhận phiên bản mới, quay lại `UPDATE_IDLE`.
+- **Rollback:** Nếu Application mới không xác nhận thành công trong giới hạn **3 lần Trial Boot**, Bootloader sử dụng **Backup Image** trong External Flash W25Q để khôi phục firmware trước đó vào vùng Application của Internal Flash. Quá trình khôi phục cũng sử dụng Checkpoint.
+
+**Không đồng nhất ba khái niệm:** `Install` là ghi firmware mới; `Trial Boot` là chạy thử; `Confirm` mới là chấp nhận phiên bản mới. **Power-loss Recovery** không đồng nghĩa **Rollback**.
+
+### Bài nói khi phỏng vấn: STM32 Bootloader → STM32 Internal Flash
+
+> **STM32 Bootloader → STM32 Internal Flash:** Sau khi firmware mới được xác thực và chuẩn bị thành công, STM32 Bootloader kiểm tra bản Backup trước khi bắt đầu cài đặt vào Internal Flash.
+>
+> Đầu tiên, Bootloader đọc firmware mới từ phân vùng Reconstructed Image trong External Flash W25Q qua SPI và đưa vào SRAM Page Buffer có kích thước 1 KB.
+>
+> Tiếp theo, Bootloader mở khóa Internal Flash, xóa từng trang 1 KB và ghi firmware mới theo đơn vị Half-word 16-bit.
+>
+> Sau khi ghi mỗi trang, Bootloader đọc lại dữ liệu để kiểm tra. Nếu thành công, hệ thống cập nhật Checkpoint vào Metadata. Nhờ vậy, nếu xảy ra mất nguồn hoặc reset, Bootloader có thể tiếp tục từ trang chưa được xác nhận hoàn tất.
+>
+> Khi đã ghi đủ firmware, Bootloader kiểm tra CRC32 và Vector Table, rồi chuyển sang Trial Boot. Cuối cùng, Bootloader cập nhật VTOR, nạp MSP và nhảy đến Reset Handler của Application mới.
+>
+> Nếu Application xác nhận hoạt động thành công, bản cập nhật được chấp nhận. Nếu không xác nhận sau số lần thử cho phép, Bootloader thực hiện Rollback về firmware đã sao lưu.
+
+### Câu hỏi ôn tập: STM32 Bootloader → STM32 Internal Flash
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Tại sao phải chia Internal Flash thành Bootloader, Application và Metadata? | Tách chương trình khởi động, vùng firmware được cập nhật và trạng thái cập nhật. |
+| Tại sao Bootloader không được ghi đè chính nó? | Bootloader phải còn nguyên vẹn để khởi động và phục hồi khi cập nhật lỗi. |
+| Tại sao phải Erase trước Program? | Flash không thể đổi bit `0 → 1` nếu chưa xóa. |
+| Tại sao dùng Flash Page 1 KB? | Đây là kích thước trang xóa Internal Flash được sử dụng trên STM32F103C8T6. |
+| Tại sao ghi theo Half-word 16-bit? | Đơn vị lập trình Flash tương ứng với STM32F103. |
+| Tại sao cần SRAM Page Buffer? | Chứa dữ liệu của một trang trước khi xóa và ghi; không cần giữ toàn bộ firmware trong RAM. |
+| Tại sao cần Read-back Verify? | Kiểm tra dữ liệu ghi vào Flash trùng với dữ liệu mong đợi. |
+| Checkpoint có vai trò gì? | Ghi lại tiến độ trang đã cài đặt an toàn để Resume sau reset. |
+| Nếu mất nguồn khi đang ghi một trang? | Xóa và ghi lại trang chưa được Checkpoint. |
+| Tại sao phải kiểm tra Vector Table? | Đảm bảo MSP và Reset Handler có giá trị hợp lệ trước khi Jump. |
+| VTOR là gì? | Thanh ghi chỉ vị trí Vector Table phục vụ exception và interrupt. |
+| Tại sao phải đổi MSP khi Jump? | Application có stack riêng, được khai báo trong Vector Table. |
+| Trial Boot là gì? | Cho firmware mới chạy thử trước khi Confirm. |
+| Rollback có ghi lại Internal Flash không? | Có, khôi phục Backup Image vào vùng Application. |
+
+### Các file mã nguồn quan trọng
+
+| File | Vai trò |
+|---|---|
+| `node-stm32f103/bootloader/src/image_installer.c` | Backup, Install, Verify, Rollback; xóa/ghi Flash và Checkpoint |
+| `node-stm32f103/bootloader/src/boot_manager.c` | Điều phối Boot State Machine |
+| `node-stm32f103/bootloader/src/application_jump.c` | Kiểm tra Vector Table và Jump sang Application |
+| `node-stm32f103/bootloader/src/metadata_storage.c` | Đọc/ghi Metadata A/B |
+| `node-stm32f103/shared/include/memory_map.h` | Khai báo phân vùng Internal Flash |
+
+Các hàm đáng đọc trong `image_installer.c`:
+
+- `ProgramBufferedApplicationPage()` — Erase, Program Half-word, Verify một trang.
+- `ResumePageCheckpointedCopy()` — Copy theo trang và lưu Checkpoint.
+- `VerifyInstalledApplication()` — Kiểm tra Application đã cài đặt.
+
+### Điểm cần ghi nhớ
+
+- **Erase → Program → Verify** là ba thao tác riêng biệt.
+- **Checkpoint** chỉ được lưu sau khi trang đã Verify thành công.
+- **Install xong chưa phải Confirm:** Phải vượt qua **Trial Boot**.
+- **Rollback** khôi phục firmware cũ đã sao lưu; **Power-loss Recovery** xử lý tiến độ Install bị gián đoạn.
+- **Không phải lỗi nào cũng tự phục hồi:** Nếu Metadata, firmware nguồn hoặc Backup không hợp lệ, Bootloader có thể dừng ở trạng thái Recovery/`UPDATE_FAILED`.
+
+**Tóm tắt luồng chính:**
+
+```text
+Verify Backup
+      |
+      v
+Read Reconstructed Image
+      |
+      v
+Load SRAM Page Buffer (1 KB)
+      |
+      v
+Erase Application Flash Page (1 KB)
+      |
+      v
+Program Half-word (16-bit)
+      |
+      v
+Read-back Verify
+      |
+      v
+Commit Checkpoint -> Next Page (repeat)
+      |
+      v
+Verify CRC32 + Vector Table
+      |
+      v
+Trial Boot
+      |
+      +---- Confirm ----> IDLE
+      |
+      +---- Failure ----> Rollback
+```
+
+**Tài liệu đối chiếu trong repository:** `docs/memory-map.md`, `docs/boot-state-machine.md`, `docs/boot-jump.md`, `node-stm32f103/bootloader/src/image_installer.c`, `node-stm32f103/bootloader/src/application_jump.c`, `node-stm32f103/bootloader/src/metadata_storage.c`.
+
+---
+
+## 8. Kiến thức trong project
 
 *Chưa có nội dung trong tài liệu gốc.*
 
-## 8. Câu hỏi trọng tâm
+## 9. Câu hỏi trọng tâm
 
 *Chưa có nội dung trong tài liệu gốc.*
 
