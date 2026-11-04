@@ -1,7 +1,7 @@
 # Secure Delta OTA Bootloader
 
-> **Mục tiêu:** Ôn tập project theo đúng **7 phần** để trình bày và trả lời phỏng vấn **Embedded Firmware Engineer**.  
-> **Nền tảng:** STM32F103 + ESP32 Gateway + External Flash W25Q.  
+> **Mục tiêu:** Ôn tập project theo đúng **7 phần** để trình bày và trả lời phỏng vấn **Embedded Firmware Engineer**.
+> **Nền tảng:** STM32F103 + ESP32 Gateway + External Flash W25Q.
 > **Nguồn:** Tài liệu `docs/boot-state-machine.md`, `docs/metadata-and-boot-decision.md` của repository.
 
 ## Mục lục
@@ -36,7 +36,7 @@
    - [6.10. Watchdog, Debugging & Testing](#chuong-6-10)
 7. [Câu hỏi phỏng vấn trọng tâm](#phan-7)
 
-**Phụ lục tra cứu nhanh:** [Phụ lục A – Khái niệm, công nghệ và thuật toán chính](#phu-luc-a) · [A.0 – Quy ước thuật ngữ thống nhất](#phu-luc-a-0)
+**Phụ lục tra cứu nhanh:** [Phụ lục A – Khái niệm, công nghệ và thuật toán chính](#phu-luc-a)
 
 <a id="phu-luc-a"></a>
 ## Phụ lục A. Các khái niệm, công nghệ và thuật toán cốt lõi của project
@@ -45,7 +45,6 @@
 >
 > **Cách học:** Với mỗi thuật ngữ, thử trả lời ba câu: **(1) Nó là gì? (2) Nó hoạt động ra sao? (3) Tại sao project cần nó?** Nếu muốn đi sâu, dùng liên kết "Học kỹ" ở cuối mỗi nhóm để đến chương tương ứng.
 
-<a id="phu-luc-a-0"></a>
 ### A.0. Quy ước thuật ngữ thống nhất cho toàn tài liệu
 
 > **Nguyên tắc:** Chọn một cách gọi chính cho từng khái niệm; khi cần, dùng tiếng Việt giải thích trong ngoặc ở lần đầu. **Không đồng nhất các khái niệm khác nhau chỉ vì chúng có tên gần giống nhau.** Các định danh viết trong `code`, tên file, enum, API, macro, tiêu đề tài liệu gốc và trường protocol được giữ đúng chính tả của repository.
