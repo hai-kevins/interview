@@ -10,7 +10,7 @@
 
 1. [Trình bày project](#1-trình-bày-project)
 2. [Trình bày System Architecture](#2-trình-bày-system-architecture)
-3. [Phân tích Developer/CI -> Release Server](#developer-ci-release-server)
+3. [Phân tích Developer/CI → Release Server](#3-phân-tích-developerci--release-server)
 4. [Phân tích Release Server → ESP32 Gateway](#4-phân-tích-release-server--esp32-gateway)
 5. [Kiến thức trong project](#5-kiến-thức-trong-project)
 6. [Câu hỏi trọng tâm](#6-câu-hỏi-trọng-tâm)
@@ -106,31 +106,74 @@ Trial Boot → Xác nhận / Rollback
 
 ## 3. Phân tích Developer/CI → Release Server
 
-> **Tình huống minh họa:** STM32 đang chạy firmware **v1**, Developer muốn cập nhật lên **v2**.
+> **Mục tiêu:** Hiểu cách Developer/CI **build firmware**, tạo gói cập nhật **Full OTA / Delta OTA**, đóng gói và ký số theo định dạng **SDOT**, tạo **Manifest** và chuẩn bị bản phát hành cho **Release Server**.
+>
+> **Tình huống minh họa:** STM32 đang chạy firmware **v1** và Developer muốn cập nhật lên **v2**.
+>
+> **Phân biệt hai loại gói:** **Full OTA** chứa toàn bộ firmware mới; **Delta OTA** chứa Delta Patch được tạo từ sự khác biệt giữa firmware gốc và firmware mới.
 
-### Bước 1. Build firmware
+### Sơ đồ luồng hoạt động
 
-Developer chỉnh sửa mã nguồn Application, sau đó hệ thống build tạo ra firmware mới: **`application-v2.bin`**. Đây là file binary sẽ được ghi vào vùng Application của STM32 Internal Flash.
+```text
+                   Developer/CI
+                        |
+                 1. Build firmware
+                        v
+                application-v2.bin
+                        |
+              +---------+---------+
+              |                   |
+              v                   v
+         2. Full OTA         2. Delta OTA
+         Firmware v2        Firmware v1 + v2
+              |                   |
+              |              JojoDiff Patch
+              |                   |
+              +---------+---------+
+                        |
+          3. Đóng gói SDOT và ký ECDSA P-256
+                        |
+              +---------+---------+
+              |                   |
+              v                   v
+          Full SDOT           Delta SDOT
+              |                   |
+              +---------+---------+
+                        |
+                4. Tạo Manifest
+                   và ký số
+                        |
+              5. Kiểm tra release
+                 và triển khai
+                        v
+                  Release Server
+```
 
-**CI (Continuous Integration)** có thể tự động thực hiện các bước build, kiểm tra và chuẩn bị phát hành firmware.
+### Bước 1. Developer/CI build firmware
+
+Developer chỉnh sửa mã nguồn **STM32 Application** rồi build để tạo file binary firmware mới, ví dụ **`application-v2.bin`**. Đây là firmware dự kiến được cài đặt vào vùng Application của **STM32 Internal Flash**.
+
+**CI (Continuous Integration)** có thể tự động hóa các công việc **build, kiểm tra và chuẩn bị bản phát hành**. Trong luồng này, Developer/CI là phía **tạo firmware**, chưa phải phía phân phối firmware đến thiết bị.
 
 ### Bước 2. Tạo Full OTA và Delta OTA
 
-| Full OTA | Delta OTA |
-|---|---|
-| Chứa toàn bộ firmware v2 | Chứa patch từ firmware v1 sang v2 |
-| Không cần firmware gốc để tạo gói | Cần firmware v1 chính xác |
-| Dung lượng thường lớn hơn | Có thể giảm đáng kể dung lượng |
+Từ firmware mới, release tooling chuẩn bị các gói cập nhật tương ứng:
 
-Với **Delta OTA**, công cụ sử dụng **JojoDiff** để tạo patch từ firmware v1 và v2.
+| Tiêu chí | Full OTA | Delta OTA |
+|---|---|---|
+| Nội dung | Toàn bộ firmware **v2** | Delta Patch từ **v1 → v2** |
+| Dữ liệu cần để tạo | Firmware **v2** | Firmware **v1** và **v2** chính xác |
+| Dung lượng | Thường lớn hơn | Có thể nhỏ hơn đáng kể |
 
-Repository cũng kiểm tra lại bằng cách áp dụng patch lên firmware v1, sau đó so sánh kết quả với firmware v2.
+Đối với **Delta OTA**, công cụ dùng **JojoDiff** để tạo Delta Patch, sau đó **áp dụng thử patch lên firmware v1** và so sánh kết quả với firmware v2 để kiểm tra tính đúng đắn.
 
-**Lưu ý:** Repository luôn tạo Full OTA, nhưng chỉ đưa Delta OTA vào release nếu mức tiết kiệm đạt ngưỡng cấu hình, mặc định là **20%**.
+Repository luôn tạo **Full OTA**, nhưng chỉ đưa **Delta OTA** vào release khi mức tiết kiệm đạt ngưỡng cấu hình, mặc định **20%**.
 
-### Bước 3. Đóng gói và ký firmware
+> **Ghi nhớ:** Delta Patch phụ thuộc vào **firmware gốc**. Khi cài đặt, STM32 Bootloader vẫn phải kiểm tra firmware gốc có đúng với bản được dùng để tạo patch hay không.
 
-Cả Full OTA và Delta OTA đều được đóng gói theo định dạng **SDOT (Secure Delta OTA Container)**.
+### Bước 3. Đóng gói và ký số SDOT
+
+Cả hai loại dữ liệu cập nhật được đóng gói theo định dạng **SDOT (Secure Delta OTA Container)**.
 
 **Cấu trúc cơ bản của SDOT Container:**
 
@@ -145,36 +188,36 @@ Cả Full OTA và Delta OTA đều được đóng gói theo định dạng **SD
 | - Product ID                |
 +-----------------------------+
 | Payload                     |
-| Full firmware / Delta patch |
+| Full firmware / Delta Patch |
 +-----------------------------+
 | ECDSA P-256 Signature       |
 +-----------------------------+
 ```
 
-Hệ thống sử dụng **SHA-256** để tạo các giá trị hash phục vụ kiểm tra tính toàn vẹn và **ECDSA P-256** để ký dữ liệu container bằng **private key**.
+Hệ thống dùng **SHA-256** để tạo các giá trị hash phục vụ kiểm tra tính toàn vẹn và **ECDSA P-256** để ký số SDOT bằng **private key**.
 
-> **Ghi nhớ:** Private key chỉ được sử dụng ở phía phát hành firmware, **không truyền xuống ESP32 hoặc STM32**.
+> **Ghi nhớ:** **Private key** được sử dụng ở phía phát hành firmware, **không truyền xuống ESP32 Gateway hoặc STM32**. Chữ ký SDOT sẽ được STM32 Bootloader xác thực trước khi cài đặt.
 
-### Bước 4. Tạo Manifest
+### Bước 4. Tạo và ký số Manifest
 
-Sau khi có các gói SDOT, release tooling tạo file **`manifest.json`**.
+Sau khi chuẩn bị các gói **SDOT**, release tooling tạo **`manifest.json`** để mô tả bản phát hành.
 
-Manifest chứa thông tin mô tả bản phát hành, chẳng hạn:
+Manifest chứa các thông tin như:
 
 - Phiên bản firmware mới.
-- Product ID và hardware revision.
-- Thông tin các gói Full/Delta.
-- Kích thước và SHA-256 của artifact.
-- URL để tải artifact.
+- **Product ID** và **hardware revision**.
+- Thông tin các gói **Full OTA / Delta OTA**.
+- Kích thước và **SHA-256** của artifact.
+- Đường dẫn tải artifact (**URL**).
 - Thông tin khóa ký.
 
-Manifest cũng được ký ECDSA và lưu chữ ký riêng trong **`manifest.json.sig`**.
+Manifest cũng được ký bằng **ECDSA**; chữ ký được lưu trong **`manifest.json.sig`**.
 
-> **Phân biệt:** **SDOT** chứa firmware hoặc patch đã ký số; **Manifest** mô tả các artifact và thông tin phát hành.
+> **Phân biệt SDOT và Manifest:** **SDOT** chứa firmware hoặc Delta Patch đã ký số; **Manifest** mô tả thông tin bản phát hành và các artifact để hệ thống biết gói nào đang được cung cấp.
 
-### Bước 5. Chuyển sang Release Server
+### Bước 5. Kiểm tra và chuyển bản phát hành sang Release Server
 
-Một release được tạo có cấu trúc tương tự:
+Thư mục release có cấu trúc minh họa như sau:
 
 ```text
 dist/releases/fw-v2/
@@ -190,26 +233,38 @@ dist/releases/fw-v2/
 └── release-notes.md
 ```
 
-Sau khi tạo release, công cụ kiểm tra tính hợp lệ của các file.
+Sau khi tạo release, công cụ **kiểm tra tính hợp lệ của các file**. Bộ release được **triển khai lên Release Server** để sử dụng cho bước phân phối tiếp theo.
 
-**Release Server** sau đó sử dụng thư mục release đã được triển khai để:
+Release Server sử dụng bộ release đã triển khai để:
 
-- Xác minh chữ ký Manifest và các artifact.
-- Cung cấp Manifest và firmware qua HTTPS.
-- Chuẩn bị và gửi thông báo cập nhật qua MQTTS.
+- Xác minh **Manifest** và các gói cập nhật theo thông tin bảo mật tương ứng.
+- Cung cấp các artifact qua **HTTPS**.
+- Chuẩn bị thông báo cập nhật qua **MQTTS**.
 
-### Câu hỏi ôn tập: Developer/CI
+> **Lưu ý:** Việc **tạo và xác minh thư mục release** không đồng nghĩa với việc công cụ release tự động upload dữ liệu lên máy chủ từ xa. Triển khai release lên server là một bước riêng.
+
+### Bài nói khi phỏng vấn: Developer/CI và Release Server
+
+- **Developer/CI:** Đầu tiên, Developer/CI sẽ build STM32 Application để tạo firmware mới. Sau đó, công cụ release chuẩn bị hai loại gói cập nhật là Full OTA và Delta OTA. Với Delta OTA, hệ thống sử dụng JojoDiff để tạo phần thay đổi giữa firmware cũ và firmware mới. Các gói cập nhật tiếp tục được đóng gói theo định dạng SDOT và ký số bằng ECDSA P-256. Đồng thời, hệ thống tạo và ký Manifest chứa thông tin của bản phát hành.
+
+- **Release Server:** Sau khi các file release được kiểm tra và triển khai lên server, Release Server sẽ sử dụng chúng để xác minh và phân phối các gói cập nhật SDOT. Server cung cấp artifact qua HTTPS và gửi thông báo cập nhật qua MQTTS đến ESP32 Gateway.
+
+### Câu hỏi ôn tập: Developer/CI → Release Server
 
 | Câu hỏi | Ý chính cần trả lời |
 |---|---|
 | CI là gì? | Hệ thống tự động hóa build, kiểm thử và chuẩn bị release. |
-| Tại sao cần firmware v1 khi tạo Delta OTA? | Vì patch được tạo từ sự khác biệt giữa firmware v1 và v2. |
-| Tại sao cần SDOT Container? | Để đóng gói firmware cùng metadata bảo mật và chữ ký số. |
-| Tại sao phải sử dụng ECDSA? | Để xác thực firmware được ký bằng private key tương ứng với public key tin cậy. |
-| SHA-256 dùng để làm gì? | Kiểm tra tính toàn vẹn của dữ liệu firmware. |
-| Manifest dùng để làm gì? | Mô tả bản phát hành và giúp hệ thống lựa chọn, tải artifact. |
-| Server có tạo firmware không? | Không. Release tooling tạo artifact; server xác minh và phân phối. |
-| Server có giữ private key không? | Không cần private key ký firmware để xác minh và phân phối release. |
+| Tại sao cần firmware v1 khi tạo Delta OTA? | Vì JojoDiff tạo patch từ sự khác biệt giữa firmware v1 và v2. |
+| Tại sao phải áp dụng thử Delta Patch? | Để kiểm tra patch có tái tạo đúng firmware v2 từ firmware v1 hay không. |
+| Tại sao vẫn tạo Full OTA? | Để có gói cập nhật đầy đủ khi Delta OTA không phù hợp hoặc không đạt ngưỡng tiết kiệm. |
+| SDOT Container dùng để làm gì? | Đóng gói dữ liệu cập nhật cùng thông tin xác thực và chữ ký số. |
+| ECDSA P-256 dùng để làm gì? | Ký và xác thực dữ liệu cập nhật bằng cặp private key/public key phù hợp. |
+| SHA-256 dùng để làm gì? | Tạo và kiểm tra hash để xác minh tính toàn vẹn của dữ liệu. |
+| Manifest khác SDOT ở điểm nào? | Manifest mô tả bản phát hành; SDOT chứa Full Firmware hoặc Delta Patch đã ký số. |
+| Release Server có tạo firmware không? | Không. Developer/CI và release tooling tạo artifact; server xác minh và phân phối. |
+| Release Server có cần private key ký firmware không? | Không cần private key ký firmware để xác minh và phân phối release. |
+
+**Tài liệu đối chiếu trong repository:** `docs/release-process.md`, `tools/release.py`, `tools/secure_container.py`.
 
 ---
 
@@ -346,4 +401,4 @@ ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thốn
 
 ---
 
-> **Ghi chú chuyển đổi:** Giữ nguyên nội dung và số liệu trong tài liệu ODT; chuẩn hóa tiêu đề, danh sách, bảng và khối mã cho Markdown. Sửa lỗi gõ `Buil firmware` thành `Build firmware`.
+> **Ghi chú:** Tài liệu được biên tập từ bản ODT và các phần phân tích luồng OTA đã thống nhất. Các sơ đồ, bảng và ví dụ được trình bày lại để thuận tiện ôn tập trên Markdown.
