@@ -17,6 +17,7 @@
    - [4.5. STM32 Bootloader → STM32 Internal Flash](#luong-5)
 5. [Phân tích chi tiết Boot State Machine](#phan-5)
 6. [Ôn tập kiến thức kỹ thuật](#phan-6)
+   - [6.1. STM32F103 & ARM Cortex-M3](#chuong-6-1)
 7. [Câu hỏi phỏng vấn trọng tâm](#phan-7)
 
 ### Quy ước thuật ngữ
@@ -2087,24 +2088,333 @@ Những ràng buộc này bảo vệ tính nhất quán của State Machine: **m
 <a id="phan-6"></a>
 ## Phần 6. Ôn tập kiến thức kỹ thuật
 
-> **Trạng thái:** Đây là **đề cương ôn tập**. Các bài học chi tiết, ví dụ code và phần giải đáp theo từng chương sẽ được bổ sung sau; không xem đề cương này là nội dung đã học xong.
+> **Tiến độ:** **Chương 6.1 đã được phát triển thành bài học chi tiết** theo đúng trình tự **nguyên lý → liên hệ project → mã nguồn → tình huống lỗi → câu hỏi phỏng vấn**. Các chương **6.2–6.10** vẫn là đề cương và sẽ được phát triển tiếp; không xem chúng là nội dung đã học xong.
 
-| Chương | Chủ đề | Kiến thức trọng tâm | Liên hệ project |
-|---|---|---|---|
-| **6.1** | STM32F103 & ARM Cortex-M3 | Memory Map, MSP/PSP, NVIC, Clock, Reset | Nền tảng STM32 Bootloader/Application. |
-| **6.2** | Boot Process, Vector Table & Linker Script | Reset Handler, VTOR, `.data`/`.bss`, Application Jump | `boot-jump.md`, `application_jump.c`. |
-| **6.3** | STM32 Internal Flash Programming | Erase 1 KB, Program Half-word 16-bit, Verify | `image_installer.c`. |
-| **6.4** | External SPI Flash W25Q | Page Program, Sector Erase, WIP/WEL, phân vùng | Incoming, Reconstructed, Backup. |
-| **6.5** | UART Communication & OTA Protocol | UART framing, COBS, CRC32, ACK/NACK, Retry, Resume | ESP32 Gateway ↔ STM32 Application. |
-| **6.6** | SPI Communication | SCK, MOSI, MISO, CS, CPOL/CPHA, timing | STM32 ↔ External Flash W25Q. |
-| **6.7** | Full OTA, Delta OTA & JojoDiff | Binary Diff, Base/Target SHA-256, Reconstruct | SDOT Full/Delta và Reconstructed Image. |
-| **6.8** | Cryptography & Firmware Security | SHA-256, ECDSA P-256, Trust Anchor, Anti-rollback | `secure_container.c`, `trusted_key.h`. |
-| **6.9** | Metadata, Checkpoint & Fault Tolerance | Metadata A/B, CRC32, generation, idempotency | Power-loss Recovery, Boot Decision. |
-| **6.10** | Watchdog, Debugging & Testing | IWDG, GDB/SWD, Fault Injection, HIL, Benchmark | Trial Boot, 9/9 HIL, báo cáo GCC. |
+| Chương | Chủ đề | Kiến thức trọng tâm | Liên hệ project | Trạng thái |
+|---|---|---|---|---|
+| **[6.1](#chuong-6-1)** | STM32F103 & ARM Cortex-M3 | Memory Map, MSP/PSP, NVIC, Clock, Reset | Nền tảng STM32 Bootloader/Application. | **Đã triển khai** |
+| **6.2** | Boot Process, Vector Table & Linker Script | Reset Handler, VTOR, `.data`/`.bss`, Application Jump | `boot-jump.md`, `application_jump.c`. | Đề cương |
+| **6.3** | STM32 Internal Flash Programming | Erase 1 KB, Program Half-word 16-bit, Verify | `image_installer.c`. | Đề cương |
+| **6.4** | External SPI Flash W25Q | Page Program, Sector Erase, WIP/WEL, phân vùng | Incoming, Reconstructed, Backup. | Đề cương |
+| **6.5** | UART Communication & OTA Protocol | UART framing, COBS, CRC32, ACK/NACK, Retry, Resume | ESP32 Gateway ↔ STM32 Application. | Đề cương |
+| **6.6** | SPI Communication | SCK, MOSI, MISO, CS, CPOL/CPHA, timing | STM32 ↔ External Flash W25Q. | Đề cương |
+| **6.7** | Full OTA, Delta OTA & JojoDiff | Binary Diff, Base/Target SHA-256, Reconstruct | SDOT Full/Delta và Reconstructed Image. | Đề cương |
+| **6.8** | Cryptography & Firmware Security | SHA-256, ECDSA P-256, Trust Anchor, Anti-rollback | `secure_container.c`, `trusted_key.h`. | Đề cương |
+| **6.9** | Metadata, Checkpoint & Fault Tolerance | Metadata A/B, CRC32, generation, idempotency | Power-loss Recovery, Boot Decision. | Đề cương |
+| **6.10** | Watchdog, Debugging & Testing | IWDG, GDB/SWD, Fault Injection, HIL, Benchmark | Trial Boot, 9/9 HIL, báo cáo GCC. | Đề cương |
 
-**Cấu trúc học cho mỗi chương:** Nguyên lý → Tại sao project sử dụng → Mã nguồn liên quan → Tình huống lỗi → Câu hỏi phỏng vấn.
+**Kiến thức Embedded tổng quát cần ôn song song:** C (pointer, `volatile`, `const`, `static`, bitwise), ngắt, Timer, I2C, debugging, build/link và Git. Đây là nội dung mở rộng phục vụ phỏng vấn; không phải tất cả đều là tính năng đã triển khai trong project.
 
-**Kiến thức Embedded tổng quát cần ôn song song:** C (pointer, `volatile`, `const`, `static`, bitwise), ngắt, Timer, I2C, debugging, build/link và Git. Đây là nội dung mở rộng để chuẩn bị phỏng vấn, không phải tất cả đều được triển khai trong project.
+---
+
+<a id="chuong-6-1"></a>
+### 6.1. STM32F103 & ARM Cortex-M3
+
+> **Mục tiêu:** Hiểu bộ xử lý Cortex-M3 và các tài nguyên STM32F103C8T6 mà **Bootloader** và **Application** cùng sử dụng; biết cách liên hệ **Memory Map, MSP/PSP, NVIC, Clock và Reset** với một lần khởi động, chuyển quyền điều khiển và phục hồi OTA. Chương này ôn nền tảng phần cứng; chi tiết startup/linker được đào sâu tiếp ở **6.2**.
+>
+> **Phân biệt nguồn thông tin:** Các **địa chỉ phân vùng và thứ tự handoff** dưới đây được đối chiếu với repository. Các giải thích như **Thread/Handler mode**, **MSP/PSP**, **NVIC**, **RCC/PLL** là kiến thức nền Cortex-M3/STM32F1 và được chỉ rõ khi liên hệ vào project.
+
+#### Sơ đồ tổng quan: Cortex-M3 trong project
+
+```mermaid
+flowchart TD
+    RESET["Reset / Power-on"] --> CORE["Cortex-M3<br/>Đọc vector khởi động và MSP"]
+    CORE --> BOOT["Bootloader<br/>0x08000000"]
+    BOOT --> META["Đọc Metadata A/B<br/>Boot Decision"]
+    META -->|"Boot Application"| HANDOFF["Kiểm tra vector + MSP<br/>Dọn SysTick / NVIC / RCC<br/>Đặt VTOR = 0x08006000"]
+    HANDOFF --> APP["Application<br/>0x08006000"]
+    META -->|"Xử lý OTA"| OTA["Xác thực / Backup / Install / Recovery"]
+    OTA --> META
+    APP --> UART["Ngắt / UART / SPI / SysTick"]
+    APP -->|"INSTALL: lưu Metadata + Reset"| RESET
+```
+
+> **Ý nghĩa:** Trên **một MCU**, Bootloader và Application **không chạy như hai bộ xử lý độc lập**. Chúng dùng chung CPU, SRAM và ngoại vi, nhưng chiếm **hai vùng chương trình** khác nhau. Khi Application bắt đầu, ngữ cảnh CPU và ngắt phải phù hợp với **vector table của Application**.
+
+#### Bước 1. Nắm phần cứng STM32F103C8T6 và vai trò Cortex-M3
+
+**STM32F103C8T6** là vi điều khiển 32-bit dùng nhân **Arm Cortex-M3**, với cấu hình danh định mà project xây dựng trên đó:
+
+| Thành phần | Thông tin | Liên hệ Secure Delta OTA |
+|---|---|---|
+| CPU | Cortex-M3, thực thi Thumb/Thumb-2; tần số tối đa theo dòng chip là **72 MHz** | Chạy thuật toán Boot Decision, hash, kiểm tra chữ ký, sao chép và ghi Flash. |
+| Internal Flash | **64 KiB** | Chứa Bootloader, Application và Metadata A/B. |
+| SRAM | **20 KiB** | Stack, biến runtime và bộ đệm khi xử lý UART/SPI/Flash. |
+| NVIC + SysTick | Bộ điều khiển ngắt và bộ đếm thời gian thuộc phần lõi | Ngắt giao tiếp và tick của Application; cần dọn trạng thái khi jump. |
+| RCC | Điều khiển clock hệ thống và clock ngoại vi | Ảnh hưởng baudrate UART, tốc độ SPI, delay và SysTick. |
+| Reset / Watchdog | Cơ chế khởi động lại MCU | Bàn giao từ Application sang Bootloader và phục hồi OTA. |
+
+**Cần nhớ về CPU:** Cortex-M3 có các thanh ghi **R0–R12**, **SP (R13)**, **LR (R14)**, **PC (R15)** và các thanh ghi trạng thái/điều khiển như **xPSR**, **CONTROL**, **PRIMASK**, **BASEPRI**. Phần lớn code C không thao tác trực tiếp những thanh ghi này, nhưng thao tác **Jump Application** cần đặc biệt quan tâm **SP, PC, CONTROL và trạng thái ngắt**.
+
+**Phân biệt tần số tối đa và tần số đang chạy:** **72 MHz là khả năng tối đa của dòng MCU, không phải khẳng định firmware hiện tại luôn chạy ở 72 MHz**. Tần số thực tế phụ thuộc cấu hình RCC/SystemInit của image đang chạy.
+
+#### Bước 2. Hiểu Memory Map và các vùng thật sự được project sử dụng
+
+**Memory Map** là cách CPU gán các dải địa chỉ cho Flash, SRAM, ngoại vi và thanh ghi hệ thống. Địa chỉ không đồng nghĩa với việc mọi vùng đều là RAM có thể đọc/ghi tùy ý.
+
+**Các vùng địa chỉ quan trọng trên Cortex-M3/STM32F1:**
+
+| Dải / địa chỉ tiêu biểu | Ý nghĩa | Ví dụ trong project |
+|---|---|---|
+| `0x00000000` | Vùng **alias** được ánh xạ theo lựa chọn khởi động của STM32 | Sau boot thông thường từ User Flash, vector đầu được truy cập qua alias khởi động. |
+| `0x08000000` | Điểm bắt đầu **Internal Flash** vật lý | Vector table Bootloader. |
+| `0x20000000` | Điểm bắt đầu **SRAM** | Stack và biến runtime. |
+| `0x40000000` trở lên | Vùng ngoại vi **memory-mapped I/O** | UART, SPI, GPIO, RCC, FLASH controller. |
+| `0xE000E000` trở lên | Thanh ghi hệ thống **Cortex-M** | NVIC, SysTick, SCB/VTOR. |
+
+**Phân vùng Internal Flash chính xác theo repository:**
+
+| Vùng | Địa chỉ bắt đầu | Địa chỉ kết thúc (inclusive) | Dung lượng |
+|---|---|---|---:|
+| Bootloader | `0x08000000` | `0x08005FFF` | **24 KiB** |
+| Application | `0x08006000` | `0x0800F7FF` | **38 KiB** |
+| Metadata A | `0x0800F800` | `0x0800FBFF` | **1 KiB** |
+| Metadata B | `0x0800FC00` | `0x0800FFFF` | **1 KiB** |
+| SRAM | `0x20000000` | `0x20004FFF` | **20 KiB** |
+
+```text
+Internal Flash — 64 KiB (địa chỉ tăng dần)
+0x08000000  +----------------------------------+
+            | BOOTLOADER          24 KiB       |
+0x08006000  +----------------------------------+
+            | APPLICATION         38 KiB       |
+            | Vector table + code + constants |
+0x0800F800  +----------------------------------+
+            | Metadata A           1 KiB       |
+0x0800FC00  +----------------------------------+
+            | Metadata B           1 KiB       |
+0x08010000  +----------------------------------+ (địa chỉ kết thúc exclusive)
+
+SRAM — 20 KiB
+0x20000000  +----------------------------------+
+            | .data / .bss / Heap / Stack      |
+0x20005000  +----------------------------------+ (top-of-stack; exclusive end)
+```
+
+**Điểm cần hiểu sâu:**
+
+1. **Bootloader** phải nằm trong vùng riêng để quá trình **Install** không xóa chính chương trình đang ghi Flash.
+2. **Application** có vector table riêng tại `0x08006000`, không nằm ở `0x08000000`.
+3. Hai trang **Metadata A/B** lưu trạng thái boot/update bền vững, phục vụ phục hồi khi reset/mất nguồn.
+4. **SRAM không phải nơi lưu Checkpoint sau mất nguồn**. Thông tin sống còn phải được ghi vào Flash thích hợp.
+5. **W25Q SPI NOR không nằm trong dải Internal Flash/SRAM nêu trên**: CPU truy cập nó qua **SPI driver**, không được mặc định dereference một địa chỉ memory-mapped như Internal Flash.
+
+**Ví dụ ôn tập:** Application bắt đầu tại `0x08006000` và giới hạn **38 KiB**. Vì vậy, khi Install, Bootloader phải bảo đảm phạm vi erase/program kết thúc **trước `0x0800F800`**, không chạm vào Metadata A/B. Quy tắc này được thể hiện trong `shared/include/memory_map.h` và `docs/memory-map.md`.
+
+#### Bước 3. Hiểu Reset, Boot Vector và trạng thái CPU ngay sau khởi động
+
+Khi MCU **reset**, phần cứng lựa chọn vùng boot theo cấu hình chân/option tương ứng. Với chế độ **boot từ User Flash** được thiết kế cho project, CPU lấy **word đầu** làm **giá trị MSP ban đầu** và **word thứ hai** làm **địa chỉ Reset Handler**; nó bắt đầu thực thi Bootloader trước. Việc chọn boot từ User Flash/System Memory/SRAM là chức năng boot của STM32F1, **không phải** lựa chọn Full OTA hay Delta OTA của ứng dụng.
+
+```text
+Vector table đầu Bootloader (User Flash)
+0x08000000 : Initial MSP          -> ví dụ top-of-SRAM 0x20005000
+0x08000004 : Reset_Handler        -> địa chỉ mã Bootloader (Thumb bit = 1)
+...
+
+Vector table đầu Application
+0x08006000 : Initial MSP          -> nằm trong SRAM, align 8 bytes
+0x08006004 : Reset_Handler        -> nằm trong vùng Application, Thumb bit = 1
+...
+```
+
+**Luồng điển hình của project:**
+
+1. Reset đưa CPU vào ngữ cảnh khởi động; **Bootloader Reset Handler** được chạy trước.
+2. Startup khởi tạo môi trường C; Bootloader đọc **Metadata A/B** để đưa ra **Boot Decision**.
+3. Nếu cần cập nhật hoặc khôi phục, Bootloader xử lý trong vùng riêng của nó.
+4. Nếu Application được phép chạy, Bootloader **kiểm tra vector, dọn ngắt/clock và handoff** sang Application.
+
+> **Giới hạn của ví dụ:** Hai word vector được đưa ra để học địa chỉ; không mặc định `Reset_Handler` có giá trị số cố định. Giá trị thật phụ thuộc bản firmware đã link. Thứ tự khởi tạo `.data`, `.bss`, gọi `SystemInit()` và `main()` sẽ được phân tích riêng trong **Chương 6.2**.
+
+#### Bước 4. Phân biệt MSP, PSP, Thread Mode và Handler Mode
+
+**Stack** trên Cortex-M3 là vùng SRAM dùng lưu địa chỉ trả về, biến cục bộ, ngữ cảnh gọi hàm và ngữ cảnh ngắt. Stack thường phát triển **từ địa chỉ cao xuống thấp**.
+
+| Khái niệm | Vai trò | Cần nhớ khi phỏng vấn |
+|---|---|---|
+| **MSP** (Main Stack Pointer) | Stack pointer chính, được nạp từ vector[0] lúc reset | **Handler Mode luôn sử dụng MSP**. |
+| **PSP** (Process Stack Pointer) | Stack pointer có thể dùng cho Thread Mode | Thường gặp trong RTOS; bare-metal có thể chỉ dùng MSP. |
+| **Thread Mode** | Thực thi chương trình bình thường | Có thể dùng MSP hoặc PSP tùy `CONTROL.SPSEL`. |
+| **Handler Mode** | Thực thi exception/interrupt | Dùng MSP. |
+| `CONTROL` | Chọn stack trong Thread Mode và đặc quyền thực thi | Handoff cần đưa về ngữ cảnh phù hợp với reset/startup. |
+| `PRIMASK` | Có thể chặn các exception có mức ưu tiên cấu hình được | Nếu không trả về trạng thái phù hợp, Application có thể không nhận ngắt. |
+
+**Ví dụ áp dụng từ repository:**
+
+- Trước khi Jump, `ApplicationJump_Validate()` đọc `vector[0]` và kiểm tra **MSP trong SRAM**, **canh hàng 8 bytes**.
+- `vector[1]` phải có **Thumb bit** và trỏ đến vùng Application.
+- Handoff sử dụng **assembly helper** để đặt MSP rồi nhảy tới Reset Handler **mà không dùng epilogue của hàm C trên stack cũ**.
+- Helper cũng trả các thanh ghi như `CONTROL`, `PRIMASK` về trạng thái phù hợp với khởi động lại; không chỉ đổi PC.
+
+**Vì sao không được Jump kiểu `((void (*)(void))app_reset)();`?** Một lời gọi C thông thường không bảo đảm đổi **MSP**, **VTOR**, ngắt pending và clock về đúng ngữ cảnh. Kết quả có thể là HardFault, dùng nhầm stack hoặc nhảy được nhưng ngắt chạy sai handler.
+
+#### Bước 5. NVIC, Exception và SysTick có ảnh hưởng gì đến Bootloader → Application?
+
+**NVIC** (Nested Vectored Interrupt Controller) quản lý việc enable, pending và mức ưu tiên của nhiều interrupt. **Exception** còn bao gồm các sự kiện cấp lõi như Reset, NMI, HardFault, SysTick; chúng không hoàn toàn giống các IRQ ngoại vi.
+
+- **Enable**: ngắt ngoại vi có được phép đi vào CPU hay không.
+- **Pending**: có yêu cầu ngắt đang chờ phục vụ hay không.
+- **Priority**: ngắt nào được ưu tiên; trên Cortex-M, **số ưu tiên nhỏ hơn thường mang ưu tiên cao hơn**.
+- **Vector Table**: bảng địa chỉ handler tương ứng cho từng exception/IRQ.
+- **SysTick**: timer 24-bit của core; có thể tạo tick định kỳ phục vụ scheduling/delay.
+
+**Một lỗi rất thực tế:** Bootloader bật UART/SysTick rồi Jump thẳng sang Application mà **không dọn pending IRQ và không đổi VTOR**. Khi IRQ xảy ra, CPU có thể lấy địa chỉ handler từ vector table Bootloader thay vì Application. Vì vậy chỉ đổi PC là chưa đủ.
+
+**Luồng cleanup đã được mô tả trong `docs/boot-jump.md`:**
+
+```mermaid
+flowchart LR
+    A["Xác nhận vector hợp lệ"] --> B["Dừng SysTick"]
+    B --> C["Mask IRQ<br/>Disable + Clear NVIC pending"]
+    C --> D["Xóa SysTick/PendSV pending"]
+    D --> E["RCC_DeInit()"]
+    E --> F["SCB->VTOR = 0x08006000"]
+    F --> G["DSB / ISB"]
+    G --> H["Assembly: đặt MSP, reset control/interrupt mask và branch"]
+```
+
+**Liên hệ test:** Tài liệu `docs/boot-jump.md` ghi nhận Application kiểm tra `SCB->VTOR == 0x08006000`, cấu hình **SysTick 1 ms** và phát nhịp **PC13**. Đây là bằng chứng về việc Application đã vào Reset Handler và ngắt được định tuyến qua vector table của Application; **không phải bằng chứng về bảo mật chữ ký SDOT**.
+
+#### Bước 6. Clock Tree và RCC — vì sao phải quan tâm khi chuyển image?
+
+**Clock Tree** cung cấp xung cho CPU và các ngoại vi. Trên STM32F103, các thành phần nền tảng cần phân biệt gồm **HSI** (oscillator nội **8 MHz**), **HSE** (oscillator ngoài, tùy phần cứng), **PLL**, **SYSCLK**, **AHB/HCLK**, **APB1/PCLK1**, **APB2/PCLK2**.
+
+```text
+HSI (nội 8 MHz) -------+
+                       +--> [Clock select / PLL / prescaler] --> SYSCLK
+HSE (ngoài) -----------+                                  |
+                                                          +--> HCLK (CPU / AHB)
+                                                          +--> PCLK1 (APB1)
+                                                          +--> PCLK2 (APB2)
+```
+
+**Vì sao clock quan trọng trong OTA?**
+
+| Nếu clock cấu hình không phù hợp | Biểu hiện có thể gặp |
+|---|---|
+| Baudrate UART lệch so với tính toán | Sai packet, CRC32 lỗi, timeout và Retry liên tục. |
+| SPI clock khác dự kiến | Giao tiếp W25Q lỗi hoặc tốc độ thấp. |
+| SysTick reload tính theo `SystemCoreClock` sai | Tick 1 ms và delay thực tế không chính xác. |
+| Bootloader để lại PLL/prescaler và Application giả định trạng thái reset | Startup và timing không ổn định. |
+
+**Theo code của project:** Trước khi bàn giao, `application_jump.c` gọi **`RCC_DeInit()`** để đưa clock tree về trạng thái gần reset dựa trên **HSI**; **Application `SystemInit()`** chịu trách nhiệm cấu hình lại clock cho chính image của nó. Không nên suy ra Bootloader và Application luôn dùng cùng một tần số hệ thống từ cấu hình tối đa 72 MHz của MCU.
+
+> **Câu hỏi thường gặp:** “Đặt lại RCC có đồng nghĩa reset toàn bộ chip không?” **Không.** `RCC_DeInit()` xử lý trạng thái cấu hình clock/RCC liên quan, không thay thế **system reset** và cũng không tự xóa toàn bộ trạng thái NVIC, SysTick hay SRAM. Vì vậy handoff còn nhiều bước cleanup khác.
+
+#### Bước 7. Các loại Reset và vì sao OTA cần trạng thái bền vững
+
+**Reset** khiến mã boot được thực thi lại, nhưng **không phải mọi loại reset đều có nguyên nhân giống nhau**. Ở mức ôn tập STM32F1, cần phân biệt:
+
+| Tình huống | Ví dụ kích hoạt | Quan hệ với project |
+|---|---|---|
+| **Power-on / Power-down reset** | Cấp nguồn, sụt nguồn vượt ngưỡng | Có thể xảy ra trong Receive/Backup/Install; cần **Power-loss Recovery**. |
+| **External reset** | Tác động chân NRST | Bootloader chạy lại và đọc Metadata để biết trạng thái. |
+| **Software system reset** | Application chủ động yêu cầu reset sau `INSTALL` | Bàn giao OTA cho Bootloader khi Metadata đã commit. |
+| **Watchdog reset** | Application trial không đáp ứng đúng hạn | Bootloader quản lý số lần Trial Boot và có thể Rollback. |
+
+**Điểm mấu chốt:** RAM không phải cơ chế lưu trạng thái cập nhật có thể tin cậy qua mất nguồn. Để biết đang **`UPDATE_INSTALLING`**, đã ghi an toàn đến đâu hay đã **`UPDATE_TRIAL_BOOT`** bao nhiêu lần, hệ thống cần **Metadata/Checkpoint** trong Flash. Sau reset, Bootloader **đọc lại** trạng thái này để quyết định **resume, xử lý lại một bước an toàn hoặc rollback**, tùy thời điểm lỗi.
+
+**Reset không đồng nghĩa Rollback:** Nếu mất nguồn lúc Install, Bootloader có thể **tiếp tục Install từ Checkpoint**; Rollback là cơ chế riêng dùng **Backup Image** khi cần khôi phục firmware đã được chấp nhận.
+
+#### Bước 8. Tự đọc mã nguồn: nối kiến thức phần cứng với project
+
+**Ví dụ đọc Vector Table (để học, chưa phải hàm Jump hoàn chỉnh):**
+
+```c
+#include <stdint.h>
+
+#define APP_BASE 0x08006000UL
+
+void example_read_application_vectors(uint32_t *initial_msp,
+                                      uint32_t *reset_entry)
+{
+    *initial_msp = *(volatile const uint32_t *)(APP_BASE + 0UL);
+    *reset_entry = *(volatile const uint32_t *)(APP_BASE + 4UL);
+}
+
+/* Ví dụ chỉ để đọc vector: chưa kiểm tra range/alignment/Thumb bit.
+   Handoff thật cần dọn NVIC/SysTick/RCC, đặt VTOR và chuyển MSP
+   trong assembly như implementation của repository. */
+```
+
+**Cách kiểm tra khi đọc code:**
+
+1. `memory_map.h`: tìm `APPLICATION_START_ADDRESS`, `INTERNAL_SRAM_BASE`, `INTERNAL_SRAM_END`, `BOOT_METADATA_A_ADDRESS`.
+2. `application_jump.c`: tìm kiểm tra vector table, **MSP range + 8-byte alignment**, **Thumb bit** và **Reset Handler range**.
+3. Trong chính file đó, theo dõi `SysTick->CTRL`, `NVIC->ICER`, `NVIC->ICPR`, `RCC_DeInit()` và `SCB->VTOR`.
+4. `application_handoff.s`: xem cách restore ngữ cảnh và thực hiện branch mà không chạy epilogue C sau khi đổi MSP.
+5. `application.ld` / `bootloader.ld`: kiểm tra vùng `FLASH`, `RAM` và vị trí `.isr_vector`.
+
+> **Chưa kết luận từ chương này:** Khả năng Jump an toàn chỉ chứng minh firmware có cấu trúc vector hợp lệ và ngữ cảnh phù hợp; **không thay thế xác thực ECDSA P-256**. Quy trình tin cậy cập nhật nằm ở **Phần 4, 5** và sẽ được ôn kỹ trong **6.8**.
+
+#### Tình huống lỗi thực tế và hướng suy luận
+
+| Tình huống | Nguyên nhân cần kiểm tra trước | Cách khoanh vùng |
+|---|---|---|
+| MCU reset xong không vào Application | Sai Boot Decision, vector không hợp lệ, MSP ngoài SRAM hoặc Reset Handler ngoài partition | Đọc Metadata, vector[0]/vector[1], PC và fault status bằng GDB/SWD. |
+| Jump xong vào `HardFault_Handler` | MSP sai/alignment sai, Reset Handler không hợp lệ hoặc ngắt dùng sai vector | Kiểm tra `SCB->VTOR`, MSP/PSP, PC/LR và SCB fault registers. |
+| Application chạy được nhưng UART/SysTick ngừng hoạt động | PRIMASK còn chặn IRQ, NVIC chưa dọn, vector table/clock chưa cấu hình đúng | Kiểm tra `PRIMASK`, `CONTROL`, `NVIC->ISER/ISPR`, `SCB->VTOR`, clock. |
+| Bất thường sau khi đổi clock | HSI/HSE/PLL/prescaler không khớp giả định timing | Đọc trạng thái RCC, đối chiếu clock của USART/SPI/SysTick. |
+| Mất điện giữa Install rồi boot lại | Internal Flash có thể chứa image chưa hoàn chỉnh | Đọc Metadata/Checkpoint; **không Jump** vào firmware chưa Verify thành công. |
+
+#### Bài nói khi phỏng vấn: STM32F103 & Cortex-M3 (khoảng 90 giây)
+
+> Dạ, trong project Secure Delta OTA Bootloader, em sử dụng **STM32F103C8T6** với nhân **Arm Cortex-M3**, **64 KiB Internal Flash** và **20 KiB SRAM**.
+>
+> Em chia Internal Flash thành **24 KiB Bootloader**, **38 KiB Application** và **hai trang Metadata A/B, mỗi trang 1 KiB**. Bootloader bắt đầu tại `0x08000000`, còn Application bắt đầu tại `0x08006000`.
+>
+> Khi reset, MCU chạy Bootloader trước. Bootloader đọc Metadata để quyết định xử lý cập nhật hay chạy Application. Trước khi nhảy vào Application, hệ thống kiểm tra **MSP** và **Reset Handler** từ vector table, dừng **SysTick**, dọn ngắt **NVIC**, đưa **RCC** về trạng thái phù hợp, đặt lại **VTOR** rồi chuyển quyền điều khiển bằng assembly.
+>
+> Trên Cortex-M3, **MSP** được dùng khi reset và trong Handler Mode, còn **PSP** có thể được chọn trong Thread Mode. Em cần hiểu sự khác biệt này để tránh lỗi stack hoặc HardFault khi bàn giao từ Bootloader sang Application.
+>
+> Ngoài ra, các trạng thái OTA quan trọng được lưu trong Flash thay vì SRAM, để sau reset hoặc mất nguồn Bootloader có thể đọc lại Metadata/Checkpoint và tiếp tục hoặc khôi phục theo trạng thái an toàn.
+
+#### Câu hỏi ôn tập: STM32F103 & ARM Cortex-M3
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| STM32F103 khác Cortex-M3 ở đâu? | STM32F103 là **MCU hoàn chỉnh**; Cortex-M3 là **nhân xử lý** bên trong. |
+| Project sử dụng bao nhiêu Internal Flash và SRAM? | **64 KiB Internal Flash**, **20 KiB SRAM** trên STM32F103C8T6. |
+| Vì sao Bootloader và Application có địa chỉ Flash riêng? | Tránh tự ghi đè Bootloader; boot/jump và giới hạn ghi Flash rõ ràng. |
+| Application bắt đầu ở đâu? | `0x08006000`; Bootloader bắt đầu ở `0x08000000`. |
+| Tại sao Metadata A/B không đặt trong RAM? | Cần trạng thái bền vững qua reset và mất nguồn. |
+| MSP khác PSP như thế nào? | MSP dùng lúc reset và Handler Mode; PSP có thể dùng trong Thread Mode. |
+| Vector[0] và vector[1] chứa gì? | MSP ban đầu và địa chỉ Reset Handler (Thumb bit phải hợp lệ). |
+| VTOR dùng để làm gì? | Chỉ vị trí vector table mà CPU dùng để định tuyến exception/interrupt. |
+| Vì sao phải dọn NVIC/SysTick trước khi Jump? | Không để lại pending/enable/tick của Bootloader gây ngắt sai trong Application. |
+| Vì sao phải dùng assembly khi đổi MSP? | Không để epilogue C dùng stack của Bootloader sau khi chuyển MSP. |
+| Số priority NVIC càng lớn có ưu tiên càng cao không? | **Không**; giá trị priority số nhỏ hơn thường ưu tiên cao hơn. |
+| Clock 72 MHz có chắc là tần số hiện tại không? | **Không**; đây là giới hạn tối đa của dòng MCU, tần số thực do RCC chọn. |
+| HSI trên STM32F103 là bao nhiêu? | Oscillator nội HSI **8 MHz**. |
+| `RCC_DeInit()` có reset toàn bộ MCU không? | Không; nó dọn cấu hình clock, không thay thế system reset. |
+| Mất nguồn khi đang Install có phải luôn Rollback? | Không; Bootloader đánh giá Metadata/Checkpoint để Resume hoặc Rollback đúng tình huống. |
+| Kiểm tra vector có đủ chứng minh firmware được ký tin cậy không? | Không; vector validation khác **xác thực SDOT/ECDSA**. |
+
+#### Điểm cần ghi nhớ
+
+- **STM32F103 là MCU**, **Cortex-M3 là CPU core** bên trong; hiểu core phải đi cùng hiểu Flash/SRAM/NVIC/RCC của chip.
+- **Địa chỉ và dung lượng cụ thể:** Bootloader `0x08000000` (24 KiB), Application `0x08006000` (38 KiB), Metadata A/B (1 KiB mỗi vùng), SRAM `0x20000000`–`0x20004FFF` (20 KiB).
+- **MSP ≠ PSP:** Reset dùng MSP; Handler Mode dùng MSP; Thread Mode có thể chọn PSP.
+- **Jump Application ≠ gọi hàm C thông thường:** Phải kiểm tra vector, dọn SysTick/NVIC, xử lý RCC, đặt VTOR và khôi phục ngữ cảnh CPU.
+- **72 MHz là giới hạn, không phải mặc định chạy 72 MHz**; dựa vào cấu hình clock thật để tính UART, SPI và SysTick.
+- **Reset ≠ xóa trạng thái OTA trong Flash**; Metadata/Checkpoint là căn cứ phục hồi, còn Rollback chỉ là một nhánh xử lý.
+- **Vector validation ≠ firmware authentication**; chữ ký ECDSA được kiểm tra trong luồng cập nhật khác.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+| Tài liệu / File | Tại sao cần đọc |
+|---|---|
+| [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md) | Phân vùng Internal Flash, SRAM, W25Q và giới hạn erase/write. |
+| [`shared/include/memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h) | Các hằng địa chỉ thực sự dùng trong code. |
+| [`docs/boot-jump.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-jump.md) | Trình tự kiểm tra vector, dọn NVIC/SysTick, RCC, VTOR và assembly handoff. |
+| [`node-stm32f103/bootloader/src/application_jump.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/application_jump.c) | Kiểm tra MSP/Reset Handler và C-side cleanup trước khi Jump. |
+| [`node-stm32f103/bootloader/src/application_handoff.s`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/application_handoff.s) | Cách chuyển stack, control và branch trong assembly. |
+| [`node-stm32f103/application/linker/application.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/linker/application.ld) | Vùng đặt Application và địa chỉ vector table trong linker script. |
+| [`node-stm32f103/bootloader/linker/bootloader.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/linker/bootloader.ld) | Vùng đặt Bootloader và SRAM. |
+| [ST STM32F103C8 Product Overview](https://www.st.com/en/microcontrollers-microprocessors/stm32f103c8.html) | Thông số chip: Cortex-M3, 64 KiB Flash, 20 KiB SRAM, tốc độ tối đa, HSI. |
+| [ST PM0056 — Cortex-M3 Programming Manual](https://www.st.com/resource/en/programming_manual/pm0056-stm32f10xxx20xxx21xxxl1xxxx-cortexm3-programming-manual-stmicroelectronics.pdf) | Kiến thức nền MSP/PSP, NVIC, exception, thanh ghi core. |
+
+> **Gợi ý tự kiểm tra:** Giải thích bằng lời vì sao chỉ `SCB->VTOR = 0x08006000` chưa đủ để chuyển an toàn từ Bootloader sang Application. Nếu trả lời được cả **MSP, ngắt pending, SysTick, RCC và Reset Handler**, bạn đã nắm cốt lõi Chương 6.1.
 
 ---
 
