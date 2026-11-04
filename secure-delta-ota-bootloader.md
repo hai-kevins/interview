@@ -84,8 +84,10 @@
 <a id="phu-luc-a-1"></a>
 ### A.1. Bức tranh tổng quan: mỗi công nghệ giải quyết vấn đề gì?
 
+**Luồng cập nhật firmware từ trên xuống:**
+
 ```mermaid
-flowchart LR
+flowchart TD
     CI["Developer/CI<br/>Build + tạo Full/Delta + ký số"] --> S["Release Server<br/>Manifest + MQTTS / HTTPS"]
     S --> E["ESP32 Gateway<br/>Tải SDOT + Flash cache"]
     E -->|"UART / COBS / CRC32"| A["STM32 Application<br/>Nhận và lưu W25Q"]
@@ -95,14 +97,31 @@ flowchart LR
     I --> T["Trial Boot → Confirm / Rollback"]
 ```
 
-| Bài toán | Công nghệ / thuật toán chính | Ý tưởng cần nhớ |
-|---|---|---|
-| **Giảm dữ liệu tải về** | Full/Delta OTA, JojoDiff, JANPatch | Chỉ gửi khác biệt khi patch đủ nhỏ; phải có **đúng firmware gốc**. |
-| **Truyền gói không lẫn packet** | UART, COBS, Sequence/Offset | Chia thành frame, biết thứ tự và vị trí từng phần. |
-| **Phát hiện lỗi truyền/lưu** | CRC32, ACK/NACK, Retry | Phát hiện dữ liệu lỗi do đường truyền/bộ nhớ, yêu cầu truyền lại. |
-| **Xác minh bản cập nhật** | SHA-256, ECDSA P-256, Trusted Public Key | Kiểm tra nội dung và nguồn ký **trước khi cài đặt**. |
-| **Không mất khả năng khởi động khi cập nhật lỗi** | External Flash, Backup, Metadata A/B, Checkpoint | Giữ dữ liệu và trạng thái phục hồi bền vững. |
-| **Phát hiện firmware mới không chạy ổn** | Trial Boot, IWDG, Rollback | Chạy thử có giới hạn, không xác nhận thì khôi phục bản cũ. |
+**Các bài toán và công nghệ tương ứng (trình bày dọc):**
+
+**1. Giảm dữ liệu tải về**  
+**Công nghệ / thuật toán chính:** Full/Delta OTA, JojoDiff, JANPatch.  
+**Ý tưởng cần nhớ:** Chỉ gửi khác biệt khi patch đủ nhỏ; phải có **đúng firmware gốc**.
+
+**2. Truyền gói không lẫn packet**  
+**Công nghệ / thuật toán chính:** UART, COBS, Sequence/Offset.  
+**Ý tưởng cần nhớ:** Chia thành frame, biết thứ tự và vị trí từng phần.
+
+**3. Phát hiện lỗi truyền/lưu**  
+**Công nghệ / thuật toán chính:** CRC32, ACK/NACK, Retry.  
+**Ý tưởng cần nhớ:** Phát hiện dữ liệu lỗi do đường truyền/bộ nhớ, yêu cầu truyền lại.
+
+**4. Xác minh bản cập nhật**  
+**Công nghệ / thuật toán chính:** SHA-256, ECDSA P-256, Trusted Public Key.  
+**Ý tưởng cần nhớ:** Kiểm tra nội dung và nguồn ký **trước khi cài đặt**.
+
+**5. Không mất khả năng khởi động khi cập nhật lỗi**  
+**Công nghệ / thuật toán chính:** External Flash, Backup, Metadata A/B, Checkpoint.  
+**Ý tưởng cần nhớ:** Giữ dữ liệu và trạng thái phục hồi bền vững.
+
+**6. Phát hiện firmware mới không chạy ổn**  
+**Công nghệ / thuật toán chính:** Trial Boot, IWDG, Rollback.  
+**Ý tưởng cần nhớ:** Chạy thử có giới hạn, không xác nhận thì khôi phục bản cũ.
 
 <a id="phu-luc-a-2"></a>
 ### A.2. Nền tảng MCU, Bootloader và bộ nhớ Flash
