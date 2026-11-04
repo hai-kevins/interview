@@ -27,6 +27,7 @@
    - [6.1. STM32F103 & ARM Cortex-M3](#chuong-6-1)
    - [6.2. Boot Process, Vector Table & Linker Script](#chuong-6-2)
    - [6.3. STM32 Internal Flash Programming](#chuong-6-3)
+   - [6.4. External SPI Flash W25Q](#chuong-6-4)
 7. [Câu hỏi phỏng vấn trọng tâm](#phan-7)
 
 ### Quy ước thuật ngữ
@@ -2104,14 +2105,14 @@ Những ràng buộc này bảo vệ tính nhất quán của State Machine: **m
 <a id="phan-6"></a>
 ## Phần 6. Ôn tập kiến thức kỹ thuật
 
-> **Tiến độ:** **Chương 6.1, 6.2 và 6.3 đã được phát triển thành bài học chi tiết** theo trình tự **nguyên lý → liên hệ project → mã nguồn → tình huống lỗi → câu hỏi phỏng vấn**. Các chương **6.4–6.10** vẫn là đề cương và sẽ được phát triển tiếp; không xem chúng là nội dung đã học xong.
+> **Tiến độ:** **Chương 6.1, 6.2, 6.3 và 6.4 đã được phát triển thành bài học chi tiết** theo trình tự **nguyên lý → liên hệ project → mã nguồn → tình huống lỗi → câu hỏi phỏng vấn**. Các chương **6.5–6.10** vẫn là đề cương và sẽ được phát triển tiếp; không xem chúng là nội dung đã học xong.
 
 | Chương | Chủ đề | Kiến thức trọng tâm | Liên hệ project | Trạng thái |
 |---|---|---|---|---|
 | **[6.1](#chuong-6-1)** | STM32F103 & ARM Cortex-M3 | Memory Map, MSP/PSP, NVIC, Clock, Reset | Nền tảng STM32 Bootloader/Application. | **Đã triển khai** |
 | **[6.2](#chuong-6-2)** | Boot Process, Vector Table & Linker Script | Reset Handler, VTOR, `.data`/`.bss`, Linker Script, Application Jump | `boot-jump.md`, startup assembly, `application_jump.c`. | **Đã triển khai** |
 | **[6.3](#chuong-6-3)** | STM32 Internal Flash Programming | Page Erase 1 KiB, Half-word Program, Page Verify, Checkpoint | `image_installer.c`, `install_progress.c`. | **Đã triển khai** |
-| **6.4** | External SPI Flash W25Q | Page Program, Sector Erase, WIP/WEL, phân vùng | Incoming, Reconstructed, Backup. | Đề cương |
+| **[6.4](#chuong-6-4)** | External SPI Flash W25Q | Page Program 256 B, Sector Erase 4 KiB, WIP/WEL, partition, Resume | `spi_flash.c`, `external_flash_storage.c`, `ota_receiver.c`. | **Đã triển khai** |
 | **6.5** | UART Communication & OTA Protocol | UART framing, COBS, CRC32, ACK/NACK, Retry, Resume | ESP32 Gateway ↔ STM32 Application. | Đề cương |
 | **6.6** | SPI Communication | SCK, MOSI, MISO, CS, CPOL/CPHA, timing | STM32 ↔ External Flash W25Q. | Đề cương |
 | **6.7** | Full OTA, Delta OTA & JojoDiff | Binary Diff, Base/Target SHA-256, Reconstruct | SDOT Full/Delta và Reconstructed Image. | Đề cương |
@@ -3222,6 +3223,391 @@ Metadata nằm trong **Internal Flash** nhưng có nhiệm vụ khác với firm
 | [STM32F1 Reference Manual RM0008](https://www.st.com/resource/en/reference_manual/cd00171190-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf) | Kiến thức nền Flash controller, Page Erase và Half-word Programming của STM32F1. |
 
 > **Tự kiểm tra cuối chương:** Giả sử firmware mới có `image_size = 2501`, thiết bị mất nguồn sau khi ghi **150 byte vào trang thứ ba**, trong khi Metadata vẫn lưu `copy_offset = 2048`. Hãy giải thích: (1) sau reset Bootloader chọn hành động nào, (2) trang nào được Erase lại, (3) vì sao không bắt đầu từ byte thứ 150, (4) lúc nào `copy_offset` trở thành `2501`, và (5) tại sao **Verify Installed Image** vẫn cần thiết sau khi đã Verify từng trang.
+
+---
+
+<a id="chuong-6-4"></a>
+### 6.4. External SPI Flash W25Q
+
+> **Mục tiêu:** Giải thích được cơ chế hoạt động của **SPI NOR Flash W25Q**, sự khác nhau giữa **Read**, **Page Program (256 byte)** và **Sector Erase (4 KiB)**, ý nghĩa **WIP/BUSY** và **WEL**, giới hạn địa chỉ/phân vùng, cách **STM32 Application** lưu gói SDOT và cách **STM32 Bootloader** dùng các vùng **Reconstructed Image** và **Backup Image**. Quan trọng nhất: phân tích được **Resume sau mất nguồn** mà không phá hỏng các phân vùng khác.
+>
+> **Phạm vi đối chiếu:** Thông số về W25Q32/W25Q64, wiring, lệnh SPI, bảng phân vùng, các tên hàm và quy tắc bảo vệ lấy từ [`docs/external-spi-flash.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/external-spi-flash.md), [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md), `spi_flash.c`, `external_flash_storage.c` và các storage/receiver tương ứng. Các sơ đồ, ví dụ hex và **pseudocode** dưới đây dùng để giảng giải, không phải code sao chép nguyên văn.
+>
+> **Liên hệ:** Chương 6.3 giải thích **Internal Flash STM32** (Erase 1 KiB, Program 16-bit). Chương này giải thích **External Flash W25Q** (Erase sector 4 KiB, Program theo page tối đa 256 byte). Phần 6.6 sẽ đi sâu hơn về tầng tín hiệu **SPI**.
+
+#### Sơ đồ tổng quan: Dữ liệu OTA đi qua W25Q như thế nào?
+
+```mermaid
+flowchart TD
+    ESP["ESP32 Gateway<br/>Gói SDOT đã tải qua HTTPS"] -->|"UART + COBS + CRC32"| APP["STM32 Application<br/>OTA Receiver"]
+    APP -->|"SPI: ghi + Verify"| IN["W25Q: Incoming Artifact<br/>0x002000 - 0x021FFF"]
+    APP -->|"Download Checkpoint A/B<br/>sau mốc sector an toàn"| META["W25Q: External Metadata A/B<br/>0x000000 - 0x001FFF"]
+    APP -->|"FINISH; INSTALL + Internal Metadata + Reset"| BOOT["STM32 Bootloader"]
+    IN -->|"Đọc, xác thực SDOT"| BOOT
+    BOOT -->|"Full: copy / Delta: apply patch"| RECON["W25Q: Reconstructed Image<br/>0x022000 - 0x041FFF"]
+    OLD["STM32 Internal Flash<br/>Application hiện tại"] -->|"Backup qua SPI"| BACK["W25Q: Backup Image<br/>0x042000 - 0x061FFF"]
+    RECON -->|"Đọc ứng viên đã kiểm tra"| BOOT
+    BACK -->|"Nguồn Rollback nếu cần"| BOOT
+    BOOT -->|"Erase/Program/Verify theo trang 1 KiB"| NEW["STM32 Internal Flash<br/>Application mới / phục hồi"]
+```
+
+**Bốn nguyên tắc trước khi đọc sâu:**
+
+1. **W25Q là bộ nhớ ngoài, không phải vùng Internal Flash memory-mapped của STM32**: giao tiếp bằng lệnh SPI và địa chỉ W25Q riêng.
+2. **Đọc được trực tiếp nhưng không ghi đè tùy ý**: trước khi đổi bit từ `0` thành `1` phải Erase; Page Program chỉ đưa các bit từ `1` thành `0`.
+3. **4 KiB ≠ 256 byte**: sector 4 KiB là đơn vị Erase; page 256 byte là ranh giới Program. `ACK` một gói UART không đồng nghĩa với Checkpoint đã lưu bền vững.
+4. **Phải chọn đúng phân vùng trước khi thao tác**: driver SPI kiểm tra phạm vi toàn chip; lớp `ExternalFlashStorage_*` còn kiểm tra offset trong **phân vùng**.
+
+#### Bước 1. Xác định đúng chip W25Q, dung lượng, chân nối và chế độ SPI
+
+Trong project, layout logic dành cho **W25Q32 (4 MiB, 32 Mbit, JEDEC `EF 40 16`)**. Driver cũng chấp nhận **W25Q64 (8 MiB, JEDEC `EF 40 17`)** để phát triển trên phần cứng tương thích, nhưng layout OTA vẫn chỉ cho phép sử dụng **4 MiB đầu tiên**. Điều này không có nghĩa các phân vùng tự mở rộng khi cắm W25Q64.
+
+| Thành phần | Giá trị trong repository | Ý nghĩa |
+|---|---|---|
+| STM32 peripheral | `SPI1` | Master điều khiển W25Q. |
+| `SCK` | `PA5` | Xung SPI. |
+| `MISO` | `PA6` | W25Q trả dữ liệu về STM32. |
+| `MOSI` | `PA7` | STM32 gửi opcode, địa chỉ, dữ liệu. |
+| `/CS` | `PB0` | GPIO active-low chọn chip. |
+| Chế độ | **SPI Mode 0**, 8-bit, MSB-first | CPOL=0, CPHA=0; software NSS. |
+| SPI prescaler | `/4` | Giá trị chia clock trong cấu hình driver, không phải tốc độ MHz cố định. |
+| Nguồn | **3.3 V**, GND chung | Không nối tín hiệu 5 V trực tiếp vào thiết bị 3.3 V. |
+| `/WP`, `/HOLD` | Giữ HIGH khi dùng chip rời | Tránh vô ý khóa ghi hoặc tạm dừng giao tiếp. |
+
+**Tại sao phải đọc JEDEC ID?** `SpiFlash_Init()` cấu hình GPIO/SPI, dùng lệnh `0x9F` đọc 3 byte ID, chỉ chấp nhận chip tương thích; nếu không nhận dạng được thì trả lỗi và không xem storage là sẵn sàng. Đây là cách tránh tiếp tục Erase/Program khi chip bị thiếu, đứt dây hoặc sai loại. **Không** nên tự kết luận mọi lỗi JEDEC đều do chip hỏng: cần kiểm tra nguồn, `/CS`, SPI mode, wiring và thời điểm clock trước.
+
+**Ví dụ phân biệt:** `EF 40 16` là ba byte ID W25Q32 trong luồng SPI; khi driver ghép thành `uint32_t`, giá trị đọc có dạng `0x00EF4016`. Không được đảo thứ tự byte khi đối chiếu log.
+
+**File cần đọc:** [`spi_flash.c` → `SpiFlash_Init()`, `ReadJedecIdRaw()`, `SpiFlash_IsSupportedJedecId()`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/drivers/spi_flash.c).
+
+#### Bước 2. Hiểu nguyên lý NOR Flash: Erase, Program, Read và giới hạn đơn vị
+
+| Thao tác | Đơn vị/ràng buộc trong thiết kế | Kết quả cần hiểu |
+|---|---|---|
+| `Read Data` | Có thể đọc nhiều byte trong phạm vi hợp lệ. | Không yêu cầu Erase trước khi đọc. |
+| `Page Program` | Tối đa đến **ranh giới 256 byte** của page hiện tại. | Chỉ lập trình bit **`1 → 0`**; không tự xóa dữ liệu cũ. |
+| `4 KiB Sector Erase` | Địa chỉ phải chia hết cho **4096**. | Toàn bộ sector được đưa về trạng thái xóa (`0xFF`). |
+| `Read Status Register-1` | Đọc thanh ghi trạng thái. | Quan sát `WIP/BUSY`, `WEL`. |
+| `Write Enable` | Cần trước từng thao tác Program/Erase. | Đặt latch cho phép ghi; phải kiểm tra WEL thay vì chỉ gửi opcode rồi giả định thành công. |
+
+**Ví dụ về bit:** dữ liệu hiện tại `1111 0000` (`0xF0`) có thể Program thành `1100 0000` (`0xC0`), nhưng không thể chỉ Program để trở thành `1111 1111` (`0xFF`). Muốn đưa các bit `0` lên `1`, cần Erase sector chứa byte đó.
+
+**Ví dụ phân biệt 256 B và 4 KiB:** Một sector chứa **16 page 256 byte** (`4096 / 256 = 16`). Khi xóa sector, **cả 16 page** bị ảnh hưởng. Khi Program, không được để một lệnh Page Program vượt qua ranh giới page (vì có thể ghi vòng trong page hoặc cho kết quả không như dự định tùy thiết bị).
+
+> **Điểm dễ bị hỏi:** `SpiFlash_Write()` trong repository **không tự Erase**. Hàm kiểm tra trước `PreflightProgrammable()`; nếu byte mới yêu cầu chuyển bit `0 → 1`, driver trả `SPI_FLASH_STATUS_NEEDS_ERASE`. Tầng OTA/storage phải tổ chức Erase đúng sector trước khi ghi mới. Không nên mô tả driver “ghi đè byte bất kỳ”.
+
+#### Bước 3. Hiểu chuỗi lệnh SPI và vai trò WIP/WEL
+
+Các opcode thực sự được driver sử dụng:
+
+| Opcode | Tên | Vai trò |
+|---|---|---|
+| `0x9F` | Read JEDEC ID | Nhận diện chip. |
+| `0x05` | Read Status Register-1 | Đọc bit trạng thái. |
+| `0x06` | Write Enable | Yêu cầu đặt WEL trước ghi/xóa. |
+| `0x03` | Read Data | Đọc dữ liệu từ địa chỉ 24-bit. |
+| `0x02` | Page Program | Ghi các byte trong **một page**. |
+| `0x20` | 4 KiB Sector Erase | Xóa sector được chỉ định. |
+
+**WIP/BUSY** là bit 0 của Status Register-1: `1` nghĩa là chip vẫn bận với thao tác nội bộ; `0` nghĩa là đã sẵn sàng cho bước tiếp. **WEL** là bit 1: `1` nghĩa là latch đã được kích hoạt để cho phép Program/Erase. **WEL không chứng minh rằng dữ liệu đã ghi thành công**; cần đợi WIP hết bận và Verify.
+
+```mermaid
+sequenceDiagram
+    participant MCU as STM32 SPI driver
+    participant NOR as W25Q SPI NOR
+    MCU->>NOR: /CS LOW, 0x06 (Write Enable), /CS HIGH
+    MCU->>NOR: 0x05 (Read Status-1)
+    NOR-->>MCU: WEL = 1?
+    alt WEL không được đặt
+        MCU-->>MCU: Báo WRITE_ENABLE_FAILED
+    else WEL hợp lệ
+        MCU->>NOR: /CS LOW, 0x02 + 24-bit addr + dữ liệu, /CS HIGH
+        loop Chờ thao tác hoàn tất (có timeout)
+            MCU->>NOR: 0x05 (Read Status-1)
+            NOR-->>MCU: WIP/BUSY
+        end
+        MCU->>NOR: 0x03 + địa chỉ (Read-back)
+        NOR-->>MCU: Dữ liệu vừa ghi
+        MCU-->>MCU: So sánh với buffer nguồn
+    end
+```
+
+**Lưu ý về `/CS`:** Khi gửi opcode và địa chỉ/dữ liệu của *một transaction*, `/CS` phải ở mức LOW; đưa HIGH để kết thúc transaction. Với Write Enable, driver thực hiện transaction riêng trước lệnh Program/Erase. `/CS` không thể luôn LOW cho mọi lệnh liên tiếp.
+
+**Timeout trong code** là giới hạn số vòng polling (`*_TIMEOUT_LOOPS`), **không được diễn giải thành chính xác số mili giây** vì phụ thuộc CPU/clock/tối ưu hóa. Nếu WIP không trở về 0 trong giới hạn, `WaitReady()` báo `SPI_FLASH_STATUS_BUSY_TIMEOUT`.
+
+#### Bước 4. Phân tích Page Program: chia đúng ranh giới 256 byte và Verify
+
+`SpiFlash_Write(address, data, length)` xử lý theo thứ tự:
+
+1. Kiểm tra đã `Init`, con trỏ, chiều dài và **phạm vi địa chỉ tuyệt đối**.
+2. Đọc trước vùng đích bằng `PreflightProgrammable()` để chặn mọi byte cần `0 → 1`.
+3. Dùng `ExtFlash_PageChunkLength()` xác định kích thước đoạn **không vượt ranh giới 256 byte**.
+4. Gọi `ProgramPageChunk()` cho từng đoạn: `WriteEnable()` → `0x02 + địa chỉ 24-bit + bytes` → `WaitReady()` → `SpiFlash_Verify()`.
+5. Chỉ trả thành công khi tất cả các đoạn đều Program và Verify được.
+
+**Ví dụ chạm ranh giới page (mô phỏng đúng quy tắc chia):** bắt đầu tại địa chỉ `0x0000F0`, ghi **40 byte**. Offset trong page là `0xF0 = 240` nên page đầu còn **16 byte**; driver thực hiện 2 đoạn:
+
+```text
+Đoạn 1: địa chỉ 0x0000F0, 16 byte → đến 0x0000FF
+Đoạn 2: địa chỉ 0x000100, 24 byte → đến 0x000117
+```
+
+**Pseudocode (minh họa, không phải mã nguồn chép từ repo):**
+
+```c
+bool WriteAcrossPages(uint32_t address, const uint8_t *buffer, uint32_t length)
+{
+    uint32_t done = 0U;
+    while (done < length) {
+        uint32_t page_remaining = 256U - ((address + done) & 0xFFU);
+        uint32_t chunk = length - done;
+        if (chunk > page_remaining) chunk = page_remaining;
+
+        /* Trong code thật: kiểm tra preflight, WEL, status, timeout và verify. */
+        if (!ProgramOnePageChunk(address + done, buffer + done, chunk)) return false;
+        done += chunk;
+    }
+    return true;
+}
+```
+
+`ProgramOnePageChunk()` trong ví dụ là **tên minh họa**; tên hàm thực tế của repo là `ProgramPageChunk()`, còn API gọi từ tầng trên là `SpiFlash_Write()`.
+
+**Vì sao read-back Verify sau mỗi đoạn vẫn chưa đủ để tin tưởng firmware?** Nó chỉ chứng minh dữ liệu lưu khớp dữ liệu đang gửi; **CRC32 toàn SDOT** và **ECDSA P-256/SHA-256** thực hiện ở các bước khác. W25Q không xác thực chữ ký số firmware cho Bootloader.
+
+#### Bước 5. Sector Erase 4 KiB, căn chỉnh địa chỉ và phân biệt Erase Range
+
+`SpiFlash_EraseSector(address)` yêu cầu địa chỉ **được căn chỉnh 4 KiB** (`address % 4096 == 0`) và sector vẫn nằm trong phạm vi chip. Nếu gọi `SpiFlash_EraseSector(0x002100)`, hàm **từ chối**; nó **không lén làm tròn xuống** `0x002000` rồi xóa.
+
+Luồng xóa của driver: validate → `WriteEnable()` và kiểm WEL → gửi `0x20 + 24-bit address` → chờ `WIP=0` có timeout → trả trạng thái. Khác với Page Program, `SpiFlash_EraseSector()` **không tự thực hiện blank-check toàn sector**. Có API riêng `SpiFlash_IsErased()` để đọc và xác nhận các byte đều `0xFF` khi cần.
+
+Ở tầng phân vùng:
+
+- `ExternalFlashStorage_EraseRange(partition, offset, length)` yêu cầu **offset và length là bội số 4 KiB**, đồng thời toàn bộ vùng nằm trong partition; hàm lặp từng sector.
+- `ExternalFlashStorage_ErasePartition(partition)` duyệt toàn bộ sector của partition hợp lệ.
+- `ExternalFlashStorage_IsErased(partition, offset, length)` gọi xuống driver để kiểm tra vùng trống.
+
+**Ví dụ:** Incoming bắt đầu `0x002000`; xóa một sector đầu bằng `ExternalFlashStorage_EraseRange(INCOMING, 0, 4096)` → xóa địa chỉ `0x002000–0x002FFF`. Nếu yêu cầu xóa từ offset `256`, lớp storage từ chối thay vì tự xóa cả sector.
+
+> **Cảnh báo:** Xóa nhầm sector metadata hoặc Backup có thể khiến Recovery/Rollback mất dữ liệu. Đừng dùng `ErasePartition()` lên Metadata/Backup như một thao tác “reset” chung khi chưa hiểu trạng thái cập nhật.
+
+#### Bước 6. Đọc bảng phân vùng W25Q: dùng offset tương đối, không nhầm địa chỉ tuyệt đối
+
+**Memory Map triển khai cho không gian `0x000000`–`0x3FFFFF` (4 MiB)**:
+
+| Phân vùng W25Q | Địa chỉ bắt đầu | Địa chỉ kết thúc | Dung lượng | Dữ liệu/ứng dụng |
+|---|---:|---:|---:|---|
+| External Metadata A | `0x000000` | `0x000FFF` | 4 KiB | Handoff cũ + Download Checkpoint A. |
+| External Metadata B | `0x001000` | `0x001FFF` | 4 KiB | Handoff cũ + Download Checkpoint B. |
+| Incoming Artifact | `0x002000` | `0x021FFF` | 128 KiB | Gói Full/Delta SDOT được nhận từ ESP32. |
+| Reconstructed Image | `0x022000` | `0x041FFF` | 128 KiB | Firmware **hoàn chỉnh** chuẩn bị trước Install. |
+| Backup Image | `0x042000` | `0x061FFF` | 128 KiB | Bản sao Application đã xác minh + backup header. |
+| Update Logs | `0x062000` | `0x071FFF` | 64 KiB | Diagnostics có giới hạn. |
+| Reserved | `0x072000` | `0x3FEFFF` | 3636 KiB | Dự trữ, không mặc nhiên dùng OTA. |
+| External Flash Self-test | `0x3FF000` | `0x3FFFFF` | 4 KiB | Sector **kiểm thử có xóa phá hủy dữ liệu**. |
+
+**Đặc biệt:** 128 KiB của Backup Image **không có nghĩa** có một image 128 KiB hợp lệ. Layout bên trong phân vùng Backup là:
+
+```text
+0x042000 – 0x042FFF : Backup header sector 4 KiB (CRC-protected)
+0x043000 – 0x04C7FF : Copy vùng Application 38 KiB
+0x04C800 – 0x061FFF : Dự trữ trong Backup partition
+```
+
+Tách **header** sang sector riêng giúp nếu mất nguồn giữa commit header, có thể xóa/ghi lại sector `0x042000` mà **không xóa vùng dữ liệu Backup bắt đầu `0x043000`**.
+
+**Khác biệt External Metadata và Internal Metadata:**
+
+| Nhóm | Vị trí | Mục đích |
+|---|---|---|
+| **External Metadata A/B** | W25Q `0x000000`, `0x001000`, mỗi vùng 4 KiB | Checkpoint nhận UART và bản ghi *legacy handoff*. |
+| **Internal Boot Metadata A/B** | STM32 `0x0800F800`, `0x0800FC00`, mỗi vùng 1 KiB | Trạng thái **Boot Decision** quan trọng sau reset, như `UPDATE_ARTIFACT_READY`, `UPDATE_INSTALLING`, `UPDATE_TRIAL_BOOT`. |
+
+Trong **đường cập nhật SDOT ký số mặc định**, lệnh `INSTALL` ghi `UPDATE_ARTIFACT_READY` vào **Internal** Boot Metadata; không được nói rằng chỉ ghi External Metadata là Bootloader tự nhận được yêu cầu cài.
+
+**Trường hợp record cùng sector:** mỗi sector External Metadata dành offset `0x000` cho legacy handoff 36 byte và offset `0x100` cho download checkpoint 40 byte. Vì **Erase là 4 KiB**, lúc commit một loại record, storage layer đọc và giữ lại record còn hợp lệ của loại kia trước khi xóa sector đích. Khi đọc thông tin này hãy nhớ A/B trong External Flash **khác** A/B trong Internal Flash.
+
+#### Bước 7. Tầng lưu trữ bảo vệ phân vùng: `ExternalFlashStorage_*`
+
+Driver `SpiFlash_*` chịu trách nhiệm giao tiếp chip, còn lớp `ExternalFlashStorage_*` nhận `partition + relative offset`. Lớp này tra `g_partitions[]`, kiểm tra offset/length trong phạm vi, tính địa chỉ tuyệt đối và mới gọi SPI driver.
+
+**Ví dụ đúng – ghi 256 byte vào đầu Incoming (minh họa lời gọi API thật, cần dữ liệu đã chuẩn bị và sector đã xóa):**
+
+```c
+/* Lời gọi minh họa cách dùng API, không phải trích code của OTA receiver. */
+uint8_t packet[256];
+/* packet đã được nạp từ dữ liệu nhận và kiểm tra. */
+bool ok = ExternalFlashStorage_Write(
+    EXTERNAL_FLASH_PARTITION_INCOMING,  /* phân vùng */
+    0U,                                /* offset trong phân vùng */
+    packet,
+    sizeof(packet));
+/* Địa chỉ tuyệt đối tương ứng: 0x002000, không phải 0x000000. */
+```
+
+**Ví dụ bảo vệ:** vùng Incoming có kích thước `0x20000` (131072 byte). Một yêu cầu `offset=0x1FFF0, length=32` vượt giới hạn thêm 16 byte nên bị `ResolveRange()` từ chối, **không ghi lan sang Reconstructed Image**. Ngay cả khi địa chỉ tuyệt đối vẫn nằm trong chip, nó vẫn **không hợp lệ ở phân vùng Incoming**.
+
+**Các hàm quan trọng:**
+
+| Hàm | Giải thích |
+|---|---|
+| `ExternalFlashStorage_GetPartition()` | Lấy địa chỉ bắt đầu, dung lượng của partition. |
+| `ExternalFlashStorage_Read()` | Đọc dữ liệu trong phạm vi partition. |
+| `ExternalFlashStorage_Write()` | Ghi qua driver; **không ngầm Erase**. |
+| `ExternalFlashStorage_Verify()` | So sánh với dữ liệu đọc lại. |
+| `ExternalFlashStorage_EraseRange()` | Xóa một dải sector đã căn chỉnh 4 KiB. |
+| `ExternalFlashStorage_ErasePartition()` | Xóa toàn partition, cần dùng đúng mục đích. |
+| `ExternalFlashStorage_IsErased()` | Kiểm tra `0xFF` trên vùng chọn. |
+
+**File cần đọc:** [`external_flash_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/external_flash_storage.c), [`ext_flash_layout.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/src/ext_flash_layout.c) và [`memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h).
+
+#### Bước 8. STM32 Application nhận SDOT và lưu Checkpoint ở ranh giới sector 4 KiB
+
+Nhận OTA qua UART khác với ghi Flash ngẫu nhiên. Luồng thực tế trong [`ota_receiver.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/src/ota_receiver.c) cần xử lý **thứ tự**, **ACK/NACK**, **erase-on-demand** và **resume**:
+
+1. `START` xác nhận thông tin bản cập nhật, kiểm tra giới hạn Incoming, khởi tạo phiên nhận và commit Download Checkpoint.
+2. Với `DATA`, Application kiểm tra frame/CRC, `update_id`, `Sequence`, `Offset`.
+3. `EnsureIncomingSectorsErased()` xác định sector 4 KiB bị tác động và chỉ xóa sector chưa đánh dấu là đã xóa trong phiên.
+4. `ExternalFlashStorage_Write(INCOMING, offset, ...)` ghi vào W25Q; driver chia page và Verify dữ liệu.
+5. Sau dữ liệu được xử lý hợp lệ, Application có thể trả `ACK`; khi `next_offset` **đúng ranh giới 4 KiB**, `PersistReceiveBoundaryIfNeeded()` mới commit Checkpoint.
+6. Khi reset, Application đọc Download Checkpoint bền vững để biết **offset an toàn**, tái tạo bitmap các sector đã hoàn thành và cho ESP32 `RESUME` từ vị trí đó.
+7. `FINISH` tính CRC32 của **toàn bộ Incoming SDOT** và xác nhận đã nhận đủ; `INSTALL` là lệnh riêng để ghi **Internal Boot Metadata** rồi reset.
+
+```mermaid
+flowchart TD
+    DATA["DATA: offset + payload"] --> CHECK["Kiểm tra ID / Sequence / Offset / CRC"]
+    CHECK -->|"Sai"| NACK["NACK / Retry"]
+    CHECK -->|"Đúng"| ERASE["Xác định sector 4 KiB<br/>Erase nếu cần"]
+    ERASE --> WRITE["Write page chunks 256 B<br/>Read-back Verify"]
+    WRITE -->|"Lỗi"| NACK
+    WRITE -->|"OK"| BOUND{"next_offset là ranh giới 4 KiB?"}
+    BOUND -->|"Có"| PERSIST["Commit Download Checkpoint A/B"]
+    BOUND -->|"Không"| ACK["ACK packet"]
+    PERSIST --> ACK
+    ACK --> NEXT["Tiếp tục DATA / FINISH"]
+```
+
+**Ví dụ Resume:** SDOT dài 20 KiB; STM32 đã ACK các packet đến khoảng 10 KiB, nhưng **checkpoint bền vững gần nhất là 8 KiB**. Mất nguồn khiến byte mới nhận sau checkpoint không được bảo đảm, dù trước đó có ACK. Khi reset, receiver yêu cầu truyền lại từ **8192**. Sector đang dở cần được xử lý lại đúng chính sách Erase/Write, không được chỉ nối thêm theo offset RAM cũ.
+
+**Phân biệt rõ:** `erased_sector_bitmap` nằm trong **RAM phiên nhận**, còn `DownloadCheckpointRecord` nằm trong **External Metadata A/B**. Khi reset, bitmap có thể được **tái tạo từ số sector hoàn thành** của checkpoint, không phải do RAM tự giữ được dữ liệu sau mất nguồn.
+
+#### Bước 9. Bootloader sử dụng Reconstructed, Backup và metadata như thế nào?
+
+| Pha Boot State Machine | Nguồn/đích W25Q | Điều kiện an toàn |
+|---|---|---|
+| `VERIFYING_CONTAINER` | Đọc **Incoming Artifact**. | Kiểm tra cấu trúc, chính sách, chữ ký ECDSA và hash liên quan. |
+| `VERIFYING_BASE` (Delta) | Đọc firmware gốc từ Internal Application. | Base version/SHA-256 phải đúng trước patch. |
+| `PATCHING` | Ghi **Reconstructed Image**. | Full copy payload hoặc Delta tái tạo image; Verify target. |
+| `BACKING_UP` | Ghi **Backup Image** từ Internal Application. | Backup theo sector 4 KiB; header/CRC và dữ liệu phải hợp lệ trước khi Install. |
+| `INSTALLING` | **Đọc** Reconstructed; ghi **Internal Flash**. | Checkpoint Install **1 KiB**, không dùng nhầm Checkpoint Receive 4 KiB. |
+| `ROLLBACK` | **Đọc** Backup; khôi phục **Internal Flash**. | Chỉ phục hồi khi Backup đáng tin cậy; theo tiến độ an toàn. |
+
+**Vì sao phải có ba vùng Incoming/Reconstructed/Backup?** Incoming giữ **artifact chưa được cài** (đối với Delta đó là *patch*, không phải image hoàn chỉnh). Reconstructed giữ **firmware đích đầy đủ** sau xác minh/tái tạo. Backup giữ **firmware trước đó** để khôi phục nếu Trial Boot thất bại. Gộp cả ba vào một vùng có thể khiến mất nguồn hoặc thao tác Erase làm hỏng nguồn đang cần dùng để phục hồi.
+
+**Cấu trúc Backup:** `BackupImageStorage_CommitHeader()` chỉ Erase header sector, viết record/CRC và đọc lại. Phần application backup nằm sau offset `0x1000`, nên reset khi commit header có thể xử lý riêng mà không phá bản sao image. Đây là lý do layout dự phòng theo **sector**, không phải chỉ “dành chỗ trống”.
+
+**Đường dữ liệu cần nhớ:** **UART SDOT → W25Q Incoming → Bootloader Verify → W25Q Reconstructed → Backup Internal App vào W25Q → Internal Flash Install → Trial Boot/Confirm hoặc Rollback**.
+
+#### Bước 10. Mất nguồn, xử lý lỗi, self-test và giới hạn kiểm thử
+
+**Mất nguồn khi đang Page Program:** dữ liệu trang hiện tại có thể chưa hoàn chỉnh. Đọc lại/CRC chỉ ra bất nhất; **không được coi page này đã an toàn** nếu checkpoint chưa commit. Khi Resume, quay về sector an toàn gần nhất theo hợp đồng của receiver.
+
+**Mất nguồn khi Erase sector:** sector đang xóa có thể không còn dữ liệu hợp lệ. Nếu là Incoming chưa checkpoint, có thể tải và ghi lại; nếu là Backup hoặc Metadata, phải đi qua chính sách recovery của state machine / storage redundant, không tùy tiện coi là `0xFF` toàn sector.
+
+**Mất nguồn khi ghi External Metadata A/B:** code commit vào slot đích và giữ một bản hợp lệ trước đó; hai loại record chia sẻ cùng sector, nên lưu lại record kia khi sector đích bị xóa. Record mới chỉ hợp lệ sau bước đọc lại và kiểm tra CRC/validation. Điều này khác với chỉ ghi một biến trong RAM.
+
+| Hiện tượng | Kiểm tra đầu tiên | Mã/khái niệm liên quan |
+|---|---|---|
+| `SpiFlash_Init()` thất bại | Nguồn, `/CS`, SPI mode, JEDEC ID | `UNSUPPORTED_DEVICE`, `TRANSFER_TIMEOUT` |
+| Erase bị từ chối | Địa chỉ có căn chỉnh 4 KiB? Có nằm trong chip/partition? | `ALIGNMENT_ERROR`, `RANGE_ERROR` |
+| Ghi dữ liệu cũ bị từ chối | Có đang yêu cầu đổi `0 → 1` mà chưa Erase? | `SPI_FLASH_STATUS_NEEDS_ERASE` |
+| Ghi quá page | Driver có chia page 256 byte? | `ExtFlash_PageChunkLength()` |
+| W25Q không hết bận | Trạng thái BUSY/WIP và ngưỡng polling | `SPI_FLASH_STATUS_BUSY_TIMEOUT` |
+| Read-back không khớp | Dữ liệu đích, nhiễu tín hiệu, chip/nguồn | `SPI_FLASH_STATUS_VERIFY_FAILED` |
+| Ghi Incoming tràn sang Reconstructed | Offset/length vượt giới hạn phân vùng? | `ResolveRange()` phải từ chối |
+| ACK đến 10 KiB nhưng Resume 8 KiB | Checkpoint mới chỉ bền vững ở 8 KiB | Receiver `persisted_offset` |
+| Backup header lỗi | Chỉ header sector hay dữ liệu Backup cũng lỗi? | `BackupImageStorage_*` |
+| Full/Delta xác thực thất bại | Không phải lỗi SPI tất yếu | SDOT Verify (SHA-256/ECDSA) |
+
+**Kiểm thử phần cứng có sẵn trong repo:** tài liệu `docs/external-spi-flash.md` mô tả bài self-test ở sector cuối **`0x3FF000`**: kiểm JEDEC ID → Erase/blank-check → ghi 40 byte từ offset `0xF0` để **cắt qua ranh giới page 256 byte** → Read/Verify → kiểm tra ranh giới partition → Erase/blank-check trở lại. Khi thành công, log có thể chứa `FLASH_SELFTEST_STATUS=0x50415353` và `SPI Flash hardware test: PASS`.
+
+> **Cảnh báo đặc biệt:** Self-test này là **destructive** trong sector `0x3FF000`–`0x3FFFFF`. Chỉ dùng sector đã dành riêng cho test, và khi chạy image self-test cần nạp lại firmware thường theo hướng dẫn repo. Không thử Erase toàn chip hoặc toàn Backup/Metadata chỉ để kiểm tra kết nối.
+
+#### Bài nói khi phỏng vấn: External SPI Flash W25Q (khoảng 90 giây)
+
+> Dạ, trong project Secure Delta OTA Bootloader, em dùng **External SPI NOR Flash W25Q32 4 MiB** làm vùng staging, tái tạo firmware và sao lưu Application. STM32F103 giao tiếp với W25Q bằng **SPI1** trên PA5, PA6, PA7 và dùng PB0 làm chip select. Driver đọc JEDEC ID để xác định chip hợp lệ trước khi cho phép ghi/xóa.
+>
+> Về nguyên lý, W25Q xóa theo **sector 4 KiB** và lập trình dữ liệu theo các đoạn nằm trong **page 256 byte**. Trước khi Program hoặc Erase, driver gửi Write Enable rồi kiểm tra WEL; sau thao tác, driver polling WIP/BUSY đến khi hoàn thành, có timeout. Khi ghi, driver kiểm tra trước các bit có thể lập trình, chia đúng ranh giới page và đọc lại để Verify; nếu cần chuyển bit từ 0 về 1 thì phải Erase sector trước.
+>
+> Về phần mềm, em chia W25Q thành các phân vùng **Incoming, Reconstructed, Backup và External Metadata A/B**. STM32 Application nhận gói SDOT từ ESP32 qua UART rồi lưu vào Incoming, có Download Checkpoint theo ranh giới sector 4 KiB để Resume khi reset. Bootloader xác thực SDOT, chuẩn bị image trong Reconstructed, sao lưu firmware cũ vào Backup rồi mới ghi Internal Flash. Như vậy W25Q giúp tách khâu nhận firmware khỏi khâu cài đặt, hỗ trợ Power-loss Recovery và Rollback mà không xóa sớm Application đang chạy.
+
+#### Câu hỏi ôn tập: External SPI Flash W25Q
+
+| STT | Câu hỏi | Ý chính cần trả lời |
+|---:|---|---|
+| 1 | W25Q trong project là Flash loại gì? | **External SPI NOR Flash**, không phải Internal Flash của STM32. |
+| 2 | Dung lượng layout W25Q32 là bao nhiêu? | **4 MiB (32 Mbit)**, địa chỉ `0x000000`–`0x3FFFFF`. |
+| 3 | W25Q64 có chạy được không? | Driver chấp nhận JEDEC W25Q64 cho phát triển; layout OTA vẫn chỉ dùng **4 MiB đầu**. |
+| 4 | STM32 kết nối W25Q bằng chân nào? | SPI1: **PA5 SCK, PA6 MISO, PA7 MOSI, PB0 /CS**. |
+| 5 | SPI Mode của driver là gì? | Mode 0, 8-bit, MSB-first, software NSS, prescaler `/4`. |
+| 6 | `0x9F` dùng để làm gì? | Read JEDEC ID để xác định chip. |
+| 7 | `0x06` dùng để làm gì? | Write Enable; sau đó kiểm tra WEL. |
+| 8 | `0x05` dùng để làm gì? | Đọc Status Register-1 để kiểm WIP và WEL. |
+| 9 | WIP/BUSY khác WEL thế nào? | WIP = chip đang bận; WEL = latch cho phép write/erase. |
+| 10 | Vì sao Erase trước khi ghi lại? | Program NOR không biến bit `0` thành `1`. |
+| 11 | Đơn vị Erase nhỏ dùng trong repo là bao nhiêu? | Sector **4 KiB**, opcode `0x20`. |
+| 12 | Đơn vị/ràng buộc Program? | Page **256 byte**; mỗi lệnh không vượt ranh giới page. |
+| 13 | Ghi 40 byte từ `0xF0` chia thế nào? | **16 byte** ở page đầu + **24 byte** ở page sau. |
+| 14 | `SpiFlash_Write()` có tự Erase không? | **Không**; preflight từ chối nếu cần `0 → 1`. |
+| 15 | Vì sao cần `PreflightProgrammable()`? | Phát hiện byte không thể lập trình trước khi bắt đầu ghi dữ liệu. |
+| 16 | Sau Program driver làm gì? | Chờ WIP hết bận rồi **read-back Verify**. |
+| 17 | `SpiFlash_EraseSector(0x002100)` sẽ thế nào? | Bị từ chối vì không căn chỉnh 4 KiB; không âm thầm làm tròn. |
+| 18 | Tại sao cần `ExternalFlashStorage_*`? | Giới hạn thao tác trong partition, tránh ghi tràn vùng khác. |
+| 19 | Incoming khác Reconstructed thế nào? | Incoming chứa **SDOT**, Reconstructed chứa **target image hoàn chỉnh**. |
+| 20 | Backup lưu những gì? | Header riêng và bản copy vùng Application đã xác minh. |
+| 21 | Vì sao header Backup nằm sector riêng? | Có thể Erase/commit lại header mà không xóa dữ liệu Backup. |
+| 22 | Checkpoint nhận OTA lưu ở đâu? | **External Metadata A/B W25Q**, offset `0x100` trong mỗi sector metadata. |
+| 23 | Internal Metadata A/B khác External Metadata A/B ra sao? | Internal quyết định Boot State Machine; External phục vụ download checkpoint và legacy handoff. |
+| 24 | Vì sao ACK 10 KiB vẫn Resume từ 8 KiB? | ACK phiên truyền ≠ checkpoint bền vững; receiver lưu mốc mỗi sector 4 KiB. |
+| 25 | Mất nguồn giữa Page Program cần làm gì? | Không tin dữ liệu dở; phục hồi từ checkpoint và re-erase/rewrite vùng chưa hoàn tất khi phù hợp. |
+| 26 | Check Verify của W25Q có thay ECDSA không? | **Không**; Read-back/CRC là kiểm tra lỗi, ECDSA là xác thực chữ ký SDOT. |
+| 27 | Sector cuối được dùng làm gì? | **Self-test destructive** ở `0x3FF000`–`0x3FFFFF`. |
+| 28 | WIP timeout có đảm bảo biết Flash hỏng hay không? | Không; báo thao tác chưa hoàn tất theo ngưỡng polling, cần kiểm tra nguồn, clock, chip và tình trạng giao tiếp. |
+
+#### Điểm cần ghi nhớ
+
+1. **W25Q32 4 MiB** là layout chuẩn; **W25Q64** được chấp nhận nhưng không tăng dung lượng layout OTA.
+2. **SPI1 PA5/PA6/PA7, PB0 /CS, Mode 0** là cấu hình của project.
+3. **Page 256 byte để Program; sector 4 KiB để Erase; Internal STM32 lại xóa trang 1 KiB và Program half-word 16-bit.**
+4. **WEL cho phép ghi, WIP/BUSY cho biết đang bận**; cần timeout và Verify trước khi tin dữ liệu.
+5. **`SpiFlash_Write()` không tự Erase, không tùy ý chuyển `0 → 1`**; preflight bảo vệ trước khi Program.
+6. **Không bao giờ để một Page Program vượt ranh giới 256 byte**; dùng `ExtFlash_PageChunkLength()`.
+7. **Các thao tác storage dùng partition + relative offset**; kiểm tra toàn chip chưa đủ để ngăn ghi lan giữa Incoming/Reconstructed/Backup.
+8. **External Metadata A/B ≠ Internal Boot Metadata A/B**. SDOT ký số dùng Internal Metadata để bàn giao `INSTALL`.
+9. **ACK packet ≠ Checkpoint bền vững**. Download Resume theo mốc sector 4 KiB đã lưu và được xác thực.
+10. **Incoming (SDOT) ≠ Reconstructed (firmware mới) ≠ Backup (firmware cũ)**: chia vùng để có nguồn phục hồi độc lập.
+11. **Backup header nằm sector riêng** để một lần commit lỗi không xóa nội dung image backup.
+12. **Không dùng sector self-test hoặc ErasePartition bừa bãi trên dữ liệu quan trọng**; toàn bộ quy trình phải tôn trọng Boot State Machine.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+| File / tài liệu | Vai trò và câu hỏi nên tự trả lời |
+|---|---|
+| [`docs/external-spi-flash.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/external-spi-flash.md) | Cấu hình SPI, opcode, tính năng bảo vệ và bài self-test. |
+| [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md) | Địa chỉ, kích thước của từng vùng W25Q; Backup header và image copy. |
+| [`shared/include/memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h) | `EXT_FLASH_SIZE`, `EXT_FLASH_PAGE_SIZE`, `EXT_FLASH_SECTOR_SIZE` và các base address. |
+| [`shared/src/ext_flash_layout.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/src/ext_flash_layout.c) | Kiểm tra range, alignment và chia Page Chunk. |
+| [`node-stm32f103/common/drivers/spi_flash.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/drivers/spi_flash.c) | `SpiFlash_Init/Read/Write/EraseSector/Verify/IsErased`; WEL/WIP, preflight và timeout. |
+| [`node-stm32f103/common/storage/external_flash_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/external_flash_storage.c) | Partition wrapper, `ResolveRange()`, Erase Range và ngăn truy cập chéo partition. |
+| [`node-stm32f103/application/src/ota_receiver.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/src/ota_receiver.c) | `EnsureIncomingSectorsErased()`, `PersistReceiveBoundaryIfNeeded()` và Resume. |
+| [`node-stm32f103/common/storage/download_checkpoint_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/download_checkpoint_storage.c) | Commit checkpoint A/B, CRC và giữ legacy handoff khi xóa sector. |
+| [`node-stm32f103/common/storage/update_handoff_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/update_handoff_storage.c) | Bản ghi legacy handoff, bảo toàn checkpoint đang chia sẻ sector. |
+| [`node-stm32f103/common/storage/backup_image_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/backup_image_storage.c) | Backup header/data riêng sector; Validate và Verify khi commit. |
+| [`docs/boot-state-machine.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-state-machine.md) | Liên hệ Incoming → Reconstructed → Backup → Install → Rollback. |
+| [Winbond W25Q32JV Datasheet – trang sản phẩm](https://www.winbond.com/hq/product/code-storage-flash-memory/serial-nor-flash/?__locale=en&partNo=W25Q32JV) | Nguồn tham khảo kiến thức phần cứng, timings, status register và opcode (ngoài repository). |
+
+> **Tự kiểm tra cuối chương:** Giả sử STM32 đang nhận SDOT 20 KiB. Sau khi ACK đến **10 KiB**, mất nguồn; checkpoint bền vững vẫn ở **8 KiB**. Hãy giải thích (1) W25Q đã lưu những gì và dữ liệu nào được tin, (2) vì sao phải Resume từ 8192 thay vì 10240, (3) sector Incoming nào có thể phải Erase lại, (4) vì sao driver `SpiFlash_Write()` không thể tự ghi đè sector đó nếu đang chứa byte `0`, (5) External Metadata A/B khác Internal Boot Metadata A/B ra sao, và (6) lúc nào Bootloader mới được phép cài image mới vào STM32 Internal Flash.
 
 ---
 
