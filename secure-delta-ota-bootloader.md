@@ -10,9 +10,10 @@
 
 1. [Trình bày project](#1-trình-bày-project)
 2. [Trình bày System Architecture](#2-trình-bày-system-architecture)
-3. [Phân tích Developer/CI](#3-phân-tích-developerci)
-4. [Kiến thức trong project](#4-kiến-thức-trong-project)
-5. [Câu hỏi trọng tâm](#5-câu-hỏi-trọng-tâm)
+3. [Phân tích Developer/CI -> Release Server](#developer-ci-release-server)
+4. [Phân tích Release Server → ESP32 Gateway](#4-phân-tích-release-server--esp32-gateway)
+5. [Kiến thức trong project](#5-kiến-thức-trong-project)
+6. [Câu hỏi trọng tâm](#6-câu-hỏi-trọng-tâm)
 
 ---
 
@@ -101,7 +102,9 @@ Trial Boot → Xác nhận / Rollback
 
 ---
 
-## 3. Phân tích Developer/CI
+<a id="developer-ci-release-server"></a>
+
+## 3. Phân tích Developer/CI → Release Server
 
 > **Tình huống minh họa:** STM32 đang chạy firmware **v1**, Developer muốn cập nhật lên **v2**.
 
@@ -210,11 +213,134 @@ Sau khi tạo release, công cụ kiểm tra tính hợp lệ của các file.
 
 ---
 
-## 4. Kiến thức trong project
+## 4. Phân tích Release Server → ESP32 Gateway
+
+> **Mục tiêu:** Hiểu cách Release Server **xác minh và lựa chọn gói cập nhật SDOT**, thông báo cập nhật bằng **MQTTS**, và cách ESP32 Gateway tải gói đó bằng **HTTPS** trước khi truyền xuống STM32 Application.
+>
+> **Phân biệt hai giao thức:** **MQTTS** dùng để gửi lệnh cập nhật và trao đổi trạng thái; **HTTPS** dùng để tải nội dung gói cập nhật SDOT. Firmware không được truyền trực tiếp trong thông điệp MQTTS.
+
+### Sơ đồ luồng hoạt động
+
+```text
+                  Release Server
+                        |
+          1. Xác minh bản phát hành
+          2. Chọn Full OTA / Delta OTA
+                        |
+              +---------+---------+
+              |                   |
+              v                   v
+         MQTT Broker         HTTPS Server
+              |                   ^
+              | 3. Update command |
+              |    qua MQTTS      |
+              v                   |
+         ESP32 Gateway -----------+
+              |       4. HTTPS GET gói SDOT
+              |
+          5. Kiểm tra kích thước, CRC32
+             và lưu vào Flash cache
+              |
+              v
+       Gói SDOT đã tải hợp lệ
+              |
+              | UART + COBS + CRC32
+              v
+        STM32 Application
+```
+
+### Bước 1. Release Server xác minh bản phát hành
+
+Sau khi Developer/CI tạo các gói cập nhật **SDOT** và **Manifest**, Release Server sử dụng bộ release đã được triển khai để kiểm tra dữ liệu trước khi phân phối.
+
+Các kiểm tra được mô tả trong hệ thống gồm tính hợp lệ của **chữ ký Manifest**, chữ ký và metadata của artifact, cùng các thông tin về **kích thước**, **CRC32** và **SHA-256** theo định dạng tương ứng.
+
+> **Ghi nhớ:** Việc Release Server xác minh bản phát hành **không thay thế** việc STM32 Bootloader xác thực chữ ký SDOT trước khi cài đặt.
+
+### Bước 2. Release Server chọn Full OTA hoặc Delta OTA
+
+Release Server dựa trên **phiên bản firmware hiện tại** được cung cấp khi yêu cầu phát hành lệnh cập nhật để lựa chọn gói phù hợp:
+
+| Điều kiện | Quyết định |
+|---|---|
+| Có Delta OTA được tạo cho đúng firmware gốc | Ưu tiên Delta OTA. |
+| Không có Delta OTA phù hợp | Dùng Full OTA nếu bản phát hành cho phép. |
+| Thiết bị không cần cập nhật | Không phát hành lệnh cập nhật. |
+
+**Ví dụ:** STM32 đang chạy **v1**, Release Server có **v2**; nếu bản phát hành chứa Delta Patch từ **v1 → v2**, Server có thể chọn gói Delta OTA thay vì Full OTA.
+
+> **Lưu ý:** Lựa chọn của Server là bước phân phối. STM32 Bootloader vẫn phải kiểm tra điều kiện phiên bản và **firmware gốc (exact-base validation)** trước khi áp dụng Delta Patch.
+
+### Bước 3. Release Server gửi lệnh cập nhật qua MQTTS
+
+Sau khi chọn artifact, Release Server tạo thông báo cập nhật để gửi qua **MQTT Broker** bằng kết nối **MQTTS**. ESP32 Gateway subscribe topic tương ứng để nhận lệnh.
+
+**Ví dụ JSON minh họa các trường chính** (giá trị minh họa, không phải payload thực tế của một bản phát hành):
+
+```json
+{
+  "schema": 1,
+  "cmd": "update",
+  "update_id": 12345,
+  "target_version": 2,
+  "size": 1174,
+  "crc32": 123456789,
+  "url": "https://firmware.example/releases/fw-v2/update.sdot"
+}
+```
+
+| Trường | Ý nghĩa |
+|---|---|
+| `cmd` | Loại lệnh, ví dụ lệnh cập nhật. |
+| `update_id` | Định danh của quá trình cập nhật. |
+| `target_version` | Phiên bản firmware đích. |
+| `size` | Kích thước gói SDOT cần tải. |
+| `crc32` | CRC32 của gói SDOT, dùng phát hiện lỗi dữ liệu. |
+| `url` | Đường dẫn HTTPS để ESP32 tải gói SDOT. |
+
+Lệnh cập nhật trong repository sử dụng **MQTT QoS 1**. QoS 1 có thể dẫn đến gửi lại thông điệp, vì vậy các thành phần nhận lệnh cần xử lý trường hợp trùng lặp phù hợp.
+
+### Bước 4. ESP32 Gateway tải gói SDOT qua HTTPS
+
+Khi nhận được lệnh cập nhật, ESP32 Gateway kiểm tra thông tin lệnh rồi thực hiện **HTTPS GET** tới địa chỉ trong trường `url`.
+
+Trong quá trình tải, ESP32 kiểm tra kết nối **TLS**, phản hồi **HTTP**, kích thước nội dung và giới hạn bộ nhớ lưu trữ. Nội dung nhận về là **gói cập nhật SDOT**, không phải lệnh MQTTS.
+
+### Bước 5. ESP32 kiểm tra, lưu gói và chuẩn bị truyền qua UART
+
+ESP32 lưu dữ liệu tải được vào vùng **Flash cache** của Gateway. Sau khi hoàn tất, ESP32 kiểm tra **kích thước** và **CRC32** của gói SDOT; chỉ khi cache hợp lệ mới tiếp tục giai đoạn truyền sang STM32 Application qua **UART**.
+
+ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thống qua MQTT. Trong khi đó, bước **xác thực chữ ký ECDSA P-256 và SHA-256 để quyết định cài đặt** vẫn thuộc về STM32 Bootloader.
+
+> **Phân biệt Manifest và gói SDOT:** Release Server dùng **Manifest** để biết thông tin bản phát hành, còn ESP32 Gateway nhận **URL trực tiếp đến gói SDOT** trong lệnh MQTTS. Luồng OTA hiện tại không yêu cầu ESP32 tải và tự phân tích Manifest để chọn artifact.
+
+### Bài nói khi phỏng vấn: Release Server và ESP32 Gateway
+
+- **Release Server:** Tiếp theo, Release Server chịu trách nhiệm xác minh và phân phối các gói cập nhật SDOT. Dựa trên phiên bản firmware hiện tại, Server sẽ ưu tiên lựa chọn Delta OTA nếu có bản phù hợp; ngược lại sẽ sử dụng Full OTA. Sau đó, Server gửi thông báo cập nhật qua MQTTS, trong đó chứa thông tin phiên bản, kích thước, CRC32 và đường dẫn HTTPS để tải gói cập nhật.
+
+- **ESP32 Gateway:** Khi nhận được thông báo cập nhật qua MQTTS, ESP32 Gateway sẽ kiểm tra thông tin và tải gói cập nhật SDOT từ Release Server thông qua HTTPS. Sau khi tải xong, ESP32 kiểm tra kích thước và CRC32, rồi lưu gói cập nhật vào Flash cache. Cuối cùng, ESP32 truyền gói cập nhật xuống STM32 Application thông qua UART, sử dụng COBS để đóng khung dữ liệu và CRC32 để phát hiện lỗi truyền.
+
+### Câu hỏi ôn tập: Release Server → ESP32 Gateway
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Vì sao sử dụng cả MQTTS và HTTPS? | MQTTS dùng để gửi lệnh/trạng thái; HTTPS dùng để tải dữ liệu firmware. |
+| Ai quyết định chọn Full OTA hay Delta OTA? | Release Server chọn artifact phù hợp theo thông tin phiên bản và release. |
+| ESP32 có cần tải Manifest không? | Không bắt buộc trong luồng hiện tại; URL artifact được gửi trong lệnh MQTTS. |
+| ESP32 kiểm tra gói SDOT bằng gì? | Kiểm tra kích thước và CRC32 sau khi tải. |
+| ESP32 có xác thực chữ ký ECDSA thay STM32 không? | Không; STM32 Bootloader là thành phần xác thực và quyết định cài đặt. |
+| Tại sao phải lưu vào Flash cache? | Để có gói SDOT hoàn chỉnh, đã kiểm tra, trước khi truyền xuống STM32 qua UART. |
+| MQTT QoS 1 nghĩa là gì? | Đảm bảo gửi ít nhất một lần; có thể có thông điệp trùng. |
+
+**Tài liệu đối chiếu trong repository:** `server/README.md`, `gateway-esp32/README.md`, `server/app/services/firmware_service.py`.
+
+---
+
+## 5. Kiến thức trong project
 
 *Chưa có nội dung trong tài liệu gốc.*
 
-## 5. Câu hỏi trọng tâm
+## 6. Câu hỏi trọng tâm
 
 *Chưa có nội dung trong tài liệu gốc.*
 
