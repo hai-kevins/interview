@@ -76,46 +76,46 @@ Qua project này, em hiểu rõ hơn về bootloader, quản lý bộ nhớ Flas
 <a id="phan-2"></a>
 ## Phần 2. Trình bày System Architecture
 
-Về **System Architecture**, hệ thống của em bao gồm **Developer/CI**, **Release Server**, **ESP32 Gateway**, **STM32 Application** và **STM32 Bootloader**. Em sẽ trình bày luồng hoạt động từ trên xuống.
+> **Mục tiêu:** Giới thiệu kiến trúc tổng thể và luồng cập nhật firmware từ **Developer/CI** đến **STM32 Bootloader** trong khoảng **90 giây**, trước khi đi vào Boot State Machine ở Phần 3. Đây là **sơ đồ tổng quan**, chưa thể hiện toàn bộ giao thức, phân vùng Flash và nhánh xử lý lỗi.
 
-- **Developer/CI:** Đầu tiên, Developer/CI sẽ build firmware, tạo gói cập nhật **Full OTA** hoặc **Delta OTA**, sau đó đóng gói theo định dạng **SDOT** và ký số bằng **ECDSA P-256**. Đồng thời, hệ thống tạo **Manifest** chứa thông tin bản phát hành trước khi đưa lên Release Server.
+### 2.1. Bài nói khi phỏng vấn (khoảng 90 giây)
 
-- **Release Server:** Tiếp theo, Release Server chịu trách nhiệm xác minh và phân phối các gói cập nhật. Server sử dụng **MQTTS** để thông báo bản cập nhật mới và **HTTPS** để cung cấp gói cập nhật cho ESP32 Gateway.
+Dạ, về **System Architecture**, hệ thống của em gồm **Developer/CI**, **Release Server**, **ESP32 Gateway**, **STM32 Application** và **STM32 Bootloader**. Em tách luồng **phát hành và truyền dữ liệu** khỏi luồng **xác thực và cài đặt firmware**.
 
-- **ESP32 Gateway:** Khi nhận được thông báo qua MQTTS, ESP32 Gateway sẽ tải gói cập nhật SDOT thông qua HTTPS, sau đó truyền xuống STM32 Application qua **UART**, sử dụng **COBS** để đóng khung dữ liệu và **CRC32** để phát hiện lỗi truyền.
+- **Tạo bản cập nhật:** **Developer/CI** build firmware, tạo gói **Full OTA** hoặc **Delta OTA**, đóng gói theo định dạng **SDOT**, ký bằng **ECDSA P-256** và tạo **Manifest**. Các artifact được triển khai lên **Release Server**.
 
-- **STM32 Application:** STM32 Application tiếp nhận các gói dữ liệu qua UART và lưu vào **External Flash W25Q** thông qua **SPI**. Sau khi nhận đủ gói cập nhật, STM32 Application cập nhật **Metadata** và reset thiết bị để chuyển quyền xử lý cho STM32 Bootloader.
+- **Phân phối bản cập nhật:** **Release Server** sử dụng **MQTTS** để gửi lệnh cập nhật và **HTTPS** để cung cấp gói SDOT. **ESP32 Gateway** nhận lệnh, tải gói qua HTTPS, kiểm tra kích thước và CRC32 rồi lưu vào Flash cache.
 
-- **STM32 Bootloader:** Khi khởi động, STM32 Bootloader đọc Metadata để xác định trạng thái cập nhật, sau đó xác thực chữ ký **ECDSA P-256** và kiểm tra tính toàn vẹn bằng **SHA-256**. Nếu là Delta OTA, Bootloader kiểm tra firmware gốc và tái tạo firmware mới từ Delta Patch. Sau khi firmware mới được kiểm tra hợp lệ, Bootloader sao lưu firmware hiện tại, cài đặt firmware mới vào **Internal Flash** và kiểm tra lại kết quả.
+- **Tiếp nhận trên STM32:** ESP32 truyền SDOT đến **STM32 Application** qua **UART**, sử dụng **COBS** để đóng khung và **CRC32** để phát hiện lỗi. Application lưu gói vào **External Flash W25Q** thông qua **SPI**. Sau khi `FINISH` xác nhận nhận đủ dữ liệu, lệnh `INSTALL` mới khiến Application ghi **Metadata** và reset để bàn giao cho Bootloader.
 
-  Cuối cùng, Bootloader cho STM32 Application mới chạy ở chế độ **Trial Boot**. Nếu Application xác nhận hoạt động thành công, bản cập nhật được chấp nhận. Ngược lại, nếu không được xác nhận sau số lần thử cho phép, Bootloader sẽ thực hiện **Rollback** để khôi phục firmware đã sao lưu.
+- **Xác thực và cài đặt:** **STM32 Bootloader** đọc Metadata, xác thực chữ ký **ECDSA P-256** và hash **SHA-256**. Nếu là **Delta OTA**, Bootloader kiểm tra firmware gốc rồi tái tạo firmware mới. Sau đó, Bootloader sao lưu firmware hiện tại, cài bản mới vào **Internal Flash** và kiểm tra lại.
 
-  Ngoài ra, hệ thống sử dụng **Metadata** và **Checkpoint** để khôi phục quá trình cập nhật khi xảy ra mất nguồn hoặc reset bất ngờ.
+- **Chạy thử và phục hồi:** Bootloader cho Application mới chạy ở chế độ **Trial Boot**. Nếu Application xác nhận thành công thì chấp nhận bản cập nhật; nếu không, Bootloader có thể **Rollback** từ bản sao lưu. **Metadata và Checkpoint** hỗ trợ tiếp tục các bước cập nhật an toàn sau mất nguồn hoặc reset bất ngờ.
 
-### Tóm tắt luồng dữ liệu
+### 2.2. High-level System Architecture Diagram
 
-```text
-Developer/CI
-    │ Tạo Full/Delta OTA, đóng gói SDOT, ký số, tạo Manifest
-    ▼
-Release Server
-    │ MQTTS: thông báo cập nhật
-    │ HTTPS: cung cấp gói cập nhật
-    ▼
-ESP32 Gateway
-    │ UART + COBS + CRC32
-    ▼
-STM32 Application
-    │ SPI: lưu SDOT vào External Flash W25Q
-    │ Metadata + Reset
-    ▼
-STM32 Bootloader
-    │ Xác thực → Tái tạo Delta (nếu có) → Sao lưu → Cài đặt
-    ▼
-Trial Boot → Xác nhận / Rollback
+```mermaid
+flowchart TD
+    CI["Developer / CI<br/>Build Full/Delta OTA, ký SDOT, tạo Manifest"] --> SRV["Release Server"]
+    SRV -->|"MQTTS: lệnh cập nhật / trạng thái"| ESP["ESP32 Gateway<br/>HTTPS download + Flash cache"]
+    SRV -->|"HTTPS: tải gói SDOT"| ESP
+    ESP -->|"UART + COBS + CRC32"| APP["STM32 Application<br/>Nhận OTA"]
+    APP -->|"SPI: lưu SDOT + Download Checkpoint"| W25Q["External Flash W25Q<br/>Incoming / Reconstructed / Backup"]
+    APP -->|"FINISH → INSTALL<br/>Lưu Metadata + Reset"| BOOT["STM32 Bootloader<br/>Boot Decision + Xác thực SDOT"]
+    W25Q -->|"Đọc SDOT / Firmware đã chuẩn bị"| BOOT
+    BOOT -->|"Delta: kiểm tra base, tái tạo image<br/>Backup firmware cũ"| W25Q
+    BOOT -->|"Install + Verify / Rollback"| IFLASH["STM32 Internal Flash<br/>Application Image"]
+    BOOT -->|"Trial Boot"| APP
+    APP -->|"Confirm nếu chạy đạt điều kiện"| BOOT
 ```
 
----
+> **Lưu ý 1:** **MQTTS truyền lệnh và trạng thái**, còn **HTTPS truyền dữ liệu gói SDOT**. ESP32 Gateway chịu trách nhiệm mạng, tải và chuyển tiếp artifact; không giữ private key ký firmware.
+>
+> **Lưu ý 2:** `FINISH` chỉ xác nhận **đã nhận đủ gói SDOT** (kích thước và CRC32). Sau lệnh `INSTALL`, STM32 Application mới commit `UPDATE_ARTIFACT_READY` vào **Internal Flash Metadata A/B** và reset. **STM32 Bootloader** mới là thành phần quyết định xác thực và cài đặt.
+>
+> **Lưu ý 3:** **External Flash W25Q** chứa gói SDOT nhận được, firmware tái tạo và bản Backup; **Internal Flash** chứa Application đang chạy. **CRC32** giúp phát hiện lỗi dữ liệu, còn **ECDSA P-256 + SHA-256** phục vụ xác thực và kiểm tra tính toàn vẹn firmware. **Power-loss Recovery** không đồng nghĩa với **Rollback**.
+
+**Nguồn đối chiếu:** [Repository README](https://github.com/haikevins/secure-delta-ota-bootloader), [System Architecture](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/architecture.md), [UART OTA Protocol](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/uart-ota-protocol.md).
 
 ---
 
