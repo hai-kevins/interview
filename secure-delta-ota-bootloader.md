@@ -54,7 +54,7 @@
 |---|---|---|
 | **STM32 Bootloader / STM32 Application / ESP32 Gateway / Release Server / Developer/CI** | Tên của năm thành phần kiến trúc; khi ngữ cảnh rõ có thể viết tắt thành **Bootloader / Application / Gateway / Server / CI**. | Bootloader không phải Application; ESP32 Gateway không thay Bootloader quyết định cài đặt. |
 | **Internal Flash / External Flash W25Q / Flash cache của ESP32** | Ba vùng lưu trữ riêng; khi nói Metadata hay SDOT nên chỉ rõ vùng chứa. | External Flash W25Q của STM32 không phải Flash cache của ESP32. |
-| **Gói SDOT (SDOT artifact)** | Artifact được truyền qua mạng/UART rồi lưu ở vùng **Incoming**; chứa header, Payload và chữ ký. | **Target Image** là firmware hoàn chỉnh, không phải nguyên gói SDOT. |
+| **Gói SDOT (tệp cập nhật đã đóng gói)** | Gói SDOT được truyền qua mạng/UART rồi lưu ở vùng **Incoming**; chứa header, Payload và chữ ký. | **Target Image** là firmware hoàn chỉnh, không phải nguyên gói SDOT. |
 | **Payload** | Phần dữ liệu trong container/packet; khi dễ nhầm cần viết **SDOT Payload** hoặc **DATA payload**. | Payload trong packet UART không đồng nghĩa toàn bộ SDOT. |
 | **Manifest** | Tệp mô tả release (`manifest.json`); chữ ký Manifest được quản lý riêng. | Gói SDOT chứa dữ liệu cập nhật. |
 | **Full OTA / Delta OTA / Delta Patch** | Full OTA chứa firmware đích hoàn chỉnh; Delta OTA chứa Delta Patch để tái tạo firmware. | Delta Patch không phải firmware có thể khởi động. |
@@ -193,10 +193,10 @@ Target firmware v2 ┘                          │
 
 #### A.3.3. SDOT Container, SCX1, Manifest và Release
 
-- **SDOT (Secure Delta OTA Container)** là file artifact mang **Header + Payload (Full hoặc Delta) + Digital Signature**. Header chứa loại gói, version, product/hardware identity, hash và thông tin để Bootloader xác thực/cài đặt đúng.
+- **SDOT (Secure Delta OTA Container)** là tệp cập nhật SDOT mang **Header + Payload (Full hoặc Delta) + Digital Signature**. Header chứa loại gói, version, product/hardware identity, hash và thông tin để Bootloader xác thực/cài đặt đúng.
 - **SCX1** là phần mở rộng header bắt buộc trong profile SDOT có chữ ký đang triển khai: **120 byte header cố định + 20 byte SCX1 = 140 byte signed header**, sau đó đến Payload và chữ ký ECDSA P-256 dạng raw `r||s` **64 byte**. Đây là đặc tả của project, không phải định dạng OTA phổ quát.
-- **Manifest** (`manifest.json`) là **bảng mô tả release**: phiên bản, sản phẩm, artifact, size/hash, URL...; nó **không phải** Payload SDOT. Manifest được ký riêng. ESP32 trong luồng hiện tại nhận **URL SDOT trực tiếp trong lệnh MQTTS**, không bắt buộc tự tải/parse Manifest để chọn gói.
-- **CI / Release Tooling** là chuỗi thao tác build, test, tạo Full/Delta, đóng gói, ký và kiểm tra artifact. **Release Server** phân phối artifact đã chuẩn bị; không phải thành phần tạo mã máy firmware.
+- **Manifest** (`manifest.json`) là **bảng mô tả release**: phiên bản, sản phẩm, các gói cập nhật, size/hash, URL...; nó **không phải** Payload SDOT. Manifest được ký riêng. ESP32 trong luồng hiện tại nhận **URL SDOT trực tiếp trong lệnh MQTTS**, không bắt buộc tự tải/parse Manifest để chọn gói.
+- **CI / Release Tooling** là chuỗi thao tác build, test, tạo Full/Delta, đóng gói, ký và kiểm tra các tệp cập nhật. **Release Server** phân phối các tệp cập nhật đã chuẩn bị; không phải thành phần tạo mã máy firmware.
 
 **Học kỹ:** [4.1 – Developer/CI](#luong-1) · [4.2 – Release Server](#luong-2) · [6.7 – Full/Delta/JojoDiff](#chuong-6-7).
 
@@ -383,11 +383,11 @@ Kẻ tấn công có thể tạo một file firmware khác và băm lại nó, n
 | **Public Key vs Private Key** | Private Key chỉ phía ký giữ; Public Key tin cậy được Bootloader dùng để Verify. |
 | **COBS vs CRC32** | COBS tạo biên frame; CRC32 phát hiện frame có byte lỗi. |
 | **UART vs SPI** | UART không có dây clock riêng; SPI dùng clock do master tạo và đường CS chọn slave. |
-| **MQTTS vs HTTPS** | MQTTS điều khiển/thông báo; HTTPS tải artifact SDOT. |
-| **SDOT vs Manifest** | SDOT chứa payload cập nhật đã ký; Manifest mô tả các artifact của bản phát hành. |
+| **MQTTS vs HTTPS** | MQTTS điều khiển/thông báo; HTTPS tải gói SDOT. |
+| **SDOT vs Manifest** | SDOT chứa payload cập nhật đã ký; Manifest mô tả các gói cập nhật của bản phát hành. |
 | **Full OTA vs Delta OTA** | Full mang cả target; Delta cần exact base + patch. |
 | **JojoDiff vs JANPatch** | JojoDiff **tạo** patch trên host; JANPatch **áp dụng** patch phía thiết bị. |
-| **Firmware Image vs SDOT Artifact** | Firmware Image là binary hoàn chỉnh để chạy; SDOT là container vận chuyển/cập nhật. |
+| **Firmware Image vs Gói SDOT** | Firmware Image là binary hoàn chỉnh để chạy; SDOT là container vận chuyển/cập nhật. |
 | **ACK vs Checkpoint** | ACK phản ánh xử lý packet trong phiên hiện tại; Checkpoint là tiến độ đã lưu qua reset. |
 | **Retry vs Resume** | Retry gửi lại packet/lệnh; Resume tiếp tục cập nhật qua gián đoạn bằng Checkpoint. |
 | **FINISH vs INSTALL** | FINISH xác nhận nhận đủ gói; INSTALL mới commit Metadata và reset sang Bootloader. |
@@ -405,7 +405,7 @@ Kẻ tấn công có thể tạo một file firmware khác và băm lại nó, n
 
 > Toàn bộ tài liệu áp dụng chung **[bảng thuật ngữ chuẩn tại Phụ lục A.0](#phu-luc-a-0)**. Tên hàm, trường dữ liệu, enum trạng thái `UPDATE_*`, câu lệnh và đường dẫn trong repository được giữ nguyên, không dịch hay đổi tên.
 
-- **Gói SDOT** là artifact cập nhật đã đóng gói và ký; **Target Image** là firmware đích hoàn chỉnh; **Reconstructed Image** là vùng trên W25Q dùng để chứa image đã chuẩn bị. Đây là ba đối tượng khác nhau.
+- **Gói SDOT** là gói cập nhật đã đóng gói và ký; **Target Image** là firmware đích hoàn chỉnh; **Reconstructed Image** là vùng trên W25Q dùng để chứa image đã chuẩn bị. Đây là ba đối tượng khác nhau.
 - **Metadata** lưu trạng thái và thông tin điều khiển cập nhật; **Checkpoint** lưu mốc tiến độ an toàn. **Internal Flash Metadata A/B** khác với vùng Metadata/Checkpoint của **External Flash W25Q**.
 - **Power-loss Recovery** tiếp tục hoặc làm lại thao tác bị gián đoạn; **Rollback** phục hồi **Backup Image**. **Anti-rollback** là chính sách ngăn cài phiên bản cũ không được phép, không phải Rollback.
 - **CRC32** phát hiện lỗi dữ liệu; **SHA-256** tạo hash mật mã; **ECDSA P-256** xác minh chữ ký với **Trusted Public Key**. Chỉ có hash không xác thực được nguồn phát hành.
@@ -466,7 +466,7 @@ Qua project này, em hiểu rõ hơn về Bootloader, quản lý bộ nhớ Flas
 
 Dạ, về **System Architecture**, hệ thống của em gồm **Developer/CI**, **Release Server**, **ESP32 Gateway**, **STM32 Application** và **STM32 Bootloader**. Em tách luồng **phát hành và truyền dữ liệu** khỏi luồng **xác thực và cài đặt firmware**.
 
-- **Tạo bản cập nhật:** **Developer/CI** build firmware, tạo gói **Full OTA** hoặc **Delta OTA**, đóng gói theo định dạng **SDOT**, ký bằng **ECDSA P-256** và tạo **Manifest**. Các artifact được triển khai lên **Release Server**.
+- **Tạo bản cập nhật:** **Developer/CI** build firmware, tạo gói **Full OTA** hoặc **Delta OTA**, đóng gói theo định dạng **SDOT**, ký bằng **ECDSA P-256** và tạo **Manifest**. Các gói cập nhật được triển khai lên **Release Server**.
 
 - **Phân phối bản cập nhật:** **Release Server** sử dụng **MQTTS** để gửi lệnh cập nhật và **HTTPS** để cung cấp gói SDOT. **ESP32 Gateway** nhận lệnh, tải gói qua HTTPS, kiểm tra kích thước và CRC32 rồi lưu vào Flash cache.
 
@@ -493,7 +493,7 @@ flowchart TD
     APP -->|"Confirm nếu chạy đạt điều kiện"| BOOT
 ```
 
-> **Lưu ý 1:** **MQTTS truyền lệnh và trạng thái**, còn **HTTPS truyền dữ liệu gói SDOT**. ESP32 Gateway chịu trách nhiệm mạng, tải và chuyển tiếp artifact; không giữ private key ký firmware.
+> **Lưu ý 1:** **MQTTS truyền lệnh và trạng thái**, còn **HTTPS truyền dữ liệu gói SDOT**. ESP32 Gateway chịu trách nhiệm mạng, tải và chuyển tiếp gói SDOT; không giữ private key ký firmware.
 >
 > **Lưu ý 2:** `FINISH` chỉ xác nhận **đã nhận đủ gói SDOT** (kích thước và CRC32). Sau lệnh `INSTALL`, STM32 Application mới commit `UPDATE_ARTIFACT_READY` vào **Internal Flash Metadata A/B** và reset. **STM32 Bootloader** mới là thành phần quyết định xác thực và cài đặt.
 >
@@ -648,13 +648,13 @@ Manifest chứa các thông tin như:
 - Phiên bản firmware mới.
 - **Product ID** và **hardware revision**.
 - Thông tin các gói **Full OTA / Delta OTA**.
-- Kích thước và **SHA-256** của artifact.
-- Đường dẫn tải artifact (**URL**).
+- Kích thước và **SHA-256** của từng gói cập nhật.
+- Đường dẫn tải gói cập nhật (**URL**).
 - Thông tin khóa ký.
 
 Manifest cũng được ký bằng **ECDSA**; chữ ký được lưu trong **`manifest.json.sig`**.
 
-> **Phân biệt SDOT và Manifest:** **SDOT** chứa firmware hoặc Delta Patch đã ký số; **Manifest** mô tả thông tin bản phát hành và các artifact để hệ thống biết gói nào đang được cung cấp.
+> **Phân biệt SDOT và Manifest:** **SDOT** chứa firmware hoặc Delta Patch đã ký số; **Manifest** mô tả thông tin bản phát hành và các gói cập nhật để hệ thống biết gói nào đang được cung cấp.
 
 #### Bước 5. Kiểm tra và chuyển bản phát hành sang Release Server
 
@@ -679,7 +679,7 @@ Sau khi tạo release, công cụ **kiểm tra tính hợp lệ của các file*
 Release Server sử dụng bộ release đã triển khai để:
 
 - Xác minh **Manifest** và các gói cập nhật theo thông tin bảo mật tương ứng.
-- Cung cấp các artifact qua **HTTPS**.
+- Cung cấp các gói SDOT qua **HTTPS**.
 - Chuẩn bị thông báo cập nhật qua **MQTTS**.
 
 > **Lưu ý:** Việc **tạo và xác minh thư mục release** không đồng nghĩa với việc công cụ release tự động upload dữ liệu lên máy chủ từ xa. Triển khai release lên server là một bước riêng.
@@ -706,14 +706,14 @@ Release Server sử dụng bộ release đã triển khai để:
 | ECDSA P-256 dùng để làm gì? | Ký và xác thực dữ liệu cập nhật bằng cặp private key/public key phù hợp. |
 | SHA-256 dùng để làm gì? | Tạo và kiểm tra hash để xác minh tính toàn vẹn của dữ liệu. |
 | Manifest khác SDOT ở điểm nào? | Manifest mô tả bản phát hành; SDOT chứa Full Firmware hoặc Delta Patch đã ký số. |
-| Release Server có tạo firmware không? | Không. Developer/CI và release tooling tạo artifact; server xác minh và phân phối. |
+| Release Server có tạo firmware không? | Không. Developer/CI và release tooling tạo các tệp cập nhật; server xác minh và phân phối. |
 | Release Server có cần private key ký firmware không? | Không cần private key ký firmware để xác minh và phân phối release. |
 
 #### Điểm cần ghi nhớ
 
-- **Developer/CI tạo artifact; Release Server phân phối**. Kiểm tra release tại máy build không đồng nghĩa đã tự động upload lên server.
+- **Developer/CI tạo các tệp cập nhật; Release Server phân phối**. Kiểm tra release tại máy build không đồng nghĩa đã tự động upload lên server.
 - **Full OTA** có firmware đích hoàn chỉnh; **Delta OTA** dùng patch từ đúng firmware gốc và phải được kiểm tra khả năng tái tạo.
-- **SDOT khác Manifest:** SDOT chứa dữ liệu cập nhật đã ký số; Manifest mô tả release và các artifact.
+- **SDOT khác Manifest:** SDOT chứa dữ liệu cập nhật đã ký số; Manifest mô tả release và các gói cập nhật.
 - **Private key** ở phía phát hành; STM32 Bootloader dùng public key tin cậy để kiểm tra chữ ký trước cài đặt.
 
 **Tài liệu/code đối chiếu:** `docs/release-process.md`, `tools/release.py`, `tools/secure_container.py`.
@@ -731,14 +731,14 @@ Release Server sử dụng bộ release đã triển khai để:
 
 ```mermaid
 flowchart TD
-    RELEASE["Release Server<br/>Xác minh Manifest và SDOT"] --> CHOOSE{"Chọn artifact phù hợp"}
+    RELEASE["Release Server<br/>Xác minh Manifest và SDOT"] --> CHOOSE{"Chọn gói cập nhật phù hợp"}
     CHOOSE -->|"Có Delta đúng firmware gốc"| DELTA["Delta SDOT"]
     CHOOSE -->|"Không có Delta phù hợp"| FULL["Full SDOT nếu được phép"]
     DELTA --> CMD["Tạo update command"]
     FULL --> CMD
     CMD --> BROKER["MQTT Broker"]
     BROKER -->|"MQTTS: thông báo cập nhật"| ESP["ESP32 Gateway"]
-    CMD --> HTTPS["HTTPS Server<br/>Phục vụ artifact SDOT"]
+    CMD --> HTTPS["HTTPS Server<br/>Cung cấp gói SDOT"]
     ESP -->|"HTTPS GET URL trong command"| HTTPS
     HTTPS -->|"Tải SDOT"| CACHE["Flash cache trên ESP32<br/>kiểm tra kích thước + CRC32"]
     CACHE -->|"UART + COBS + CRC32"| APP["STM32 Application"]
@@ -748,7 +748,7 @@ flowchart TD
 
 Sau khi Developer/CI tạo các gói cập nhật **SDOT** và **Manifest**, Release Server sử dụng bộ release đã được triển khai để kiểm tra dữ liệu trước khi phân phối.
 
-Các kiểm tra được mô tả trong hệ thống gồm tính hợp lệ của **chữ ký Manifest**, chữ ký và Metadata của artifact, cùng các thông tin về **kích thước**, **CRC32** và **SHA-256** theo định dạng tương ứng.
+Các kiểm tra được mô tả trong hệ thống gồm tính hợp lệ của **chữ ký Manifest**, chữ ký và Metadata của gói SDOT, cùng các thông tin về **kích thước**, **CRC32** và **SHA-256** theo định dạng tương ứng.
 
 > **Ghi nhớ:** Việc Release Server xác minh bản phát hành **không thay thế** việc STM32 Bootloader xác thực chữ ký SDOT trước khi cài đặt.
 
@@ -768,7 +768,7 @@ Release Server dựa trên **phiên bản firmware hiện tại** được cung 
 
 #### Bước 3. Release Server gửi lệnh cập nhật qua MQTTS
 
-Sau khi chọn artifact, Release Server tạo thông báo cập nhật để gửi qua **MQTT Broker** bằng kết nối **MQTTS**. ESP32 Gateway subscribe topic tương ứng để nhận lệnh.
+Sau khi chọn gói cập nhật, Release Server tạo thông báo cập nhật để gửi qua **MQTT Broker** bằng kết nối **MQTTS**. ESP32 Gateway subscribe topic tương ứng để nhận lệnh.
 
 **Ví dụ JSON minh họa các trường chính** (giá trị minh họa, không phải payload thực tế của một bản phát hành):
 
@@ -807,7 +807,7 @@ ESP32 lưu dữ liệu tải được vào vùng **Flash cache** của Gateway. 
 
 ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thống qua MQTT. Trong khi đó, bước **xác thực chữ ký ECDSA P-256 và SHA-256 để quyết định cài đặt** vẫn thuộc về STM32 Bootloader.
 
-> **Phân biệt Manifest và gói SDOT:** Release Server dùng **Manifest** để biết thông tin bản phát hành, còn ESP32 Gateway nhận **URL trực tiếp đến gói SDOT** trong lệnh MQTTS. Luồng OTA hiện tại không yêu cầu ESP32 tải và tự phân tích Manifest để chọn artifact.
+> **Phân biệt Manifest và gói SDOT:** Release Server dùng **Manifest** để biết thông tin bản phát hành, còn ESP32 Gateway nhận **URL trực tiếp đến gói SDOT** trong lệnh MQTTS. Luồng OTA hiện tại không yêu cầu ESP32 tải và tự phân tích Manifest để chọn gói cập nhật.
 
 #### Bài nói khi phỏng vấn: Release Server và ESP32 Gateway
 
@@ -826,8 +826,8 @@ ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thốn
 | Câu hỏi | Ý chính cần trả lời |
 |---|---|
 | Vì sao sử dụng cả MQTTS và HTTPS? | MQTTS dùng để gửi lệnh/trạng thái; HTTPS dùng để tải dữ liệu firmware. |
-| Ai quyết định chọn Full OTA hay Delta OTA? | Release Server chọn artifact phù hợp theo thông tin phiên bản và release. |
-| ESP32 có cần tải Manifest không? | Không bắt buộc trong luồng hiện tại; URL artifact được gửi trong lệnh MQTTS. |
+| Ai quyết định chọn Full OTA hay Delta OTA? | Release Server chọn gói cập nhật phù hợp theo thông tin phiên bản và release. |
+| ESP32 có cần tải Manifest không? | Không bắt buộc trong luồng hiện tại; URL gói SDOT được gửi trong lệnh MQTTS. |
 | ESP32 kiểm tra gói SDOT bằng gì? | Kiểm tra kích thước và CRC32 sau khi tải. |
 | ESP32 có xác thực chữ ký ECDSA thay STM32 không? | Không; STM32 Bootloader là thành phần xác thực và quyết định cài đặt. |
 | Tại sao phải lưu vào Flash cache? | Để có gói SDOT hoàn chỉnh, đã kiểm tra, trước khi truyền xuống STM32 qua UART. |
@@ -1240,7 +1240,7 @@ STM32 Bootloader khởi tạo các thành phần cần thiết, đọc **Metadat
 | `UPDATE_ROLLBACK` | Khôi phục firmware đã sao lưu. |
 | `UPDATE_FAILED` | Ở lại chế độ Recovery, không mặc nhiên nhận OTA mới qua UART. |
 
-Khi Metadata đang ở **`UPDATE_ARTIFACT_READY`**, Bootloader chọn nhánh **xử lý artifact**, từ đó bước vào xác thực gói SDOT.
+Khi Metadata đang ở **`UPDATE_ARTIFACT_READY`**, Bootloader chọn nhánh **xử lý gói SDOT**, từ đó bước vào xác thực gói SDOT.
 
 **Code cần đọc:** `node-stm32f103/bootloader/src/boot_decision.c` và `node-stm32f103/bootloader/src/boot_manager.c`.
 
@@ -1267,7 +1267,7 @@ Bootloader đọc gói **SDOT** từ phân vùng **Incoming** của **External F
 
 #### Bước 6. STM32 Bootloader xử lý Full OTA hoặc Delta OTA
 
-Sau khi xác thực SDOT, Bootloader dựa vào loại artifact để chuẩn bị **firmware mới**:
+Sau khi xác thực SDOT, Bootloader dựa vào loại gói cập nhật để chuẩn bị **firmware mới**:
 
 | Full OTA | Delta OTA |
 |---|---|
@@ -1942,7 +1942,7 @@ STM32 Application dùng **Download Checkpoint** ở External Flash W25Q, đượ
 
 #### Điểm cần ghi nhớ
 
-- **`FINISH` ≠ `INSTALL`**; nhận đủ artifact không có nghĩa đã xác thực/cài đặt firmware.
+- **`FINISH` ≠ `INSTALL`**; nhận đủ gói SDOT không có nghĩa đã xác thực/cài đặt firmware.
 - **UART Receiver runtime ≠ Bootloader persisted state**.
 - **Download Checkpoint 4 KB** phục vụ Resume; Application hiện tại chưa bị ghi đè ở giai đoạn nhận.
 
@@ -2076,7 +2076,7 @@ Bootloader kiểm tra **Target SHA-256** và các điều kiện hợp lệ củ
 
 - **Verify SDOT → (Delta: Verify Base) → Prepare Image → Verify Target Hash → IMAGE_READY.**
 - **Full và Delta đều dùng `UPDATE_PATCHING`**, nhưng cách chuẩn bị image khác nhau.
-- Có trường hợp **từ chối artifact rồi trở về IDLE an toàn**; không phải mọi lỗi xác thực đều làm mất firmware cũ hay buộc Rollback.
+- Có trường hợp **từ chối gói SDOT rồi trở về IDLE an toàn**; không phải mọi lỗi xác thực đều làm mất firmware cũ hay buộc Rollback.
 
 **Tài liệu/code đối chiếu:** `docs/boot-state-machine.md`, `docs/firmware-container.md`, `node-stm32f103/bootloader/src/secure_container.c`, `node-stm32f103/bootloader/include/trusted_key.h`.
 
@@ -3073,7 +3073,7 @@ B. Bootloader Jump Application (không reset phần cứng):
    Validate → cleanup → set VTOR/MSP → Branch App Reset_Handler → App main()
 
 C. Application muốn cài OTA mới:
-   INSTALL → commit Metadata → ACK → reset thật → Bootloader xử lý artifact
+   INSTALL → commit Metadata → ACK → reset thật → Bootloader xử lý gói SDOT
 ```
 
 #### Bước 8. Tự đọc source và kiểm tra một firmware image
@@ -3600,7 +3600,7 @@ Metadata nằm trong **Internal Flash** nhưng có nhiệm vụ khác với firm
 ```mermaid
 flowchart TD
     ESP["ESP32 Gateway<br/>Gói SDOT đã tải qua HTTPS"] -->|"UART + COBS + CRC32"| APP["STM32 Application<br/>OTA Receiver"]
-    APP -->|"SPI: ghi + Verify"| IN["W25Q: Incoming Artifact<br/>0x002000 - 0x021FFF"]
+    APP -->|"SPI: ghi + Verify"| IN["W25Q: Vùng Incoming (gói SDOT)<br/>0x002000 - 0x021FFF"]
     APP -->|"Download Checkpoint A/B<br/>sau mốc sector an toàn"| META["W25Q: External Flash Metadata A/B<br/>0x000000 - 0x001FFF"]
     APP -->|"FINISH; INSTALL + Internal Metadata + Reset"| BOOT["STM32 Bootloader"]
     IN -->|"Đọc, xác thực SDOT"| BOOT
@@ -3760,7 +3760,7 @@ Luồng xóa của driver: validate → `WriteEnable()` và kiểm WEL → gửi
 |---|---:|---:|---:|---|
 | External Metadata A | `0x000000` | `0x000FFF` | 4 KiB | Handoff cũ + Download Checkpoint A. |
 | External Metadata B | `0x001000` | `0x001FFF` | 4 KiB | Handoff cũ + Download Checkpoint B. |
-| Incoming Artifact | `0x002000` | `0x021FFF` | 128 KiB | Gói Full/Delta SDOT được nhận từ ESP32. |
+| Incoming (gói SDOT) | `0x002000` | `0x021FFF` | 128 KiB | Gói Full/Delta SDOT được nhận từ ESP32. |
 | Reconstructed Image | `0x022000` | `0x041FFF` | 128 KiB | Firmware **hoàn chỉnh** chuẩn bị trước Install. |
 | Backup Image | `0x042000` | `0x061FFF` | 128 KiB | Bản sao Application đã xác minh + backup header. |
 | Update Logs | `0x062000` | `0x071FFF` | 64 KiB | Diagnostics có giới hạn. |
@@ -3856,14 +3856,14 @@ flowchart TD
 
 | Pha Boot State Machine | Nguồn/đích W25Q | Điều kiện an toàn |
 |---|---|---|
-| `VERIFYING_CONTAINER` | Đọc **Incoming Artifact**. | Kiểm tra cấu trúc, chính sách, chữ ký ECDSA và hash liên quan. |
+| `VERIFYING_CONTAINER` | Đọc **Incoming (gói SDOT)**. | Kiểm tra cấu trúc, chính sách, chữ ký ECDSA và hash liên quan. |
 | `VERIFYING_BASE` (Delta) | Đọc firmware gốc từ Internal Application. | Base version/SHA-256 phải đúng trước patch. |
 | `PATCHING` | Ghi **Reconstructed Image**. | Full copy payload hoặc Delta tái tạo image; Verify target. |
 | `BACKING_UP` | Ghi **Backup Image** từ Internal Application. | Backup theo sector 4 KiB; header/CRC và dữ liệu phải hợp lệ trước khi Install. |
 | `INSTALLING` | **Đọc** Reconstructed; ghi **Internal Flash**. | Checkpoint Install **1 KiB**, không dùng nhầm Checkpoint Receive 4 KiB. |
 | `ROLLBACK` | **Đọc** Backup; khôi phục **Internal Flash**. | Chỉ phục hồi khi Backup đáng tin cậy; theo tiến độ an toàn. |
 
-**Vì sao phải có ba vùng Incoming/Reconstructed/Backup?** Incoming giữ **artifact chưa được cài** (đối với Delta đó là *patch*, không phải image hoàn chỉnh). Reconstructed giữ **firmware đích đầy đủ** sau xác minh/tái tạo. Backup giữ **firmware trước đó** để khôi phục nếu Trial Boot thất bại. Gộp cả ba vào một vùng có thể khiến mất nguồn hoặc thao tác Erase làm hỏng nguồn đang cần dùng để phục hồi.
+**Vì sao phải có ba vùng Incoming/Reconstructed/Backup?** Incoming giữ **gói SDOT chưa được dùng để cài firmware** (đối với Delta đó là *patch*, không phải image hoàn chỉnh). Reconstructed giữ **firmware đích đầy đủ** sau xác minh/tái tạo. Backup giữ **firmware trước đó** để khôi phục nếu Trial Boot thất bại. Gộp cả ba vào một vùng có thể khiến mất nguồn hoặc thao tác Erase làm hỏng nguồn đang cần dùng để phục hồi.
 
 **Cấu trúc Backup:** `BackupImageStorage_CommitHeader()` chỉ Erase header sector, viết record/CRC và đọc lại. Phần Application backup nằm sau offset `0x1000`, nên reset khi commit header có thể xử lý riêng mà không phá bản sao image. Đây là lý do layout dự phòng theo **sector**, không phải chỉ “dành chỗ trống”.
 
@@ -3978,7 +3978,7 @@ flowchart TD
 >
 > **Phạm vi đối chiếu repository:** Giao thức và các giá trị cụ thể lấy từ [`docs/uart-ota-protocol.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/uart-ota-protocol.md), [`shared/include/ota_protocol.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/ota_protocol.h), [`gateway-esp32/README.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/gateway-esp32/README.md) và code STM32/Gateway liên quan. Những đoạn code ghi **“pseudocode minh họa”** chỉ giúp học nguyên lý, không phải hàm được sao chép nguyên văn từ repository.
 >
-> **Liên hệ với các phần đã học:** Phần **4.3** giới thiệu đường truyền ESP32 → STM32 Application; **5.2** nói về các trạng thái nhận OTA; **6.4** phân tích W25Q và Checkpoint. **6.5** đi sâu vào lớp truyền thông: làm thế nào từng byte UART trở thành một packet hợp lệ và một artifact SDOT đã nhận đầy đủ.
+> **Liên hệ với các phần đã học:** Phần **4.3** giới thiệu đường truyền ESP32 → STM32 Application; **5.2** nói về các trạng thái nhận OTA; **6.4** phân tích W25Q và Checkpoint. **6.5** đi sâu vào lớp truyền thông: làm thế nào từng byte UART trở thành một packet hợp lệ và một gói SDOT đã nhận đầy đủ.
 
 #### Sơ đồ tổng quan: Từ gói SDOT trong ESP32 đến bàn giao Bootloader
 
@@ -4022,9 +4022,9 @@ sequenceDiagram
 **Bốn nguyên tắc quan trọng:**
 
 1. **UART chỉ mang luồng byte**; ranh giới packet và ý nghĩa lệnh do **COBS + protocol** xác định.
-2. **CRC32 có hai mức khác nhau**: CRC của **mỗi packet** để phát hiện lỗi truyền và CRC của **toàn artifact SDOT** trước `FINISH`. Cả hai **không thay thế ECDSA**.
+2. **CRC32 có hai mức khác nhau**: CRC của **mỗi packet** để phát hiện lỗi truyền và CRC của **toàn bộ gói SDOT** trước `FINISH`. Cả hai **không thay thế ECDSA**.
 3. **ACK không đồng nghĩa với Checkpoint bền vững**. Một packet có thể đã ACK, nhưng sau mất nguồn STM32 vẫn yêu cầu truyền lại từ mốc sector 4 KiB trước đó.
-4. **`FINISH` khác `INSTALL`**: nhận đủ artifact mới chỉ đạt `ARTIFACT_READY` ở runtime; `INSTALL` mới lưu trạng thái bàn giao vào **Internal Flash Metadata A/B** và reset để Bootloader xác thực/cài đặt.
+4. **`FINISH` khác `INSTALL`**: nhận đủ gói SDOT mới chỉ đạt `ARTIFACT_READY` ở runtime; `INSTALL` mới lưu trạng thái bàn giao vào **Internal Flash Metadata A/B** và reset để Bootloader xác thực/cài đặt.
 
 #### Bước 1. Hiểu UART: dây nối, khung byte và thông số 115200 8-N-1
 
@@ -4100,7 +4100,7 @@ UART RX stream:
 | Mất vài byte giữa frame | Thường khiến CRC hoặc COBS lỗi; phân tách lại tại `0x00`. |
 | Inter-byte timeout | Có thể xóa frame đang dở; **không phải cơ chế framing chính**. |
 
-**Giới hạn có trong protocol:** `OTA_MAX_ENCODED_FRAME = 320` byte, được chọn cho packet có **payload tối đa 256 byte**. Buffer này chứa frame ở tầng UART; nó **không đồng nghĩa** artifact SDOT tối đa 320 byte.
+**Giới hạn có trong protocol:** `OTA_MAX_ENCODED_FRAME = 320` byte, được chọn cho packet có **payload tối đa 256 byte**. Buffer này chứa frame ở tầng UART; nó **không đồng nghĩa** gói SDOT tối đa 320 byte.
 
 **Pseudocode minh họa – bộ gom frame phía nhận** (không sao chép code repo):
 
@@ -4161,7 +4161,7 @@ Một raw packet bao gồm **header cố định 16 byte**, **payload 0–256 by
 | `protocol_version = 1` | Kiểm soát tính tương thích | Hai đầu có thể hiểu sai format. |
 | `command` | Chọn hành động `DATA`, `START`, `ACK`... | Gọi nhầm thao tác ở sai trạng thái. |
 | `update_id` | Gắn packet với đúng phiên cập nhật | Trộn dữ liệu hai release khác nhau. |
-| `offset` | Vị trí byte trong toàn bộ artifact | Ghi sai địa chỉ Incoming hoặc thiếu/đè dữ liệu. |
+| `offset` | Vị trí byte trong toàn bộ gói SDOT | Ghi sai địa chỉ Incoming hoặc thiếu/đè dữ liệu. |
 | `sequence` | Theo dõi thứ tự packet | Không phát hiện packet ngoài thứ tự phù hợp. |
 | `payload_length` | Số byte payload theo packet | Đọc tràn bộ đệm hoặc tính CRC sai. |
 | `payload` | Nội dung lệnh hoặc bytes của SDOT | Nguồn dữ liệu chính của OTA. |
@@ -4216,9 +4216,9 @@ Protocol có **các lệnh điều khiển** và **lệnh dữ liệu**. Khi gi�
 |---|---|---|---|
 | `0x01` | `HELLO` | Gateway → STM32 | Kiểm tra phiên bản protocol và capabilities. |
 | `0x02` | `QUERY` | Gateway → STM32 | Lấy trạng thái, firmware version, tiến độ. |
-| `0x10` | `START` | Gateway → STM32 | Bắt đầu phiên nhận artifact. |
+| `0x10` | `START` | Gateway → STM32 | Bắt đầu phiên nhận gói SDOT. |
 | `0x11` | `DATA` | Gateway → STM32 | Chuyển các đoạn SDOT. |
-| `0x12` | `FINISH` | Gateway → STM32 | Yêu cầu kiểm tra toàn artifact đã nhận. |
+| `0x12` | `FINISH` | Gateway → STM32 | Yêu cầu kiểm tra toàn bộ gói SDOT đã nhận. |
 | `0x13` | `ABORT` | Gateway → STM32 | Hủy phiên nhận OTA theo trạng thái cho phép. |
 | `0x14` | `RESUME` | Gateway → STM32 | Tiếp tục phiên phù hợp sau gián đoạn. |
 | `0x20` | `INSTALL` | Gateway → STM32 | Lưu handoff bền vững rồi reset vào Bootloader. |
@@ -4253,7 +4253,7 @@ flowchart TD
     CHECK -->|"Phiên khác"| POLICY["Xử lý mismatch / abort theo policy"]
     START --> DATA["DATA → ACK/NACK"]
     RESUME --> DATA
-    DATA --> FINISH["FINISH: size + artifact CRC"]
+    DATA --> FINISH["FINISH: kích thước + CRC gói SDOT"]
     FINISH --> INSTALL
 ```
 
@@ -4343,7 +4343,7 @@ last_error_detail         u32
 | `0x04` | `WRONG_OFFSET` | Sai vị trí cần gửi tiếp. |
 | `0x05` | `PACKET_CRC_ERROR` | CRC32 của packet không khớp. |
 | `0x06` | `STORAGE_ERROR` | Lỗi Erase/Write/Read W25Q. |
-| `0x07` | `IMAGE_TOO_LARGE` | Artifact vượt giới hạn partition. |
+| `0x07` | `IMAGE_TOO_LARGE` | Gói SDOT vượt giới hạn partition. |
 | `0x08` | `UPDATE_ID_MISMATCH` | Packet thuộc update khác. |
 | `0x09` | `BASE_MISMATCH` | Base của Delta không phù hợp. |
 | `0x0A` | `CONTAINER_ERROR` | Container/header validation thất bại. |
@@ -4434,17 +4434,17 @@ STM32 chuẩn bị lại sector chưa commit rồi Write/Verify
 | `ACK` | Packet cụ thể (ví dụ offset 9984 → 10240) | Có thể đã được gửi nhưng **không** phải mốc phục hồi cuối cùng. |
 | `next_expected_offset` runtime | Byte đang chờ trong phiên nhận | RAM có thể mất. |
 | Download Checkpoint | Sector 4 KiB đã commit trên W25Q | Là mốc Resume bền vững. |
-| `update_id` + artifact identity | Ràng buộc Checkpoint với đúng artifact | Không cho phép lấy Checkpoint của bản cập nhật khác. |
+| `update_id` + định danh gói SDOT | Ràng buộc Checkpoint với đúng gói SDOT | Không cho phép lấy Checkpoint của bản cập nhật khác. |
 | Internal Flash Metadata A/B | Boot Decision sau `INSTALL` | Không phải nơi ghi ACK cho từng DATA packet. |
 
 **Trình tự RESUME:**
 
 1. Gateway reconnect sau reset, gửi `HELLO/QUERY` để lấy state và `next_expected_offset`.
-2. Đối chiếu **`update_id` + thông tin artifact** với bản SDOT đang cache.
+2. Đối chiếu **`update_id` + thông tin gói SDOT** với bản SDOT đang cache.
 3. Nếu trùng phiên và trạng thái phù hợp: gửi `RESUME`.
 4. STM32 báo offset **đã Checkpoint**; Gateway truyền từ offset đó, **không giả định ACK gần nhất trước reset vẫn còn hiệu lực**.
 5. Receiver đảm bảo sector đang nhận dở được chuẩn bị hợp lệ (Erase/Write lại khi cần), kiểm tra CRC/Offset bình thường.
-6. Nếu identity không khớp: trả `UPDATE_ID_MISMATCH`; cần quy trình `START` mới theo policy, **không** dùng lẫn hai artifact.
+6. Nếu identity không khớp: trả `UPDATE_ID_MISMATCH`; cần quy trình `START` mới theo policy, **không** dùng lẫn hai gói SDOT.
 
 **Cách giải thích chính xác:** Không phải mỗi mất nguồn đều truyền lại từ đầu. Nhưng cũng **không được tự tiếp tục từ byte 10240 chỉ vì trước đó đã ACK đến 10240**, khi Checkpoint ổn định mới ở byte 8192.
 
@@ -4464,7 +4464,7 @@ flowchart TD
 
 #### Bước 8. `FINISH` và `INSTALL`: từ UART receiver đến Bootloader
 
-Sau khi gửi đủ các packet, **ESP32 Gateway không được hiểu rằng SDOT đã sẵn sàng cài đặt chỉ vì DATA cuối cùng được ACK**. Vẫn cần xác minh **toàn bộ artifact**.
+Sau khi gửi đủ các packet, **ESP32 Gateway không được hiểu rằng SDOT đã sẵn sàng cài đặt chỉ vì DATA cuối cùng được ACK**. Vẫn cần xác minh **toàn bộ gói SDOT**.
 
 **`FINISH (0x12)` thực hiện:**
 
@@ -4477,7 +4477,7 @@ Sau khi gửi đủ các packet, **ESP32 Gateway không được hiểu rằng S
 
 1. Yêu cầu payload rỗng, receiver đang `ARTIFACT_READY`, `update_id` khớp và `target_version` hợp lệ/nonzero.
 2. Kiểm tra dấu hiệu định dạng **SDOT magic** đủ để bàn giao; **Application chưa xác thực chữ ký ECDSA hoặc kiểm tra target vector để tin cậy cài đặt**.
-3. Commit **Internal Flash Metadata A/B** thành **`UPDATE_ARTIFACT_READY`**, kèm `pending_version`, `active_update_id`, kích thước artifact thích hợp.
+3. Commit **Internal Flash Metadata A/B** thành **`UPDATE_ARTIFACT_READY`**, kèm `pending_version`, `active_update_id`, kích thước gói SDOT tương ứng.
 4. Gửi ACK hoàn chỉnh cho Gateway rồi **reset MCU**.
 5. Bootloader đọc Metadata, đọc Incoming SDOT từ W25Q và **xác thực ECDSA P-256/SHA-256**, kiểm tra Full/Delta/versions, Backup, Install, Trial Boot.
 
@@ -4486,7 +4486,7 @@ ESP32                         STM32 Application               STM32 Bootloader
   |                                  |                               |
   |------ DATA cuối ---------------> | Write + Verify W25Q           |
   |<----- ACK ---------------------- |                               |
-  |------ FINISH ------------------> | Size + Artifact CRC32         |
+  |------ FINISH ------------------> | Size + CRC32 gói SDOT         |
   |<----- ACK (ARTIFACT_READY) ----- |                               |
   |------ INSTALL -----------------> | Commit Internal Flash Metadata A/B  |
   |<----- ACK ---------------------- | Reset MCU ------------------> |
@@ -4507,7 +4507,7 @@ ESP32                         STM32 Application               STM32 Bootloader
 
 ```mermaid
 flowchart TD
-    M["MQTTS: lệnh update"] --> HTTPS["HTTPS GET artifact SDOT"]
+    M["MQTTS: lệnh update"] --> HTTPS["HTTPS GET gói SDOT"]
     HTTPS --> CACHE["Flash cache ESP32<br/>đọc lại + CRC32"]
     CACHE --> UART["UART OTA transfer manager"]
     UART --> QUERY["QUERY trạng thái STM32"]
@@ -4529,10 +4529,10 @@ Theo `gateway-esp32/README.md`, bộ chọn transfer plan có các kết quả: 
 | Tầng | Đảm bảo chính | **Không** thay thế điều gì? |
 |---|---|---|
 | MQTTS | Nhận lệnh cập nhật, tiến độ, trạng thái qua TLS | Không mang dữ liệu SDOT dưới dạng lệnh MQTT. |
-| HTTPS + ESP32 cache | Tải đúng byte và lưu bản artifact hoàn chỉnh | Không quyết định cuối cùng firmware có đáng tin để cài hay không. |
+| HTTPS + ESP32 cache | Tải đúng byte và lưu gói SDOT hoàn chỉnh | Không quyết định cuối cùng firmware có đáng tin để cài hay không. |
 | UART + COBS | Truyền/framing giữa hai MCU | Không tự đảm bảo byte không hỏng. |
 | UART packet CRC32 | Phát hiện lỗi từng packet | Không xác thực nguồn phát hành. |
-| FINISH artifact CRC32 | Phát hiện lỗi toàn SDOT đã nhận | Không xác thực chữ ký số. |
+| FINISH: CRC32 gói SDOT | Phát hiện lỗi toàn SDOT đã nhận | Không xác thực chữ ký số. |
 | STM32 Bootloader ECDSA + SHA-256 | Xác thực SDOT và kiểm tra tính toàn vẹn có ràng buộc khóa | Không tự sửa được lỗi vật lý UART hoặc nguồn điện. |
 
 > **Điểm bảo mật quan trọng:** Không được gọi `CRC32` là “chữ ký” hay “xác thực firmware”. Nếu kẻ tấn công thay dữ liệu và tính lại CRC, CRC vẫn có thể khớp; chữ ký ECDSA dựa trên **Public Key tin cậy** ở Bootloader mới giúp kiểm tra nguồn phát hành của gói SDOT.
@@ -4549,11 +4549,11 @@ Theo `gateway-esp32/README.md`, bộ chọn transfer plan có các kết quả: 
 | Packet CRC lỗi lặp lại | Lỗi truyền/serialize/CRC scope | So raw byte trước COBS, endian CRC, phạm vi `magic..payload`. |
 | `WRONG_SEQUENCE` | Sai sequence khi Retry/Resume | Log sequence sent/ACK và kế hoạch chuyển phiên. |
 | `WRONG_OFFSET` | Gateway nhảy offset hoặc stale ACK | So `next_expected_offset` nhận từ STM32 và offset thực gửi. |
-| `UPDATE_ID_MISMATCH` | Hai đầu không cùng artifact | Kiểm tra update_id và identity từ START/RESUME. |
+| `UPDATE_ID_MISMATCH` | Hai đầu không cùng gói SDOT | Kiểm tra update_id và identity từ START/RESUME. |
 | `STORAGE_ERROR` | W25Q Erase/Write/Verify | Kiểm tra sector chưa erased, phân vùng Incoming, WIP/WEL và SPI. |
 | ACK bị mất | Timeout/ACK framing | Retry **cùng packet**; STM32 xử lý duplicate hợp lệ. |
 | Reset rồi phải gửi lại dữ liệu | Checkpoint chưa tới ranh giới 4 KiB | So ACK runtime với offset persisted sau QUERY. |
-| `FINISH` không qua | Thiếu byte hoặc CRC toàn artifact sai | Đọc lại SDOT Incoming, kiểm tra size/CRC cache. |
+| `FINISH` không qua | Thiếu byte hoặc CRC toàn bộ gói SDOT sai | Đọc lại SDOT Incoming, kiểm tra size/CRC cache. |
 | `INSTALL` bị NACK | Sai state/update_id/payload/target_version | Phân biệt `ARTIFACT_READY` runtime với `UPDATE_ARTIFACT_READY` Metadata. |
 | Install xong nhưng Trial thất bại | Không còn lỗi UART đơn thuần | Kiểm tra Bootloader state, image verify, vector/trial/rollback. |
 
@@ -4564,10 +4564,10 @@ Theo `gateway-esp32/README.md`, bộ chọn transfer plan có các kết quả: 
 3. **COBS hỏng:** gửi frame thiếu delimiter hoặc mã COBS lỗi → bỏ frame, đồng bộ lại ở `0x00`.
 4. **Duplicate DATA:** làm mất ACK sau khi Write/Verify rồi gửi lại cùng packet → ACK idempotent, không ghi lặp mù quáng.
 5. **Sequence/Offset sai:** gửi `seq` hoặc `offset` nhảy cóc → NACK, không làm hỏng Incoming.
-6. **Update ID khác:** RESUME bằng id của artifact khác → `UPDATE_ID_MISMATCH`.
+6. **Update ID khác:** RESUME bằng id của gói SDOT khác → `UPDATE_ID_MISMATCH`.
 7. **Mất nguồn ở 10 KiB:** Checkpoint 8 KiB → QUERY/RESUME từ 8192; truyền lại phần chưa Checkpoint.
 8. **FINISH thiếu dữ liệu:** số byte nhận nhỏ hơn expected size → không được ARTIFACT_READY.
-9. **FINISH CRC sai:** đủ size nhưng artifact CRC không khớp → không được INSTALL.
+9. **FINISH CRC sai:** đủ size nhưng CRC gói SDOT không khớp → không được INSTALL.
 10. **INSTALL quá sớm:** chỉ mới RECEIVING → từ chối `INVALID_STATE`.
 11. **Reset khi Install handoff:** kiểm tra Metadata A/B còn có bản hợp lệ và Boot Decision không nhầm firmware chưa xác thực thành firmware đã Confirm.
 12. **Không đánh đồng security:** gói bị sửa và CRC được tính lại vẫn phải bị Bootloader từ chối nếu chữ ký SDOT không hợp lệ.
@@ -4613,9 +4613,9 @@ Flash write/verify, sector erase, xử lý MCU, Wi-Fi hoặc các lần Retry.
 | 11 | CRC32 tính trên phần nào? | Từ magic đến cuối payload raw; bỏ trường CRC và lớp COBS. |
 | 12 | `magic`, `protocol_version` dùng để làm gì? | Nhận diện protocol và kiểm tra tương thích. |
 | 13 | `update_id` khác `sequence` như thế nào? | Update ID nhận diện phiên OTA; sequence theo dõi thứ tự packet trong phiên. |
-| 14 | `offset` khác `sequence` thế nào? | Offset là vị trí byte trong artifact; sequence là thứ tự packet 16-bit. |
+| 14 | `offset` khác `sequence` thế nào? | Offset là vị trí byte trong gói SDOT; sequence là thứ tự packet 16-bit. |
 | 15 | Trước khi gửi DATA cần HELLO/QUERY để làm gì? | Lấy phiên bản, capability, state và offset, chọn START/RESUME/INSTALL. |
-| 16 | START payload chứa thông tin quan trọng nào? | Loại artifact, base/target version, size, artifact CRC32, container format/header size. |
+| 16 | START payload chứa thông tin quan trọng nào? | Loại gói SDOT, base/target version, size, CRC32 gói SDOT, container format/header size. |
 | 17 | Nếu dữ liệu DATA có CRC sai, STM32 làm gì? | Không commit packet; trả status `PACKET_CRC_ERROR`/NACK. |
 | 18 | Vì sao ACK sau khi ghi và verify W25Q? | Không xác nhận trước khi bytes đã được lưu và kiểm tra. |
 | 19 | Nếu ACK của DATA bị mất nhưng STM32 đã ghi? | Gateway retry cùng packet; STM32 nhận diện duplicate hợp lệ và ACK lại. |
@@ -5097,7 +5097,7 @@ Nếu một đoạn ghi vượt **128 KiB** của Incoming, `ExternalFlashStorag
 **Khi STM32 Application đang chạy:**
 
 1. Nhận DATA packet từ ESP32 qua UART, giải COBS và kiểm tra CRC32/sequence/offset.
-2. Xác định vị trí tương ứng trong **Incoming Artifact** của W25Q.
+2. Xác định vị trí tương ứng trong **phân vùng Incoming (gói SDOT)** của W25Q.
 3. Khi cần, xóa sector 4 KiB ở ranh giới an toàn trước khi ghi dữ liệu mới.
 4. Gọi `ExternalFlashStorage_Write()` → `SpiFlash_Write()` → SPI transaction.
 5. Read-back Verify thành công thì mới phản hồi ACK hợp lệ cho packet.
@@ -5291,7 +5291,7 @@ flowchart TD
     DELTA_SDOT --> POLICY["Chỉ phát hành Delta nếu<br/>tiết kiệm SDOT đạt ngưỡng"]
     FULL_SDOT --> RELEASE["Immutable Release + Manifest ký số"]
     POLICY --> RELEASE
-    RELEASE --> SERVER["Release Server<br/>chọn artifact phù hợp"]
+    RELEASE --> SERVER["Release Server<br/>chọn gói cập nhật phù hợp"]
     SERVER --> ESP["ESP32: HTTPS tải SDOT<br/>UART truyền tới STM32"]
     ESP --> INCOMING["W25Q Incoming SDOT"]
     INCOMING --> VERIFY["STM32 Bootloader<br/>Verify chữ ký + policy"]
@@ -5310,7 +5310,7 @@ flowchart TD
 |---|---|---|
 | **Developer/CI** | `base.bin`, `target.bin` | Build firmware, tạo Full/Delta, kiểm tra round-trip, ký SDOT. |
 | **Release tooling** | `*.full.sdot`, `*.delta.sdot`, Manifest | Quyết định có phát hành Delta theo tỷ lệ tiết kiệm; tạo release bất biến. |
-| **Release Server** | Thông tin release và phiên bản thiết bị | Phân phối artifact phù hợp; Full là phương án thay thế khi không có Delta phù hợp. |
+| **Release Server** | Thông tin release và phiên bản thiết bị | Phân phối gói cập nhật phù hợp; Full là phương án thay thế khi không có Delta phù hợp. |
 | **ESP32 Gateway** | **SDOT** (không phải target firmware raw) | HTTPS tải/caching, truyền qua UART; không tự cài hay quyết định tin cậy cuối cùng. |
 | **STM32 Application** | SDOT nhận từ UART | Lưu vào **Incoming** W25Q, xác minh nhận đủ và bàn giao bằng `INSTALL`. |
 | **STM32 Bootloader** | Signed SDOT, base firmware, Target Image | Verify SDOT; với Delta kiểm tra exact-base; tạo **Reconstructed** và Verify trước Install. |
@@ -5347,7 +5347,7 @@ Delta OTA:
 | Tái tạo firmware mới | Copy payload vào Reconstructed | Apply patch rồi ghi ra Reconstructed |
 | Chế độ persisted chuẩn bị image | `UPDATE_PATCHING` | `UPDATE_PATCHING` |
 | Sau tái tạo | Kiểm tra Target SHA-256/CRC/vector | Kiểm tra Target SHA-256/CRC/vector |
-| Khi không đủ điều kiện | Không cài artifact sai chữ ký/chính sách | Không áp dụng patch trên base sai; yêu cầu một Full OTA phù hợp từ quy trình phát hành |
+| Khi không đủ điều kiện | Không cài bản cập nhật có chữ ký/chính sách không hợp lệ | Không áp dụng patch trên base sai; yêu cầu một Full OTA phù hợp từ quy trình phát hành |
 
 **Ví dụ thực tế:** `application-v1.bin` và `application-v2.bin` chỉ khác một ít logic, nên bản patch **có thể** nhỏ hơn đáng kể. Nhưng nếu firmware mới thay đổi bố cục nhiều, patch cũng có thể lớn, khi đó Full OTA thích hợp hơn.
 
@@ -5503,12 +5503,12 @@ signed_savings_percent = (1 - delta_sdot_size / full_sdot_size) × 100%
 
 **Ví dụ minh họa:** Nếu Full SDOT = 20.0 KiB, Delta SDOT = 18.0 KiB thì tiết kiệm 10%; dù patch hoạt động chính xác, chính sách mặc định **không phát hành Delta** vì chưa đạt 20%. Full SDOT vẫn có mặt.
 
-**Quy tắc khác được thực thi:** Nếu cung cấp Base, `base_version > 0` và `target_version > base_version`. Tất cả artifact bị giới hạn bởi phân vùng **Incoming 128 KiB** và Application target trong vùng **38 KiB**. Thư mục release sau khi tạo là **immutable**, công cụ không overwrite release đã tồn tại.
+**Quy tắc khác được thực thi:** Nếu cung cấp Base, `base_version > 0` và `target_version > base_version`. Tất cả gói SDOT bị giới hạn bởi phân vùng **Incoming 128 KiB** và Application target trong vùng **38 KiB**. Thư mục release sau khi tạo là **immutable**, công cụ không overwrite release đã tồn tại.
 
 **Phân biệt ba cấp quyết định:**
 
 - **Release tooling:** Có xuất bản Delta hay không dựa trên **dung lượng** và các điều kiện build/round-trip.
-- **Release Server:** Có cung cấp Delta cho thiết bị nào hay không dựa trên thông tin phiên bản và artifact đang có.
+- **Release Server:** Có cung cấp Delta cho thiết bị nào hay không dựa trên thông tin phiên bản và các gói cập nhật hiện có.
 - **STM32 Bootloader:** Có **chấp nhận và cài** SDOT hay không dựa trên **xác thực, policy, exact-base và target validation**; đây mới là trust boundary cuối.
 
 ---
@@ -5582,8 +5582,8 @@ sequenceDiagram
     participant NOR as External W25Q
     participant BL as STM32 Bootloader
     CI->>SRV: Deploy signed Full/Delta SDOT + signed Manifest
-    SRV-->>ESP: MQTTS update command (artifact URL/size/CRC)
-    ESP->>SRV: HTTPS GET selected SDOT artifact
+    SRV-->>ESP: MQTTS update command (URL/kích thước/CRC gói SDOT)
+    ESP->>SRV: HTTPS GET gói SDOT đã chọn
     SRV-->>ESP: SDOT binary
     Note over ESP: Cache complete SDOT; verify size/CRC
     ESP->>APP: UART START / DATA / FINISH / INSTALL
@@ -5595,7 +5595,7 @@ sequenceDiagram
 ```
 
 - **MQTTS** gửi lệnh cập nhật/trạng thái; **không** mang toàn bộ patch hay firmware image.
-- **HTTPS** chuyển **artifact SDOT**, không nhất thiết là `application-v2.bin` raw.
+- **HTTPS** chuyển **gói SDOT**, không nhất thiết là `application-v2.bin` raw.
 - **UART** chuyển **byte của SDOT** dưới dạng DATA packets với COBS/CRC/ACK/Retry; không giải mã JojoDiff tại Gateway.
 - **Incoming W25Q** lưu **SDOT**. **Reconstructed W25Q** lưu **Target Image hoàn chỉnh** sau khi Bootloader xử lý.
 - **STM32 Application** không tự xác thực chữ ký ECDSA để cấp quyền cài; **STM32 Bootloader** làm bước đó sau `INSTALL + reset`.
@@ -5636,7 +5636,7 @@ flowchart TD
     APPLY --> VERIFY
     VERIFY -->|"PASS"| IMG["UPDATE_IMAGE_READY"]
     IMG --> BK["Backup active Application"]
-    CONTAINER -.->|"Rejected artifact"| IDLE["UPDATE_IDLE<br/>App cũ được giữ nguyên"]
+    CONTAINER -.->|"Từ chối gói SDOT"| IDLE["UPDATE_IDLE<br/>App cũ được giữ nguyên"]
     VERIFY -.->|"Mismatch / failure"| ERR["Reject / Recovery theo trạng thái lỗi"]
 ```
 
@@ -5738,9 +5738,9 @@ Signed savings            = (1 - 1,446 / 9,852) × 100%
 | Phép đo | Dùng để trả lời điều gì? |
 |---|---|
 | **Raw patch savings** | Thuật toán diff tạo patch ngắn hơn target bao nhiêu? |
-| **Signed SDOT savings** | Bản artifact bảo mật thực sự được phân phối tiết kiệm bao nhiêu? |
+| **Signed SDOT savings** | Gói SDOT đã ký thực sự được phân phối tiết kiệm bao nhiêu? |
 | **Firmware footprint** | Bootloader/Application còn vừa Internal Flash và SRAM không? |
-| **Incoming artifact fit** | Signed artifact có nằm trong giới hạn Incoming W25Q không? |
+| **Giới hạn dung lượng vùng Incoming** | Gói SDOT đã ký có nằm trong giới hạn Incoming W25Q không? |
 | **HIL/fault injection** | Trong các kịch bản đã kiểm thử, trạng thái và firmware cuối có phục hồi đúng không? |
 
 **Thử nghiệm nên làm khi học tiếp:** Thay đổi ít source code rồi build firmware mới, tạo patch và đo savings; tiếp tục thay đổi lớn (hoặc thay toolchain/optimization) rồi đo lại. So sánh **Signed savings**, không chỉ raw patch. Luôn kiểm tra `cmp`/hash của output sau round-trip và xem trạng thái target trên thiết bị.
@@ -5767,7 +5767,7 @@ python3 tools/release.py \
   --channel stable
 ```
 
-**Không nhầm “Release thành công” với “OTA thành công”:** Host tạo và ký release chỉ mới chứng minh công cụ tạo artifact; còn phải phân phối, nhận, xác thực, tái tạo, Backup, Install, Verify và Trial/Confirm trên thiết bị.
+**Không nhầm “Release thành công” với “OTA thành công”:** Host tạo và ký release chỉ mới chứng minh công cụ tạo các tệp phát hành; còn phải phân phối, nhận, xác thực, tái tạo, Backup, Install, Verify và Trial/Confirm trên thiết bị.
 
 ---
 
@@ -5775,7 +5775,7 @@ python3 tools/release.py \
 
 > Dạ, trong project **Secure Delta OTA Bootloader**, em triển khai đồng thời Full OTA và Delta OTA. Full OTA mang toàn bộ firmware mới, còn Delta OTA chỉ mang một patch mô tả thay đổi từ đúng firmware gốc sang firmware mới, vì vậy có thể giảm dữ liệu cần truyền qua mạng và UART.
 >
-> Ở phía Developer/CI, hệ thống sử dụng công cụ tạo patch tương thích JojoDiff từ hai file firmware base và target, sau đó thử áp dụng lại patch để đảm bảo kết quả khớp chính xác target. Release luôn có Full SDOT; Delta SDOT chỉ được đưa vào nếu mức tiết kiệm trên **gói đã ký** đạt ngưỡng cấu hình, mặc định 20%. Hai loại artifact đều được đóng gói SDOT và ký ECDSA P-256.
+> Ở phía Developer/CI, hệ thống sử dụng công cụ tạo patch tương thích JojoDiff từ hai file firmware base và target, sau đó thử áp dụng lại patch để đảm bảo kết quả khớp chính xác target. Release luôn có Full SDOT; Delta SDOT chỉ được đưa vào nếu mức tiết kiệm trên **gói đã ký** đạt ngưỡng cấu hình, mặc định 20%. Cả hai loại gói cập nhật đều được đóng gói SDOT và ký ECDSA P-256.
 >
 > Khi ESP32 truyền SDOT xuống STM32, Application lưu gói vào W25Q. Sau reset, Bootloader xác thực chữ ký và policy. Với Delta, Bootloader còn kiểm tra base version và **Base SHA-256** trước khi apply patch. Cả Full và Delta đều đi qua trạng thái `UPDATE_PATCHING` để chuẩn bị Target Image trong phân vùng Reconstructed. Sau khi kiểm tra **Target SHA-256**, Bootloader mới Backup firmware cũ và Install bản mới.
 >
@@ -5808,7 +5808,7 @@ python3 tools/release.py \
 | 19 | Vì sao Signed savings nhỏ hơn Raw savings? | Cả hai container mang thêm header SCX1 và chữ ký; overhead chiếm tỷ lệ lớn hơn với patch nhỏ. |
 | 20 | Kích thước overhead SDOT profile hiện hành? | 120 + 20 + 64 = **204 byte**. |
 | 21 | Ai tạo và giữ Private Key ký firmware? | Phía phát hành an toàn; không có trên ESP32/STM32. |
-| 22 | ESP32 có áp dụng JojoDiff patch không? | Không trong luồng hiện tại; Gateway vận chuyển artifact SDOT. |
+| 22 | ESP32 có áp dụng JojoDiff patch không? | Không trong luồng hiện tại; Gateway vận chuyển gói SDOT. |
 | 23 | Firmware target được tái tạo ở đâu? | Phân vùng Reconstructed Image trên W25Q. |
 | 24 | Full OTA có đi qua `UPDATE_PATCHING` không? | Có; Full copy, Delta apply patch. |
 | 25 | Vai trò của `JanpatchPort_ApplyStream()` là gì? | Áp dụng Delta Patch thành Target Image, kiểm tra tiến độ input/output. |
@@ -5835,7 +5835,7 @@ python3 tools/release.py \
 11. **`UPDATE_PATCHING` áp dụng cho cả Full và Delta** trong secure path; Full `CopyFullPayload()`, Delta `ApplyDeltaPayload()`.
 12. **Trước khi xóa Internal Flash**, cần có Target Image được Verify và Backup firmware cũ hợp lệ.
 13. **Mất nguồn trong `PATCHING` thì tái tạo lại an toàn**, không dùng Reconstructed dở dang; đây là Recovery, **không phải Rollback**.
-14. **Full fallback là cơ chế có artifact thay thế**; không được khẳng định Bootloader tự tải lại Full khi Delta bị reject.
+14. **Full fallback là cơ chế có gói Full OTA thay thế**; không được khẳng định Bootloader tự tải lại Full khi Delta bị reject.
 15. **Số liệu phải gắn nguồn/toolchain:** GCC signed savings **85,32%**, Clang reference **89,77%**; trong dữ liệu repo có **9/9 HIL PASS** cho các kịch bản đã ghi nhận.
 16. **Patch nhỏ không đồng nghĩa patch an toàn**: phải xác thực chữ ký, chính sách phiên bản, Base SHA-256, Target SHA-256 và kiểm tra quá trình cài đặt.
 
@@ -5854,7 +5854,7 @@ python3 tools/release.py \
 | [`docs/architecture.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/architecture.md) | Phân định Developer/CI, Release Server, ESP32, STM32 App, Bootloader, W25Q. |
 | [`benchmarks/reference.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/benchmarks/reference.md) | Số liệu Clang tham chiếu: raw/signed sizes và signed savings 89,77%. |
 | [`docs/results-report.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/results-report.md) | Số liệu GCC 85,32%, chứng cứ HIL 9/9 và cách diễn giải kết quả. |
-| [`scripts/benchmark.py`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/scripts/benchmark.py) | Cách tái lập footprint, artifact sizing, savings theo toolchain. |
+| [`scripts/benchmark.py`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/scripts/benchmark.py) | Cách tái lập footprint, kích thước gói cập nhật, savings theo toolchain. |
 | [`docs/hil-results.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/hil-results.md) | Kiểm thử reset trong reconstruction, backup/install/rollback và security-negative. |
 
 > **Tự kiểm tra cuối chương:** Thiết bị A và B đều đang báo **v1**. Release chứa **Delta SDOT v1→v2** được tạo từ firmware gốc của thiết bị A, cùng **Full SDOT v2**. Thiết bị B có firmware v1 được build khác nên Base SHA-256 không khớp. Hãy giải thích: (1) vì sao Server có thể chọn Delta nhưng Bootloader B vẫn từ chối, (2) cần kiểm tra trường nào của SDOT, (3) vì sao không được apply patch chỉ theo version, (4) tại sao **không** được tự cài Full không có chữ ký/chính sách phù hợp, (5) ai có thể điều phối yêu cầu Full mới, (6) Full có đi qua `UPDATE_PATCHING` không, (7) Target Image được đặt ở đâu, (8) mất nguồn khi đang tạo Reconstructed xử lý thế nào, (9) phân biệt Recovery với Rollback, và (10) tính signed savings nếu Full SDOT 11,480 B còn Delta SDOT 1,174 B. Cuối cùng, mở `tools/release.py` và `secure_container.c` để chỉ ra các hàm tương ứng với câu trả lời.
@@ -5906,7 +5906,7 @@ flowchart TD
 | **SHA-256** | Tạo hash 256 bit của bytes | **Không, nếu hash không được xác thực** | Hash vùng dữ liệu được ký; Base/Target Image. |
 | **ECDSA P-256** | Kiểm tra tính xác thực và toàn vẹn dữ liệu đã ký | **Có, khi public key được tin cậy** | Xác thực SDOT trước Install. |
 | **HTTPS/TLS** | Bảo vệ kênh truyền ESP32 ↔ Server | Có ở mức xác thực server/TLS phù hợp | Bảo vệ khi tải gói; không thay chữ ký Bootloader. |
-| **Anti-rollback policy** | Chặn cài bản có version không tăng | Không tự xác thực artifact | Kiểm tra `target_version` so với `active_version`. |
+| **Anti-rollback policy** | Chặn cài bản có version không tăng | Không tự xác thực gói SDOT | Kiểm tra `target_version` so với `active_version`. |
 | **Trial Boot / Rollback** | Giảm rủi ro firmware mới không chạy | Không phải chữ ký số | Chấp nhận hoặc khôi phục bản backup. |
 
 ---
@@ -6037,7 +6037,7 @@ sequenceDiagram
     alt Valid + policy + target checks PASS
        BL->>BL: Prepare Image / Backup / Install
     else Invalid
-       BL->>BL: Reject artifact
+       BL->>BL: Từ chối gói SDOT
     end
 ```
 
@@ -6177,7 +6177,7 @@ Verify ECDSA with g_trusted_public_key[64]
 flowchart TD
     A["INSTALL → Metadata ARTIFACT_READY<br/>Reset vào Bootloader"] --> B["W25Q Incoming + đọc SDOT header"]
     B --> C{"Trusted key provisioned?"}
-    C -->|Không| REJECT["Reject artifact<br/>không ghi đè Application"]
+    C -->|Không| REJECT["Từ chối gói SDOT<br/>không ghi đè Application"]
     C -->|Có| D["Parse Header + SCX1<br/>bounds, product, hardware, algorithms"]
     D --> E{"SCX1.key_id == Trusted key ID?"}
     E -->|Không| REJECT
@@ -6284,7 +6284,7 @@ Developer/CI
           |
           v
 Release Server
-  ├── Xác minh/publish artifact/Manifest
+  ├── Xác minh/phát hành gói SDOT/Manifest
   └── MQTTS gửi lệnh có URL, size, CRC32
           |
           v
@@ -6309,7 +6309,7 @@ STM32 Bootloader
 | **HTTPS/TLS** | ESP32 ↔ HTTPS Server | Bảo vệ quá trình tải SDOT và xác thực server trong luồng cấu hình. | Firmware chắc chắn được phép cài nếu HTTPS thành công. |
 | **MQTTS** | Server ↔ ESP32 | Kênh lệnh và trạng thái cập nhật. | Chữ ký firmware nằm trong MQTT command. |
 | **UART CRC32** | ESP32 ↔ STM32 | Phát hiện lỗi truyền gói. | Chứng minh firmware do nhà phát hành hợp lệ ký. |
-| **Signed SDOT** | STM32 Bootloader | **Bằng chứng mật mã trực tiếp** để quyết định tin cậy của artifact. | Firmware được mã hóa, không thể bị đọc trộm. |
+| **Signed SDOT** | STM32 Bootloader | **Bằng chứng mật mã trực tiếp** để quyết định tin cậy của gói SDOT. | Firmware được mã hóa, không thể bị đọc trộm. |
 
 **Mốc rất hay bị nhầm:** Trong luồng hiện tại, ESP32 nhận **URL SDOT từ lệnh MQTTS**; không cần tự phân tích Manifest để chọn Full/Delta. **Release Server** lựa chọn theo thông tin release và phiên bản hiện tại, nhưng **Bootloader kiểm tra độc lập** trước khi install.
 
@@ -6341,9 +6341,9 @@ STM32 Bootloader
 - Reject ở giai đoạn incoming validation/prepare khi firmware cũ còn hợp lệ thường đưa Metadata về `UPDATE_IDLE`, ghi `last_error` và giữ Application cũ.
 - Không suy ra rằng mọi lỗi đều dẫn đến `ROLLBACK`. **Rollback** chủ yếu có ý nghĩa sau khi đã cài và cần khôi phục bản backup.
 - Nếu lỗi nghiêm trọng ở giai đoạn khác đưa vào `UPDATE_FAILED`, logic boot hiện tại có thể ở `BOOT_ACTION_STAY_RECOVERY`; **không mặc nhiên có UART recovery handler** để cập nhật từ xa.
-- Với secure artifact có chữ ký sai, **không được bypass verification để “cho dễ demo”**, không tự bật unsigned legacy branch làm đường production.
+- Với gói SDOT có chữ ký sai, **không được bypass verification để “cho dễ demo”**, không tự bật unsigned legacy branch làm đường production.
 
-**Source cần theo khi debug:** `SECURE_CONTAINER_*` error code trong `secure_container.h`, nhánh `Reject()` và `SecureContainer_Process()` trong `secure_container.c`, `BootDecision_Evaluate()`/`BootManager_Run()` cho policy sau reset. Khi thử nghiệm, ghi lại case, artifact hash, vị trí lỗi và `active_version` trước/sau để chứng minh **Application đã được bảo vệ**.
+**Source cần theo khi debug:** `SECURE_CONTAINER_*` error code trong `secure_container.h`, nhánh `Reject()` và `SecureContainer_Process()` trong `secure_container.c`, `BootDecision_Evaluate()`/`BootManager_Run()` cho policy sau reset. Khi thử nghiệm, ghi lại case, SHA-256 của gói SDOT, vị trí lỗi và `active_version` trước/sau để chứng minh **Application đã được bảo vệ**.
 
 **Lưu ý an toàn về demo:** Bản repo checkout mặc định **không provision production key**. Muốn đo end-to-end secure OTA cần thiết bị đã nhúng public key thử nghiệm hoặc public key có thẩm quyền; không được tuyên bố **SDOT đã cài được trên stock image chưa provision**.
 
@@ -6423,7 +6423,7 @@ node-stm32f103/bootloader/src/secure_container.c
 | 2 | CRC32 khác SHA-256 thế nào? | CRC phát hiện lỗi không có bảo mật mật mã; SHA-256 là hash 256-bit. |
 | 3 | Chỉ SHA-256 có đủ xác thực firmware không? | Không, attacker có thể thay cả image và hash nếu hash không được ký/bảo vệ. |
 | 4 | ECDSA P-256 là gì? | Thuật toán chữ ký số bất đối xứng dùng đường cong P-256. |
-| 5 | Private Key dùng để làm gì và đặt ở đâu? | Ký artifact ở môi trường phát hành; không đưa xuống MCU/ESP32. |
+| 5 | Private Key dùng để làm gì và đặt ở đâu? | Ký gói SDOT ở môi trường phát hành; không đưa xuống MCU/ESP32. |
 | 6 | Public Key dùng để làm gì? | Bootloader dùng làm Trust Anchor để verify signature. |
 | 7 | Public Key cần được giữ bí mật không? | Không; nhưng phải bảo vệ tính toàn vẹn và nguồn cấp khóa đáng tin. |
 | 8 | Trust Anchor là gì? | Khóa công khai được thiết bị tin cậy từ trước qua provisioning. |
@@ -6439,8 +6439,8 @@ node-stm32f103/bootloader/src/secure_container.c
 | 18 | `payload_crc32` khớp có đủ cài không? | Không; còn chữ ký, policy, base/target và backup/install checks. |
 | 19 | Vì sao dùng streaming SHA-256? | Đọc W25Q theo chunk nhỏ; không cần RAM giữ cả firmware. |
 | 20 | STM32 Application có quyết định chữ ký không? | Không; Bootloader thực hiện authenticated install decision. |
-| 21 | MQTTS/HTTPS có thay chữ ký ECDSA không? | Không; transport security khác artifact-level authenticity. |
-| 22 | Manifest signature khác SDOT signature thế nào? | Manifest mô tả release; SDOT signature bảo vệ artifact mà Bootloader cài. |
+| 21 | MQTTS/HTTPS có thay chữ ký ECDSA không? | Không; transport security khác xác thực nguồn phát hành của gói cập nhật. |
+| 22 | Manifest signature khác SDOT signature thế nào? | Manifest mô tả release; SDOT signature bảo vệ gói SDOT mà Bootloader xác thực trước khi cài firmware. |
 | 23 | Anti-rollback policy của repo dùng điều kiện nào? | `target_version > active_version`. |
 | 24 | Anti-rollback khác Rollback thế nào? | Policy ngăn downgrade; Rollback khôi phục Backup khi Trial Boot lỗi. |
 | 25 | Tại sao Delta cần Base SHA-256? | Xác nhận exact bytes gốc, không chỉ cùng số version. |
@@ -6596,7 +6596,7 @@ typedef struct {
 | `active_version` | **Phiên bản đã Confirm**, không nhất thiết là image đang chạy Trial | Promoted version trước thời điểm được xác nhận |
 | `pending_version` | Phiên bản đang chờ Confirm | Không biết version đích |
 | `active_update_id` | Gắn tiến trình vào một lần cập nhật | Trộn các bản OTA |
-| `received_size`/`expected_size` | Kiểm soát tiến độ/kích thước | Tin artifact thiếu dữ liệu |
+| `received_size`/`expected_size` | Kiểm soát tiến độ/kích thước | Tin gói SDOT chưa nhận đủ dữ liệu |
 | `copy_offset` | Checkpoint theo giai đoạn sao chép/ghi | Bỏ qua vùng chưa được Verify |
 | `boot_attempts` | Số lần đã thử jump Trial Boot | Reset loop vô hạn |
 | `last_error` | Chẩn đoán lỗi | Mất dấu nguyên nhân phục hồi |
@@ -7046,7 +7046,7 @@ flowchart TD
 | Giữa Internal Flash page | Reset/torn page trong install | Erase/Program lại trang chưa Checkpoint; image cuối đúng |
 | Trong Restore | Reset giữa Rollback | Tiếp tục khôi phục đúng ảnh cũ |
 | MQTT sau khi nhận lệnh | Mất kết nối broker | Reconnect, không nhận trùng OTA đã accepted |
-| HTTPS tải dở | Truncated artifact | Không gửi `INSTALL` cho image thiếu bytes |
+| HTTPS tải dở | Gói SDOT bị tải thiếu | Không gửi `INSTALL` cho image thiếu bytes |
 | SDOT sai chữ ký | Thay đổi signature nhưng transport CRC hợp lệ | Bootloader từ chối, v1 còn nguyên |
 | Candidate không Confirm | Ứng dụng thử không khỏe | 3 lần thất bại → Rollback về v1 |
 
@@ -7065,7 +7065,7 @@ flowchart TD
 | 3 | `backup-reset` | Reset sau mốc backup Checkpoint | Backup tiếp tục và OTA hoàn thành |
 | 4 | `install-midpage-reset` | Reset giữa trang Internal Flash | Ghi dở được Erase/Replay an toàn |
 | 5 | `mqtt-drop-after-accepted` | Ngắt MQTT sau accepted command | Kết nối lại, không nhận trùng OTA |
-| 6 | `https-truncate` | HTTPS artifact bị cắt ngắn | Không Install; image cũ nguyên |
+| 6 | `https-truncate` | Gói SDOT tải qua HTTPS bị cắt ngắn | Không Install; image cũ nguyên |
 | 7 | `tampered-signature` | Sửa ECDSA signature, CRC vận chuyển hợp lệ | Bootloader reject; giữ v1 |
 | 8 | `rollback-control` | Candidate ký hợp lệ nhưng unhealthy | 3 trial thất bại → khôi phục đúng v1 |
 | 9 | `rollback-reset` | Reset giữa restore Backup | Resume Rollback; khôi phục v1 chính xác |
@@ -7123,7 +7123,7 @@ make hil-test \
 
 #### Bước 9. Đọc benchmark chính xác: GCC khác Clang và raw khác signed
 
-**Hiệu quả Delta OTA nên đo theo byte trên artifact thật, không chỉ patch raw:**
+**Hiệu quả Delta OTA nên đo theo số byte của gói SDOT thực tế, không chỉ patch raw:**
 
 ```text
 Savings (%) = (Signed Full Size - Signed Delta Size)
@@ -7142,7 +7142,7 @@ Dữ liệu từ [`VALIDATION.md`](https://github.com/haikevins/secure-delta-ota
 **Các giới hạn benchmark quan trọng:**
 
 - Bootloader Flash budget: **24.576 B**; Application Flash budget: **38.912 B**; SRAM tổng: **20.480 B**.
-- `make benchmark` kiểm tra cả `ELF sections`, raw patch round-trip, signed artifact size và giới hạn dung lượng.
+- `make benchmark` kiểm tra cả `ELF sections`, raw patch round-trip, kích thước gói SDOT đã ký và giới hạn dung lượng.
 - Ngưỡng lựa chọn Delta trong release là **signed savings tối thiểu 20%**; không phải 20% của mạng thực tế trong mọi tình huống.
 - Thời gian thực thi trong báo cáo tham chiếu chỉ để tham khảo, không được dùng làm deadline sản phẩm nếu chưa có acceptance criterion riêng.
 - **Không được dùng 9/9 HIL để khẳng định benchmark đạt trên mọi thiết bị hoặc mọi firmware.**
@@ -7184,7 +7184,7 @@ Dữ liệu từ [`VALIDATION.md`](https://github.com/haikevins/secure-delta-ota
 | Signature tampered vẫn cài được | Kiểm tra Trust Anchor và secure path | Lỗi bảo mật nghiêm trọng; test phải FAIL |
 | Watchdog quá nhanh | LSI sai số, prescaler/reload, thời gian startup | Đo deadline thực trên hardware |
 | PC ở HardFault | Stack frame, CFSR/HFSR, MSP, VTOR | Root cause cụ thể thay vì chỉ tăng timeout |
-| Benchmark khác báo cáo | Toolchain/version/build flags/ELF artifact | Không so 2 con số khác điều kiện như một phép đo |
+| Benchmark khác báo cáo | Toolchain/version/build flags/tệp ELF | Không so 2 con số khác điều kiện như một phép đo |
 
 #### Câu hỏi ôn tập Chương 6.10 (30 câu, kèm ý chính)
 
@@ -7212,12 +7212,12 @@ Dữ liệu từ [`VALIDATION.md`](https://github.com/haikevins/secure-delta-ota
 | 20 | `patch-reset` phải chứng minh điều gì? | Patch replay an toàn và active không hỏng. |
 | 21 | `install-midpage-reset` kiểm tra gì? | Torn page được erase/program lại đúng. |
 | 22 | `rollback-reset` kiểm tra gì? | Resume restore và v1 byte-for-byte đúng. |
-| 23 | `https-truncate` phải chặn gì? | Không cài artifact thiếu bytes. |
+| 23 | `https-truncate` phải chặn gì? | Không cài gói SDOT thiếu byte. |
 | 24 | `tampered-signature` có ý nghĩa gì? | Transport CRC có thể đúng nhưng ECDSA vẫn phải từ chối. |
 | 25 | Vì sao cần fault witness? | Chứng minh hook thực sự xảy ra, không PASS giả. |
 | 26 | Repo ghi nhận bao nhiêu HIL PASS? | 9/9 kịch bản xác định trước. |
 | 27 | 9/9 PASS có nghĩa production-ready? | Không; chỉ chứng minh phạm vi test đã ghi nhận. |
-| 28 | Signed Delta savings GCC là bao nhiêu? | 85,32% (signed artifacts trong run đã ghi). |
+| 28 | Signed Delta savings GCC là bao nhiêu? | 85,32% (các gói SDOT đã ký trong run đã ghi). |
 | 29 | Clang reference signed savings là bao nhiêu? | 89,77%; không trộn với GCC. |
 | 30 | Một hạn chế production còn thiếu? | RDP/debug hardening, physical attack, secure element, health check sâu... |
 
@@ -7269,7 +7269,7 @@ Dữ liệu từ [`VALIDATION.md`](https://github.com/haikevins/secure-delta-ota
 | Kiến trúc | Vì sao gói SDOT phải lưu vào External Flash W25Q? | Tách giai đoạn tải khỏi ghi Internal Flash; cần vùng Incoming, Reconstructed, Backup. |
 | Release | Vì sao có cả Full OTA và Delta OTA? | Full không cần đúng base; Delta tiết kiệm dữ liệu nhưng cần kiểm tra base. |
 | Release | Manifest khác SDOT thế nào? | Manifest mô tả release; SDOT chứa payload và chữ ký cập nhật. |
-| Network | Tại sao dùng cả MQTTS và HTTPS? | MQTTS điều khiển/thông báo; HTTPS truyền artifact. |
+| Network | Tại sao dùng cả MQTTS và HTTPS? | MQTTS điều khiển/thông báo; HTTPS truyền gói SDOT. |
 | UART | COBS và CRC32 giải quyết hai vấn đề nào? | Đóng khung và phát hiện lỗi dữ liệu. |
 | UART | Nếu mất ACK sau khi STM32 đã ghi một DATA packet? | ESP32 Retry; STM32 xử lý dữ liệu trùng/offset theo protocol. |
 | Recovery | Resume khác Retry ở điểm nào? | Retry xử lý packet; Resume phục hồi từ Checkpoint sau gián đoạn. |
