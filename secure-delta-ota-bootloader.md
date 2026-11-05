@@ -451,8 +451,6 @@ Qua project này, em hiểu rõ hơn về Bootloader, quản lý bộ nhớ Flas
 
 ---
 
----
-
 <a id="phan-2"></a>
 ## Phần 2. Trình bày System Architecture
 
