@@ -37,32 +37,6 @@
 <a id="phu-luc-a"></a>
 ## Phụ lục A. Các khái niệm, công nghệ và thuật toán cốt lõi của project
 
-<a id="phu-luc-a-0"></a>
-### A.1. Quy ước thuật ngữ thống nhất cho toàn tài liệu
-
-| Thuật ngữ chuẩn | Ý nghĩa / quy tắc sử dụng | Không đánh đồng với |
-|---|---|---|
-| **STM32 Bootloader / STM32 Application / ESP32 Gateway / Release Server / Developer/CI** | Tên của năm thành phần kiến trúc; khi ngữ cảnh rõ có thể viết tắt thành **Bootloader / Application / Gateway / Server / CI**. | Bootloader không phải Application; ESP32 Gateway không thay Bootloader quyết định cài đặt. |
-| **Internal Flash / External Flash W25Q / Flash cache của ESP32** | Ba vùng lưu trữ riêng; khi nói Metadata hay SDOT nên chỉ rõ vùng chứa. | External Flash W25Q của STM32 không phải Flash cache của ESP32. |
-| **Gói SDOT (tệp cập nhật đã đóng gói)** | Gói SDOT được truyền qua mạng/UART rồi lưu ở vùng **Incoming**; chứa header, Payload và chữ ký. | **Target Image** là firmware hoàn chỉnh, không phải nguyên gói SDOT. |
-| **Payload** | Phần dữ liệu trong container/packet; khi dễ nhầm cần viết **SDOT Payload** hoặc **DATA payload**. | Payload trong packet UART không đồng nghĩa toàn bộ SDOT. |
-| **Manifest** | Tệp mô tả release (`manifest.json`); chữ ký Manifest được quản lý riêng. | Gói SDOT chứa dữ liệu cập nhật. |
-| **Full OTA / Delta OTA / Delta Patch** | Full OTA chứa firmware đích hoàn chỉnh; Delta OTA chứa Delta Patch để tái tạo firmware. | Delta Patch không phải firmware có thể khởi động. |
-| **Base Image (firmware gốc)** | Binary *chính xác* đã dùng tạo Delta Patch; kiểm tra bằng Base SHA-256. | Không phải cứ cùng `base_version` là có Base Image đúng. |
-| **Target Image (firmware đích)** | Binary hoàn chỉnh mong muốn sau Full/Delta; được kiểm tra bằng Target SHA-256. | **Reconstructed Image** là tên vùng lưu trữ trên W25Q, nơi đặt Target Image đã chuẩn bị. |
-| **Reconstructed Image / Backup Image / Incoming** | Tên các phân vùng logic W25Q: chứa Target Image, chứa bản sao Application cũ, và chứa gói SDOT. | Không đổi tên vùng này thành thuật toán hay trạng thái. |
-| **JojoDiff / JANPatch** | JojoDiff **tạo** Delta Patch tại host; JANPatch **áp dụng** patch để dựng Target Image. | Công cụ tạo patch không phải bộ giải mã trên STM32. |
-| **UART / SPI / HTTPS / MQTTS / MQTT** | UART truyền SDOT giữa ESP32 và STM32; SPI truy cập W25Q; MQTTS là MQTT qua TLS để gửi lệnh/trạng thái; HTTPS tải gói SDOT. | MQTT (giao thức) không tự đồng nghĩa MQTTS (kết nối TLS). |
-| **COBS / CRC32 / ACK / NACK / Retry / Resume** | COBS đóng khung; CRC32 phát hiện lỗi; ACK/NACK phản hồi; Retry gửi lại packet/lệnh; Resume tiếp tục nhận theo Checkpoint sau gián đoạn. | ACK hiện tại không thay thế Checkpoint bền vững. |
-| **SHA-256 / ECDSA P-256 / Trusted Public Key / Private Key** | SHA-256 tạo digest; ECDSA ký/xác minh; Private Key ở phía phát hành, Trusted Public Key ở phía Bootloader. | CRC32 hoặc SHA-256 đơn độc không xác thực nguồn ký; ECDSA không mã hóa nội dung firmware. |
-| **Metadata / Checkpoint** | Metadata mô tả trạng thái và quyết định cập nhật; Checkpoint xác nhận tiến độ *đã lưu bền vững*. | `generation` chọn bản Metadata mới; `copy_offset`/Checkpoint là tiến độ, không phải generation. |
-| **Internal Flash Metadata A/B / External Flash Metadata A/B** | Hai cặp bản lưu A/B độc lập trên hai loại Flash; ghi rõ vùng khi bàn đến layout hoặc phục hồi. | Không dùng "Metadata A/B" để khẳng định chúng cùng một địa chỉ hoặc cùng cấu trúc. |
-| **Boot State Machine / Boot Decision / Boot Action** | Boot State Machine là mô hình trạng thái; Boot Decision suy ra hành động khi khởi động; Boot Action là kết quả quyết định. | State không đồng nghĩa Action. |
-| **Trial Boot / Confirm / Rollback** | Trial Boot chạy thử Application; Confirm công nhận firmware mới; Rollback khôi phục Backup Image. | Install xong chưa chắc Confirm. |
-| **Power-loss Recovery / Rollback / Anti-rollback** | Recovery tiếp tục/làm lại việc an toàn; Rollback phục hồi firmware đã sao lưu; Anti-rollback ngăn cập nhật xuống phiên bản cũ không cho phép. | Ba cơ chế độc lập về mục tiêu. |
-| **Watchdog / IWDG** | Watchdog là khái niệm; **IWDG** là Independent Watchdog của STM32F103 dùng trong Trial Boot. | Watchdog reset không tự thực hiện Rollback; Bootloader xử lý sau reset. |
-| **Verify / Validation / xác thực / kiểm tra** | Nêu rõ đối tượng: **CRC32 check**, **SHA-256 hash check**, **ECDSA signature verification**, **Flash read-back Verify**, hoặc **Release Validation**. | Không coi mọi từ "Verify" là xác thực chữ ký số. |
-
 <a id="phu-luc-a-2"></a>
 ### A.2. Application, Bootloader và bộ nhớ Flash
 
@@ -179,16 +153,16 @@ Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **150
 
 #### A.5.2. Cryptographic Hash và SHA-256 (Secure Hash Algorithm 256-bit)
 
-**Hash function** ánh xạ dữ liệu có kích thước bất kỳ thành **digest** có kích thước cố định. **SHA-256** là hàm băm mật mã sinh **256 bit = 32 byte**. Các tính chất quan trọng để hiểu ở mức phỏng vấn:
+**Hash function** ánh xạ dữ liệu có kích thước bất kỳ thành **giá trị băm** có kích thước cố định. **SHA-256** là hàm băm mật mã sinh **256 bit = 32 byte**. Các tính chất quan trọng để hiểu ở mức phỏng vấn:
 
 - **Deterministic:** Cùng input byte → cùng hash.
-- **Preimage resistance:** Từ một digest, về mặt tính toán khó tìm input tạo ra digest đó.
+- **Preimage resistance:** Từ một giá trị băm, về mặt tính toán khó tìm input tạo ra giá trị băm đó.
 - **Second-preimage resistance:** Khó tìm một input khác có cùng hash với input đã cho.
 - **Collision resistance:** Khó tìm **bất kỳ hai input khác nhau** có cùng hash; tuy nhiên không phải về mặt toán học là "không thể trùng".
-- **Avalanche effect:** Thay đổi nhỏ ở input thường làm nhiều bit của digest thay đổi.
+- **Avalanche effect:** Thay đổi nhỏ ở input thường làm nhiều bit của giá trị băm thay đổi.
 - **Streaming:** Có thể cập nhật SHA-256 theo từng chunk 256 byte; rất phù hợp STM32 có RAM hạn chế.
 
-**Vai trò trong project:** tính digest của vùng SDOT được ký, kiểm tra **Base SHA-256** của firmware cũ và **Target SHA-256** của image hoàn chỉnh. **Hash một mình không chứng minh ai tạo ra firmware**: kẻ tấn công sửa cả firmware lẫn trường hash nếu chúng không được ký.
+**Vai trò trong project:** tính giá trị băm của vùng SDOT được ký, kiểm tra **Base SHA-256** của firmware cũ và **Target SHA-256** của image hoàn chỉnh. **Hash một mình không chứng minh ai tạo ra firmware**: kẻ tấn công sửa cả firmware lẫn trường hash nếu chúng không được ký.
 
 #### A.5.3. Mật mã bất đối xứng, Public Key và Private Key
 
@@ -205,7 +179,7 @@ Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **150
 - **ECDSA** là thuật toán **ký/xác minh chữ ký số** dựa trên elliptic curve, không phải thuật toán băm và không phải mã hóa nội dung.
 - **P-256** là đường cong elliptic chuẩn với khóa/bài toán có kích thước danh nghĩa **256 bit**.
 - **Ký (host):** serialise chính xác các byte cần bảo vệ → tính `SHA-256(signed_bytes)` → dùng Private Key ECDSA tạo chữ ký gồm hai số nguyên `(r,s)`.
-- **Xác minh (STM32 Bootloader):** tính lại digest **trên đúng các byte đó** → dùng **Trusted Public Key** và `(r,s)` để kiểm tra chữ ký. Nếu sai, từ chối trước Install.
+- **Xác minh (STM32 Bootloader):** tính lại giá trị băm **trên đúng các byte đó** → dùng **Trusted Public Key** và `(r,s)` để kiểm tra chữ ký. Nếu sai, từ chối trước Install.
 - **Định dạng signature trong SDOT:** raw `r[32] || s[32]` = **64 byte**; khác với chữ ký **DER** có độ dài biến thiên do OpenSSL thường xuất ra. Phía host chuyển DER ↔ raw khi đóng gói/kiểm tra.
 - **Lưu ý triển khai mật mã:** Chữ ký ECDSA cần nonce `k` an toàn/không lặp; quản lý Private Key và chọn thư viện mật mã đáng tin cậy quan trọng không kém thuật toán.
 
@@ -273,24 +247,24 @@ Receiver: bytes → CRC32(parameters) → so sánh với crc nhận được
                                     └─ Trùng → không phát hiện lỗi (CHƯA xác thực nguồn gửi)
 ```
 
-#### Ví dụ 2 — SHA-256: "abc" có digest 32 byte
+#### Ví dụ 2 — SHA-256: "abc" có giá trị băm 32 byte
 
 ```text
 SHA-256("abc") =
 ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 ```
 
-Khi thay đổi chỉ một byte của input, digest thường thay đổi rất mạnh (avalanche effect). **Không** thể lấy digest này làm bằng chứng chữ ký; bất kỳ ai cũng có thể băm dữ liệu. Khi dùng SHA-256 trong OTA, digest mong đợi phải được bảo vệ bởi chữ ký hoặc một mốc tin cậy khác.
+Khi thay đổi chỉ một byte của input, giá trị băm thường thay đổi rất mạnh (avalanche effect). **Không** thể lấy giá trị băm này làm bằng chứng chữ ký; bất kỳ ai cũng có thể băm dữ liệu. Khi dùng SHA-256 trong OTA, giá trị băm mong đợi phải được bảo vệ bởi chữ ký hoặc một mốc tin cậy khác.
 
 #### Ví dụ 3 — ECDSA: vì sao không thể chỉ gửi hash?
 
 ```text
-Developer: firmware.bin → SHA-256 → digest
-Developer: ECDSA_Sign(private_key, digest) → (r, s)
+Developer: firmware.bin → SHA-256 → gia_tri_bam
+Developer: ECDSA_Sign(private_key, gia_tri_bam) → (r, s)
 
 STM32: nhận firmware + signature
-STM32: SHA-256(firmware / signed_region) → digest2
-STM32: ECDSA_Verify(trusted_public_key, digest2, (r, s)) → PASS / FAIL
+STM32: SHA-256(firmware / signed_region) → gia_tri_bam_2
+STM32: ECDSA_Verify(trusted_public_key, gia_tri_bam_2, (r, s)) → PASS / FAIL
 ```
 
 Kẻ tấn công có thể tạo một file firmware khác và băm lại nó, nhưng **không thể giả mạo chữ ký hợp lệ** nếu không có Private Key và các giả định mật mã/triển khai được giữ. Với project, firmware không được ký trực tiếp như sơ đồ tối giản mà là **vùng `Header 140 B + Payload SDOT`**; Bootloader xác minh SDOT trước khi quyết định cài đặt.
@@ -5792,7 +5766,7 @@ Untrusted or semi-trusted distribution path
 Final installation trust boundary
     STM32 Bootloader + provisioned Public Key
         ├── Validate SDOT format / product / version
-        ├── Verify signed digest (ECDSA P-256)
+        ├── Xác minh chữ ký trên giá trị băm (ECDSA P-256)
         ├── Verify exact base + reconstructed target
         └── Only then proceed toward Backup / Install
 ```
@@ -5805,7 +5779,7 @@ Final installation trust boundary
 
 #### Bước 2. CRC32 khác SHA-256 ở đâu? Vì sao Hash một mình chưa đủ?
 
-**CRC32** là kiểm tra lỗi nhanh, phù hợp cho UART/W25Q. **SHA-256** là hàm hash mật mã: nhận dữ liệu bất kỳ và tạo **digest 32 byte (256 bit)**. Digest giúp phát hiện nội dung khác nhau với xác suất va chạm cực thấp trong giả định an toàn của SHA-256.
+**CRC32** là kiểm tra lỗi nhanh, phù hợp cho UART/W25Q. **SHA-256** là hàm hash mật mã: nhận dữ liệu bất kỳ và tạo **giá trị băm 32 byte (256 bit)**. Giá trị băm giúp phát hiện nội dung khác nhau với xác suất va chạm cực thấp trong giả định an toàn của SHA-256.
 
 ```text
 Dữ liệu Payload A  ── CRC32 ──> 4 bytes     (phát hiện lỗi dữ liệu)
@@ -5851,7 +5825,7 @@ if (!ECDSA_Verify(trusted_public_key, signed_digest, signature)) reject();
 
 | Tên trong luồng | Tính trên bytes nào? | Thời điểm kiểm tra |
 |---|---|---|
-| **Signed region digest** | **140-byte header + Payload SDOT** | Trước khi xác thực ECDSA. |
+| **Giá trị băm của vùng dữ liệu được ký** | **140-byte header + Payload SDOT** | Trước khi xác thực ECDSA. |
 | **Base SHA-256** | Firmware gốc thật đang nằm ở Internal Flash | **Chỉ Delta**, trước khi Apply Patch. |
 | **Target SHA-256** | Firmware mới hoàn chỉnh trong Reconstructed | Sau Copy Full hoặc Apply Delta, trước Backup/Install. |
 
@@ -5868,7 +5842,7 @@ if (!ECDSA_Verify(trusted_public_key, signed_digest, signature)) reject();
 | **Private Key** | Host ký firmware / môi trường CI được bảo vệ | Tạo signature cho SDOT/Manifest. |
 | **Public Key** | STM32 Bootloader (`trusted_key.h`) và hệ thống xác minh release | Xác minh signature. |
 | **Key ID** | Header extension và cấu hình Bootloader | Định danh khóa được phép sử dụng; **không** chứng minh tính xác thực riêng lẻ. |
-| **SHA-256 digest** | Tính trên vùng signed bytes | Đầu vào được ECDSA ký/xác minh. |
+| **Giá trị băm SHA-256** | Tính trên vùng signed bytes | Đầu vào được ECDSA ký/xác minh. |
 | **Signature** | Cuối file SDOT | `r[32] || s[32]`, tổng **64 byte**. |
 
 **Sơ đồ ký/xác thực**:
@@ -5881,13 +5855,13 @@ sequenceDiagram
     participant BL as STM32 Bootloader
     participant Pub as Trusted Public Key
     CI->>CI: Serialize canonical Header 140 B + Payload
-    CI->>CI: Digest = SHA-256(Signed Bytes)
-    CI->>Key: ECDSA P-256 Sign(Digest)
+    CI->>CI: Giá trị băm = SHA-256(Signed Bytes)
+    CI->>Key: ECDSA P-256 Sign(Giá trị băm)
     Key-->>CI: Signature raw r||s (64 B)
     CI->>Server: Header + Payload + Signature
     Server->>BL: SDOT (có thể đã đi qua W25Q Incoming)
     BL->>BL: SHA-256(Header 140 B + Payload)
-    BL->>Pub: ECDSA Verify(Digest, Signature)
+    BL->>Pub: ECDSA Verify(Giá trị băm, Signature)
     Pub-->>BL: Valid / Invalid
     alt Valid + policy + target checks PASS
        BL->>BL: Prepare Image / Backup / Install
@@ -6039,7 +6013,7 @@ flowchart TD
     E -->|Có| F["Hash Header + Payload<br/>CRC32 Payload"]
     F --> G{"CRC32 hợp lệ?"}
     G -->|Không| REJECT
-    G -->|Có| H["ECDSA P-256 VerifyDigest<br/>Trusted Public Key"]
+    G -->|Có| H["Xác minh chữ ký ECDSA P-256<br/>Trusted Public Key"]
     H -->|Sai chữ ký| REJECT
     H -->|Đúng| I["Metadata + Anti-rollback policy<br/>target_version > active_version"]
     I --> J{"Full hay Delta?"}
@@ -6060,7 +6034,7 @@ flowchart TD
 |---|---|
 | `FirmwareContainer_Parse()` | Parse field little-endian, kiểm tra magic, version, kích thước, loại firmware, product/hardware, thuật toán và tổng chiều dài. |
 | `HashAndCrcPayload()` | Tính SHA-256 của **header + payload**, payload hash và payload CRC32 bằng streaming đọc W25Q. |
-| `EcdsaP256_VerifyDigest()` | Xác minh chữ ký raw `r||s` trên signed digest bằng trusted public key. |
+| `EcdsaP256_VerifyDigest()` | Xác minh chữ ký raw `r||s` trên giá trị băm của vùng dữ liệu được ký bằng trusted public key. |
 | `ValidateMetadataPolicy()` | Khớp Metadata transfer, chặn `target_version <= active_version`, kiểm tra base version theo loại OTA. |
 | `ValidateBase()` | Delta: tính hash firmware gốc ở `APPLICATION_START_ADDRESS` và so sánh với header đã ký. |
 | `CopyFullPayload()` / `ApplyDeltaPayload()` | Chuẩn bị Target Image tại W25Q Reconstructed, không cài trực tiếp từ SDOT vào Internal Flash. |
