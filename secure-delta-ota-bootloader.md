@@ -167,7 +167,7 @@ Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **150
 <a id="phu-luc-a-5"></a>
 ### A.5. Mật mã, kiểm tra toàn vẹn và xác thực nguồn phát hành
 
-#### A.5.1. CRC32 (Cyclic Redundancy Check 32-bit)
+#### A.5.1. CRC32
 
 **CRC32** là phương pháp tính **mã kiểm tra lỗi 32 bit**, không phải thuật toán mật mã. Nó diễn giải các bit dữ liệu như một đa thức nhị phân rồi tính **phần dư phép chia đa thức trên GF(2)**. Trên GF(2), phép cộng/trừ tương đương **XOR**, không dùng nhớ như cộng số nguyên thông thường.
 
@@ -203,7 +203,7 @@ Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **150
 #### A.5.4. ECDSA P-256 (Elliptic Curve Digital Signature Algorithm)
 
 - **ECDSA** là thuật toán **ký/xác minh chữ ký số** dựa trên elliptic curve, không phải thuật toán băm và không phải mã hóa nội dung.
-- **P-256** là đường cong elliptic chuẩn với khóa/bài toán có kích thước danh nghĩa **256 bit**. Tên đúng là **ECDSA P-256**, không phải "P-25".
+- **P-256** là đường cong elliptic chuẩn với khóa/bài toán có kích thước danh nghĩa **256 bit**.
 - **Ký (host):** serialise chính xác các byte cần bảo vệ → tính `SHA-256(signed_bytes)` → dùng Private Key ECDSA tạo chữ ký gồm hai số nguyên `(r,s)`.
 - **Xác minh (STM32 Bootloader):** tính lại digest **trên đúng các byte đó** → dùng **Trusted Public Key** và `(r,s)` để kiểm tra chữ ký. Nếu sai, từ chối trước Install.
 - **Định dạng signature trong SDOT:** raw `r[32] || s[32]` = **64 byte**; khác với chữ ký **DER** có độ dài biến thiên do OpenSSL thường xuất ra. Phía host chuyển DER ↔ raw khi đóng gói/kiểm tra.
@@ -258,8 +258,6 @@ sequenceDiagram
 - **Rollback:** Khôi phục Backup hợp lệ khi firmware Trial không được xác nhận sau giới hạn; project giới hạn **3 lần Trial Boot**.
 - **IWDG (Independent Watchdog):** Bộ đếm độc lập có thể **reset MCU** nếu phần mềm không phục vụ trong thời gian cho phép. Watchdog **không trực tiếp thực hiện Rollback**: nó tạo reset, còn Bootloader đọc trạng thái/attempts để quyết định.
 - **Fault Injection:** Chủ động gây lỗi tại điểm xác định (mất nguồn, cắt dữ liệu, chữ ký bị sửa...) để thử các invariant của hệ thống. **HIL (Hardware-in-the-Loop)** dùng phần cứng thật trong chu trình kiểm thử; kết quả **9/9 scenario PASS** là bằng chứng trong phạm vi 9 kịch bản đó, **không phải bảo đảm tuyệt đối**.
-
-**Học kỹ:** [3 – Boot State Machine](#phan-3) · [5 – Phân tích State Machine](#phan-5) · [6.9 – Metadata & Recovery](#chuong-6-9) · [6.10 – Watchdog & Testing](#chuong-6-10).
 
 <a id="phu-luc-a-7"></a>
 ### A.7. Ba ví dụ nhỏ để hiểu thuật toán (minh họa, không phải mã nguồn repo)
