@@ -1,9 +1,5 @@
 # Secure Delta OTA Bootloader
 
-> **Mục tiêu:** Ôn tập project theo đúng **7 phần** để trình bày và trả lời phỏng vấn **Embedded Firmware Engineer**.
-> **Nền tảng:** STM32F103 + ESP32 Gateway + External Flash W25Q.
-> **Nguồn:** Tài liệu `docs/boot-state-machine.md`, `docs/metadata-and-boot-decision.md` của repository.
-
 ## Mục lục
 
 1. [Trình bày Project](#phan-1)
@@ -558,10 +554,6 @@ flowchart TD
 
 <a id="phan-4"></a>
 ## Phần 4. Phân tích chi tiết System Architecture
-
-> **Mục tiêu:** Phân tích sâu **System Architecture** đã giới thiệu ở **Phần 2**, theo cùng bố cục với **Phần 5**: **sơ đồ luồng → các bước xử lý → bài nói khi phỏng vấn → câu hỏi ôn tập → điểm cần ghi nhớ**. Phần 2 dùng để trình bày tổng quan khoảng 90 giây; Phần 4 dùng để giải thích chi tiết từng luồng từ **Developer/CI** đến **STM32 Internal Flash**.
->
-> **Phạm vi:** Giữ nguyên nội dung và số liệu kỹ thuật trong bản ghi chú; các sơ đồ Mermaid nhấn mạnh luồng chính, không thay thế mọi điều kiện và nhánh lỗi của mã nguồn.
 
 <a id="luong-1"></a>
 ### 4.1. Developer/CI → Release Server
