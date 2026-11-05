@@ -108,7 +108,7 @@
 
 **Nếu mất nguồn:** Trang chưa được xác nhận phải được xử lý lại từ mốc Checkpoint an toàn; tuyệt đối không coi dữ liệu ghi dở là firmware đã cài thành công.
 
-**Câu hỏi phỏng vấn gắn với project:** `ProgramBufferedApplicationPage()` làm gì? Vì sao `ResumePageCheckpointedCopy()` lưu Checkpoint sau Verify? Làm thế nào bảo vệ Bootloader và Metadata khi Erase?
+**Câu hỏi phỏng vấn gắn với project:** Làm thế nào bảo vệ Bootloader và Metadata khi Erase?
 
 <a id="phu-luc-a-1-4"></a>
 #### A.1.4. Application Jump — Vector Table, MSP, Reset Handler và VTOR
