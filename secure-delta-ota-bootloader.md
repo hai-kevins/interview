@@ -613,29 +613,43 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CI["Developer / CI"] --> BUILD["Build STM32 Application<br/>application-v2.bin"]
-    BUILD --> FULL["Full OTA<br/>toàn bộ firmware v2"]
-    BUILD --> DELTA["Delta OTA<br/>JojoDiff từ firmware v1 và v2"]
-    DELTA --> TEST["Áp dụng thử patch<br/>đối chiếu với firmware v2"]
-    FULL --> PACK["Đóng gói SDOT<br/>và ký ECDSA P-256"]
-    TEST -->|"Patch phù hợp + đạt ngưỡng tiết kiệm"| PACK
-    PACK --> FS["Full SDOT"]
-    PACK --> DS["Delta SDOT nếu đủ điều kiện"]
-    FS --> MAN["Tạo và ký Manifest"]
-    DS --> MAN
-    MAN --> CHECK["Kiểm tra release"]
-    CHECK --> SERVER["Triển khai lên Release Server"]
+    DEV["Developer sửa code<br/>commit + push lên GitHub"] --> GHA["GitHub Actions"]
+    GHA --> TEST["test.yml<br/>Cú pháp, kiểm tra tĩnh,<br/>JojoDiff, UART contract"]
+    GHA --> BUILD["build.yml<br/>warning-check, check, benchmark"]
+    TEST --> READY["Các kiểm tra đạt"]
+    BUILD --> READY
+    READY --> MANUAL["Developer chạy thủ công<br/>firmware-release.yml"]
+    MANUAL --> VALID["Kiểm tra lại project<br/>và cấu hình phát hành"]
+    VALID --> BIN["Build Application v2<br/>application-v2.bin"]
+    BIN --> FULL["Tạo và ký Full SDOT"]
+    FULL --> BASE{"base_version > 0?"}
+    BASE -->|"Có"| GET["Tải application-v1.bin<br/>từ GitHub Release fw-v1"]
+    GET --> PATCH["JojoDiff + kiểm tra patch<br/>Tạo và ký Delta SDOT"]
+    PATCH --> THRESHOLD{"Delta tiết kiệm<br/>ít nhất 20%?"}
+    THRESHOLD -->|"Có"| KEEP["Giữ Delta SDOT"]
+    THRESHOLD -->|"Không"| MAN["Tạo và ký Manifest<br/>chỉ gồm Full SDOT"]
+    KEEP --> MAN2["Tạo và ký Manifest<br/>gồm Full và Delta SDOT"]
+    BASE -->|"Không"| MAN
+    MAN --> CHECK["Xác minh bản phát hành"]
+    MAN2 --> CHECK
+    CHECK --> GHREL["Đăng GitHub Release fw-v2"]
+    GHREL -.->|"Triển khai riêng, không do workflow thực hiện"| SERVER["Release Server"]
 ```
 
-#### Bước 1. Developer/CI build firmware
+#### Bước 1. Developer push mã nguồn và CI kiểm tra
 
-Developer chỉnh sửa mã nguồn **STM32 Application** (ví dụ từ v1 lên v2), có thể **build thử trên máy** để kiểm tra, sau đó **commit và push mã nguồn lên GitHub**.
+Developer sửa mã nguồn **STM32 Application** (ví dụ từ v1 lên v2), có thể build thử trên máy, rồi **commit và push lên GitHub**. Hai workflow trong `.github/workflows/` tự chạy khi `push` hoặc có Pull Request (cũng có thể chạy thủ công):
 
-Nếu repository đã cấu hình **GitHub Actions**, các file workflow `.yml`/`.yaml` trong thư mục `.github/workflows/` có thể tự chạy khi có sự kiện `push`. **CI (Continuous Integration)** thực hiện các lệnh đã khai báo, chẳng hạn **build firmware** để tạo **`application-v2.bin`**, kiểm thử và chuẩn bị các tệp phát hành. Vì vậy, Developer **không bắt buộc tự build `.bin` trước khi push**; các bước tự động thực tế phụ thuộc vào nội dung YAML.
+- **`test.yml`:** Kiểm tra cú pháp Python, kiểm tra tĩnh project, kiểm thử JojoDiff và tính tương thích giao thức UART/SDOT giữa ESP32–STM32.
+- **`build.yml`:** Cài toolchain STM32 và chạy `make warning-check`, `make check`, `make benchmark` với `TOOLCHAIN=gcc`.
 
-#### Bước 2. Tạo Full OTA và Delta OTA
+Đây là **CI kiểm tra mã nguồn và khả năng build**, chưa phải bước phát hành gói OTA. Developer **không cần tự tạo file `.bin` trước khi push**; workflow phát hành sẽ build lại firmware với phiên bản được chỉ định.
 
-Từ firmware mới, release tooling chuẩn bị các gói cập nhật tương ứng:
+#### Bước 2. Chạy workflow phát hành, tạo Full OTA và Delta OTA
+
+Sau khi các kiểm tra đạt, Developer vào **GitHub Actions → Firmware Release → Run workflow** để chạy **`firmware-release.yml`** theo cách **thủ công** (`workflow_dispatch`). Workflow nhận `target_version`, `base_version` (`0` = chỉ Full OTA), `channel` và `release_notes`; sau đó **kiểm tra lại project, cấu hình khóa ký** và build `application.bin` với `APPLICATION_VERSION` bằng phiên bản đích (ví dụ **v2**).
+
+Từ firmware mới, `tools/release.py` chuẩn bị các gói cập nhật tương ứng:
 
 | Tiêu chí | Full OTA | Delta OTA |
 |---|---|---|
@@ -643,9 +657,9 @@ Từ firmware mới, release tooling chuẩn bị các gói cập nhật tương
 | Dữ liệu cần để tạo | Firmware **v2** | Firmware **v1** và **v2** chính xác |
 | Dung lượng | Thường lớn hơn | Có thể nhỏ hơn đáng kể |
 
-Đối với **Delta OTA**, công cụ dùng **JojoDiff** để tạo Delta Patch, sau đó **áp dụng thử patch lên firmware v1** và so sánh kết quả với firmware v2 để kiểm tra tính đúng đắn.
+Nếu `base_version > 0`, workflow tải **đúng `application-v1.bin` từ GitHub Release `fw-v1`**, rồi dùng **JojoDiff** tạo Delta Patch và áp dụng thử lên v1 để bảo đảm tái tạo đúng v2.
 
-Repository luôn tạo **Full OTA**, nhưng chỉ đưa **Delta OTA** vào release khi mức tiết kiệm đạt ngưỡng cấu hình, mặc định **20%**.
+Repository **luôn tạo Full SDOT**. Delta SDOT chỉ được đưa vào bản phát hành khi **kích thước gói Delta đã ký tiết kiệm ít nhất 20%** so với Full SDOT đã ký (ngưỡng mặc định). Nếu không có Base Image hoặc không đạt ngưỡng, bản phát hành chỉ chứa Full SDOT.
 
 > **Ghi nhớ:** Delta Patch phụ thuộc vào **firmware gốc**. Khi cài đặt, STM32 Bootloader vẫn phải kiểm tra firmware gốc có đúng với bản được dùng để tạo patch hay không.
 
@@ -674,7 +688,7 @@ Cả hai loại dữ liệu cập nhật được đóng gói theo định dạn
 
 Hệ thống dùng **SHA-256** để tạo các giá trị hash phục vụ kiểm tra tính toàn vẹn và **ECDSA P-256** để ký số SDOT bằng **private key**.
 
-> **Ghi nhớ:** **Private key** được sử dụng ở phía phát hành firmware, **không truyền xuống ESP32 Gateway hoặc STM32**. Chữ ký SDOT sẽ được STM32 Bootloader xác thực trước khi cài đặt.
+> **Ghi nhớ:** Workflow phát hành lấy **Private Key** từ GitHub Secret `SIGNING_KEY_PEM`, tạo file khóa tạm trên runner để ký rồi xóa; **không lưu khóa trong repository hoặc truyền xuống ESP32/STM32**. STM32 Bootloader dùng Public Key tin cậy để xác thực SDOT trước khi cài đặt.
 
 #### Bước 4. Tạo và ký số Manifest
 
@@ -693,7 +707,7 @@ Manifest cũng được ký bằng **ECDSA**; chữ ký được lưu trong **`m
 
 > **Phân biệt SDOT và Manifest:** **SDOT** chứa firmware hoặc Delta Patch đã ký số; **Manifest** mô tả thông tin bản phát hành và các gói cập nhật để hệ thống biết gói nào đang được cung cấp.
 
-#### Bước 5. Kiểm tra và chuyển bản phát hành sang Release Server
+#### Bước 5. Xác minh, đăng GitHub Release và triển khai riêng
 
 Thư mục release có cấu trúc minh họa như sau:
 
@@ -711,31 +725,33 @@ dist/releases/fw-v2/
 └── release-notes.md
 ```
 
-Sau khi tạo release, công cụ **kiểm tra tính hợp lệ của các file**. Bộ release được **triển khai lên Release Server** để sử dụng cho bước phân phối tiếp theo.
+Sau khi `tools/release.py` tạo các file, workflow chạy **`python3 server/app/main.py verify`** để kiểm tra bản phát hành. Nếu hợp lệ, bước **`gh release create`** đăng các file lên **GitHub Releases**, chẳng hạn tag **`fw-v2`** (không ghi đè release đã tồn tại).
 
-Release Server sử dụng bộ release đã triển khai để:
+**GitHub Releases chưa phải Release Server HTTPS riêng của hệ thống.** Bộ file đã phát hành cần được **triển khai sang Release Server bằng một bước riêng**; ba workflow hiện tại không tự upload lên server đó hoặc tự gửi lệnh MQTTS đến ESP32.
+
+Khi đã có bộ release được triển khai, Release Server sử dụng nó để:
 
 - Xác minh **Manifest** và các gói cập nhật theo thông tin bảo mật tương ứng.
 - Cung cấp các gói SDOT qua **HTTPS**.
 - Chuẩn bị thông báo cập nhật qua **MQTTS**.
 
-> **Lưu ý:** Việc **tạo và xác minh thư mục release** không đồng nghĩa với việc công cụ release tự động upload dữ liệu lên máy chủ từ xa. Triển khai release lên server là một bước riêng.
+> **Lưu ý:** `push` kích hoạt **`test.yml`/`build.yml`**, không tự kích hoạt **`firmware-release.yml`**. Kể cả khi đã đăng GitHub Release thành công, bước phân phối qua Release Server vẫn tách biệt.
 
 #### Bài nói khi phỏng vấn: Developer/CI và Release Server
 
-> **Developer/CI → Release Server:** Đầu tiên, Developer/CI sẽ build STM32 Application để tạo file firmware mới dạng binary.
+> **Developer/CI → Release Server:** Sau khi sửa firmware, em commit và push mã nguồn lên GitHub. Hai workflow `test.yml` và `build.yml` tự chạy để kiểm tra mã nguồn, giao thức, thuật toán Delta và khả năng build STM32.
 >
-> Tiếp theo, công cụ release chuẩn bị gói cập nhật Full OTA từ toàn bộ firmware mới. Với Delta OTA, hệ thống sử dụng JojoDiff để tạo Delta Patch từ firmware cũ sang firmware mới, sau đó áp dụng thử Patch để kiểm tra khả năng tái tạo chính xác.
+> Khi muốn phát hành, em **chạy thủ công `firmware-release.yml`**, nhập phiên bản đích và phiên bản gốc nếu muốn tạo Delta. Workflow kiểm tra lại project, build file `.bin`, tạo và ký Full SDOT; nếu có firmware gốc phù hợp, công cụ dùng JojoDiff tạo và kiểm tra Delta Patch, rồi chỉ giữ Delta SDOT khi tiết kiệm ít nhất **20%** dung lượng.
 >
-> Sau đó, các gói cập nhật được đóng gói theo định dạng SDOT và ký số bằng ECDSA P-256. Hệ thống cũng tạo và ký Manifest chứa thông tin phiên bản, kích thước, hash và đường dẫn đến các gói SDOT.
->
-> Cuối cùng, công cụ release kiểm tra các file đã tạo. Bộ release hợp lệ được triển khai lên Release Server để xác minh và phân phối cho thiết bị. Như vậy, Developer/CI chịu trách nhiệm tạo và ký gói cập nhật, còn Release Server chịu trách nhiệm phân phối.
+> Sau đó hệ thống tạo và ký Manifest, xác minh bản phát hành và **đăng lên GitHub Releases**. Việc **triển khai bộ release sang Release Server** để phân phối qua HTTPS/MQTTS là bước riêng, không tự thực hiện chỉ bằng ba workflow này.
 
 #### Câu hỏi ôn tập: Developer/CI → Release Server
 
 | Câu hỏi | Ý chính cần trả lời |
 |---|---|
-| CI là gì? | Hệ thống tự động hóa build, kiểm thử và chuẩn bị release. |
+| Push lên GitHub thì workflow nào tự chạy? | `test.yml` và `build.yml` (cả khi có Pull Request); `firmware-release.yml` chỉ chạy thủ công. |
+| `firmware-release.yml` thực hiện những bước chính nào? | Kiểm tra lại project → build `.bin` → tạo/ký SDOT và Manifest → verify → đăng GitHub Release. |
+| `base_version = 0` có nghĩa gì? | Không tải firmware cũ và chỉ tạo gói Full OTA. |
 | Tại sao cần firmware v1 khi tạo Delta OTA? | Vì JojoDiff tạo patch từ sự khác biệt giữa firmware v1 và v2. |
 | Tại sao phải áp dụng thử Delta Patch? | Để kiểm tra patch có tái tạo đúng firmware v2 từ firmware v1 hay không. |
 | Tại sao vẫn tạo Full OTA? | Để có gói cập nhật đầy đủ khi Delta OTA không phù hợp hoặc không đạt ngưỡng tiết kiệm. |
@@ -743,17 +759,18 @@ Release Server sử dụng bộ release đã triển khai để:
 | ECDSA P-256 dùng để làm gì? | Ký và xác thực dữ liệu cập nhật bằng cặp private key/public key phù hợp. |
 | SHA-256 dùng để làm gì? | Tạo và kiểm tra hash để xác minh tính toàn vẹn của dữ liệu. |
 | Manifest khác SDOT ở điểm nào? | Manifest mô tả bản phát hành; SDOT chứa Full Firmware hoặc Delta Patch đã ký số. |
+| GitHub Releases có đồng nghĩa đã triển khai lên Release Server không? | Không. Workflow đăng lên GitHub Releases; triển khai sang server HTTPS riêng là bước tách biệt. |
 | Release Server có tạo firmware không? | Không. Developer/CI và release tooling tạo các tệp cập nhật; server xác minh và phân phối. |
 | Release Server có cần private key ký firmware không? | Không cần private key ký firmware để xác minh và phân phối release. |
 
 #### Điểm cần ghi nhớ
 
-- **Developer/CI tạo các tệp cập nhật; Release Server phân phối**. Kiểm tra release tại máy build không đồng nghĩa đã tự động upload lên server.
+- **Push code → `test.yml` + `build.yml`; phát hành thủ công → `firmware-release.yml`**. GitHub Release và triển khai lên Release Server là hai bước khác nhau.
 - **Full OTA** có firmware đích hoàn chỉnh; **Delta OTA** dùng patch từ đúng firmware gốc và phải được kiểm tra khả năng tái tạo.
 - **SDOT khác Manifest:** SDOT chứa dữ liệu cập nhật đã ký số; Manifest mô tả release và các gói cập nhật.
 - **Private key** ở phía phát hành; STM32 Bootloader dùng public key tin cậy để kiểm tra chữ ký trước cài đặt.
 
-**Tài liệu/code đối chiếu:** `docs/release-process.md`, `tools/release.py`, `tools/secure_container.py`.
+**Tài liệu/code đối chiếu:** `.github/workflows/test.yml`, `.github/workflows/build.yml`, `.github/workflows/firmware-release.yml`, `tools/release.py`, `tools/secure_container.py`, `docs/release-process.md`.
 
 ---
 
