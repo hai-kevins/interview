@@ -485,12 +485,6 @@ flowchart TD
     APP -->|"Confirm nếu chạy đạt điều kiện"| BOOT
 ```
 
-> **Lưu ý 1:** **MQTTS truyền lệnh và trạng thái**, còn **HTTPS truyền dữ liệu gói SDOT**. ESP32 Gateway chịu trách nhiệm mạng, tải và chuyển tiếp gói SDOT; không giữ private key ký firmware.
->
-> **Lưu ý 2:** `FINISH` chỉ xác nhận **đã nhận đủ gói SDOT** (kích thước và CRC32). Sau lệnh `INSTALL`, STM32 Application mới commit `UPDATE_ARTIFACT_READY` vào **Internal Flash Metadata A/B** và reset. **STM32 Bootloader** mới là thành phần quyết định xác thực và cài đặt.
->
-> **Lưu ý 3:** **External Flash W25Q** chứa gói SDOT nhận được, firmware tái tạo và bản Backup; **Internal Flash** chứa Application đang chạy. **CRC32** giúp phát hiện lỗi dữ liệu, còn **ECDSA P-256 + SHA-256** phục vụ xác thực và kiểm tra tính toàn vẹn firmware. **Power-loss Recovery** không đồng nghĩa với **Rollback**.
-
 ---
 
 <a id="phan-3"></a>
@@ -533,12 +527,6 @@ flowchart TD
     VERIFY -.->|"Gói bị từ chối, firmware cũ còn hợp lệ"| IDLE
     VERIFY -.->|"Lỗi nghiêm trọng"| FAILED["FAILED / STAY_RECOVERY"]
 ```
-
-> **Lưu ý 1:** `ARTIFACT_READY` xuất hiện đầu tiên trong **runtime** của STM32 Application sau `FINISH`. Lệnh `INSTALL` mới ghi `UPDATE_ARTIFACT_READY` vào **Internal Flash Metadata A/B** để Bootloader xử lý sau reset.
->
-> **Lưu ý 2:** `UPDATE_FAILED` đưa Bootloader vào `BOOT_ACTION_STAY_RECOVERY`; bản triển khai hiện tại **không** có chế độ tự nhận lệnh UART `START` để khôi phục từ xa tại trạng thái này.
->
-> **Lưu ý 3:** Trước khi được xác nhận, firmware mới chỉ đang ở **Trial Boot**. `active_version` vẫn đại diện cho firmware đã xác nhận trước đó.
 
 ---
 
