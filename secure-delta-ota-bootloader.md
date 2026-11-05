@@ -218,10 +218,10 @@ Target firmware v2 ┘                          │
 
 - **Packet** là đơn vị dữ liệu tầng giao thức, thường gồm **Header, Payload, CRC**. Header cho biết lệnh, ID, offset, sequence và độ dài.
 - **Framing** là cách biết chính xác một packet bắt đầu/kết thúc ở đâu trên dòng byte UART liên tục. UART cung cấp các byte, **không tự phân tách OTA packet**.
-- **COBS (Consistent Overhead Byte Stuffing)** là thuật toán mã hóa để dữ liệu frame **không còn byte `0x00` bên trong**, từ đó dùng `0x00` làm ký hiệu kết thúc frame. Receiver tìm delimiter, giải mã COBS rồi mới xử lý packet gốc.
+- **COBS (Consistent Overhead Byte Stuffing)** là thuật toán mã hóa để dữ liệu frame **không còn byte `0x00` bên trong**, từ đó dùng `0x00` làm ký hiệu kết thúc frame. Bộ nhận tìm byte phân tách `0x00`, giải mã COBS rồi mới xử lý packet gốc.
 - **CRC32 packet** được tính trên các byte packet **trước COBS** (không bao gồm chính trường CRC hay byte phân tách). COBS **không thay thế** CRC32: COBS giải quyết biên frame, CRC32 phát hiện lỗi byte.
 
-**Ví dụ COBS minh họa:** `11 22 00 33` có thể được mã hóa thành `03 11 22 02 33`, sau đó nối `00` làm delimiter trên UART. Đây chỉ là ví dụ encoding; gói OTA thật còn có header và CRC.
+**Ví dụ COBS minh họa:** `11 22 00 33` có thể được mã hóa thành `03 11 22 02 33`, sau đó thêm byte phân tách `00` trên UART. Đây chỉ là ví dụ encoding; gói OTA thật còn có header và CRC.
 
 #### A.4.3. Update ID, Sequence, Offset, ACK/NACK, Retry và Resume
 
@@ -4076,7 +4076,7 @@ Raw packet (header | payload | CRC32)
       COBS encode
             |
             v
-Encoded bytes (không có 0x00 bên trong) + 0x00 delimiter
+Các byte đã mã hóa (không có 0x00 bên trong) + byte phân tách 0x00
             |
             v
          UART TX
@@ -4095,7 +4095,7 @@ UART RX stream:
 |---|---|
 | Nhận byte khác `0x00` | Gom vào frame buffer, kiểm tra giới hạn bộ đệm. |
 | Nhận `0x00` | Kết thúc frame, COBS decode, rồi parse/verify packet. |
-| COBS decode lỗi | Bỏ frame hiện tại; tiếp tục chờ delimiter tiếp theo. |
+| COBS decode lỗi | Bỏ frame hiện tại; tiếp tục chờ byte phân tách `0x00` tiếp theo. |
 | Buffer vượt giới hạn | Từ chối/bỏ frame, tránh tràn bộ nhớ. |
 | Mất vài byte giữa frame | Thường khiến CRC hoặc COBS lỗi; phân tách lại tại `0x00`. |
 | Inter-byte timeout | Có thể xóa frame đang dở; **không phải cơ chế framing chính**. |
@@ -4131,7 +4131,7 @@ void on_uart_byte(uint8_t byte)
 
 #### Bước 3. Phân tích cấu trúc packet OTA v1: Header, Payload, CRC32
 
-Một raw packet bao gồm **header cố định 16 byte**, **payload 0–256 byte**, và **packet CRC32 4 byte**. Vì vậy raw packet dài **20–276 byte** (trước COBS và delimiter).
+Một raw packet bao gồm **header cố định 16 byte**, **payload 0–256 byte**, và **packet CRC32 4 byte**. Vì vậy raw packet dài **20–276 byte** (trước khi mã hóa COBS và thêm byte phân tách `0x00`).
 
 ```text
 +------------------------------+
@@ -4561,7 +4561,7 @@ Theo `gateway-esp32/README.md`, bộ chọn transfer plan có các kết quả: 
 
 1. **Happy path:** SDOT hợp lệ → START → nhiều DATA → FINISH → INSTALL → Bootloader Trial/Confirm.
 2. **Packet CRC sai:** đảo 1 bit trong DATA, giữ CRC cũ → receiver từ chối, không tăng offset.
-3. **COBS hỏng:** gửi frame thiếu delimiter hoặc mã COBS lỗi → bỏ frame, đồng bộ lại ở `0x00`.
+3. **COBS hỏng:** gửi frame thiếu byte phân tách `0x00` hoặc mã COBS lỗi → bỏ frame, đồng bộ lại ở `0x00`.
 4. **Duplicate DATA:** làm mất ACK sau khi Write/Verify rồi gửi lại cùng packet → ACK idempotent, không ghi lặp mù quáng.
 5. **Sequence/Offset sai:** gửi `seq` hoặc `offset` nhảy cóc → NACK, không làm hỏng Incoming.
 6. **Update ID khác:** RESUME bằng id của gói SDOT khác → `UPDATE_ID_MISMATCH`.
@@ -4605,7 +4605,7 @@ Flash write/verify, sector erase, xử lý MCU, Wi-Fi hoặc các lần Retry.
 | 3 | STM32 và ESP32 dùng UART nào, chân nào? | STM32 USART1 PA9/PA10; ESP32 mặc định UART2 GPIO17/GPIO16. |
 | 4 | Vì sao phải nối TX ↔ RX chéo và chung GND? | TX bên này đi vào RX bên kia; GND làm tham chiếu điện áp logic chung. |
 | 5 | Vì sao không truyền SDOT trực tiếp bằng “raw UART stream” không framing? | Không biết ranh giới command/packet; dễ mất đồng bộ khi lỗi byte. |
-| 6 | COBS giải quyết vấn đề gì? | Loại `0x00` trong encoded frame để dùng `0x00` làm delimiter. |
+| 6 | COBS giải quyết vấn đề gì? | Loại `0x00` trong encoded frame để dùng `0x00` làm byte phân tách frame. |
 | 7 | Có COBS rồi còn cần CRC32 không? | Có; COBS chỉ framing, không bảo đảm nội dung packet đúng. |
 | 8 | Raw packet lớn nhất bao nhiêu byte? | 16 header + 256 payload + 4 CRC = **276 B**. |
 | 9 | Vì sao encoded frame buffer là 320 byte? | Dự phòng kích thước sau COBS và framing cho packet max payload 256 B. |
@@ -4634,7 +4634,7 @@ Flash write/verify, sector erase, xử lý MCU, Wi-Fi hoặc các lần Retry.
 #### Điểm cần ghi nhớ
 
 1. **STM32 USART1 PA9/PA10 ↔ ESP32 UART2 GPIO17/GPIO16**, mặc định **115200 8-N-1**, chung GND và TX/RX nối chéo.
-2. **UART là byte stream**: `COBS(raw_packet) + 0x00` tạo ranh giới frame. COBS decode lỗi thì bỏ frame và đồng bộ tại delimiter tiếp theo.
+2. **UART là byte stream**: `COBS(raw_packet) + 0x00` tạo ranh giới frame. COBS decode lỗi thì bỏ frame và đồng bộ tại byte phân tách `0x00` tiếp theo.
 3. **Raw packet = 16-byte header + 0–256-byte payload + 4-byte CRC32**; maximum raw 276 B, maximum encoded frame buffer 320 B.
 4. **Các trường nhiều byte là little-endian**; serialize theo wire format, không gửi trực tiếp C `struct` có padding.
 5. **CRC32 tính trên raw magic→payload**; không tính chính CRC hay byte COBS; CRC phát hiện lỗi, **không xác thực nguồn phát hành**.
