@@ -295,44 +295,6 @@ STM32: ECDSA_Verify(trusted_public_key, digest2, (r, s)) → PASS / FAIL
 
 Kẻ tấn công có thể tạo một file firmware khác và băm lại nó, nhưng **không thể giả mạo chữ ký hợp lệ** nếu không có Private Key và các giả định mật mã/triển khai được giữ. Với project, firmware không được ký trực tiếp như sơ đồ tối giản mà là **vùng `Header 140 B + Payload SDOT`**; Bootloader xác minh SDOT trước khi quyết định cài đặt.
 
-<a id="phu-luc-a-8"></a>
-### A.8. Những cặp khái niệm rất dễ bị hỏi nhầm khi phỏng vấn
-
-| Dễ nhầm | Khác nhau ở điểm cốt lõi |
-|---|---|
-| **CRC32 vs SHA-256** | CRC32 phát hiện lỗi ngoài ý muốn; SHA-256 là hash mật mã nhưng **đứng một mình vẫn không xác thực tác giả**. |
-| **SHA-256 vs ECDSA** | SHA-256 tạo digest; ECDSA dùng khóa để ký/xác minh digest của dữ liệu đã xác định. |
-| **Digital Signature vs Encryption** | Signature xác thực nội dung/nguồn ký; encryption bảo vệ tính bí mật của dữ liệu. |
-| **Public Key vs Private Key** | Private Key chỉ phía ký giữ; Public Key tin cậy được Bootloader dùng để Verify. |
-| **COBS vs CRC32** | COBS tạo biên frame; CRC32 phát hiện frame có byte lỗi. |
-| **UART vs SPI** | UART không có dây clock riêng; SPI dùng clock do master tạo và đường CS chọn slave. |
-| **MQTTS vs HTTPS** | MQTTS điều khiển/thông báo; HTTPS tải gói SDOT. |
-| **SDOT vs Manifest** | SDOT chứa payload cập nhật đã ký; Manifest mô tả các gói cập nhật của bản phát hành. |
-| **Full OTA vs Delta OTA** | Full mang cả target; Delta cần exact base + patch. |
-| **JojoDiff vs JANPatch** | JojoDiff **tạo** patch trên host; JANPatch **áp dụng** patch phía thiết bị. |
-| **Firmware Image vs Gói SDOT** | Firmware Image là binary hoàn chỉnh để chạy; SDOT là container vận chuyển/cập nhật. |
-| **ACK vs Checkpoint** | ACK phản ánh xử lý packet trong phiên hiện tại; Checkpoint là tiến độ đã lưu qua reset. |
-| **Retry vs Resume** | Retry gửi lại packet/lệnh; Resume tiếp tục cập nhật qua gián đoạn bằng Checkpoint. |
-| **FINISH vs INSTALL** | FINISH xác nhận nhận đủ gói; INSTALL mới commit Metadata và reset sang Bootloader. |
-| **Power-loss Recovery vs Rollback** | Recovery tiếp tục/làm lại bước dở; Rollback khôi phục firmware đã sao lưu. |
-| **Anti-rollback vs Rollback** | Anti-rollback là chính sách phiên bản; Rollback là hành động phục hồi khi candidate lỗi. |
-| **SPI BSY vs W25Q WIP** | BSY là trạng thái ngoại vi SPI STM32; WIP là tiến độ Program/Erase **bên trong chip W25Q**. |
-| **Trial Boot vs Confirm** | Trial chỉ chạy thử; Confirm mới chấp nhận chính thức firmware mới. |
-| **Secure OTA vs Hardware Secure Boot** | Xác thực gói OTA chưa mặc nhiên tạo Root of Trust phần cứng bất biến. |
-
-**Nguồn đối chiếu implementation:** [README](https://github.com/haikevins/secure-delta-ota-bootloader) · [SDOT Container](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/firmware-container.md) · [UART Protocol](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/uart-ota-protocol.md) · [External SPI Flash](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/external-spi-flash.md) · [Metadata / Boot Decision](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/metadata-and-boot-decision.md) · [Release Process](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/release-process.md) · [Boot State Machine](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-state-machine.md).
-
----
-
-### Quy ước thuật ngữ
-
-> Toàn bộ tài liệu áp dụng chung **[bảng thuật ngữ chuẩn tại Phụ lục A.0](#phu-luc-a-0)**. Tên hàm, trường dữ liệu, enum trạng thái `UPDATE_*`, câu lệnh và đường dẫn trong repository được giữ nguyên, không dịch hay đổi tên.
-
-- **Gói SDOT** là gói cập nhật đã đóng gói và ký; **Target Image** là firmware đích hoàn chỉnh; **Reconstructed Image** là vùng trên W25Q dùng để chứa image đã chuẩn bị. Đây là ba đối tượng khác nhau.
-- **Metadata** lưu trạng thái và thông tin điều khiển cập nhật; **Checkpoint** lưu mốc tiến độ an toàn. **Internal Flash Metadata A/B** khác với vùng Metadata/Checkpoint của **External Flash W25Q**.
-- **Power-loss Recovery** tiếp tục hoặc làm lại thao tác bị gián đoạn; **Rollback** phục hồi **Backup Image**. **Anti-rollback** là chính sách ngăn cài phiên bản cũ không được phép, không phải Rollback.
-- **CRC32** phát hiện lỗi dữ liệu; **SHA-256** tạo hash mật mã; **ECDSA P-256** xác minh chữ ký với **Trusted Public Key**. Chỉ có hash không xác thực được nguồn phát hành.
-
 ---
 
 <a id="phan-1"></a>
