@@ -1,4 +1,4 @@
-# Mini Multimeter — Tài liệu ôn tập chuyên sâu Embedded Firmware
+# Mini Multimeter
 
 > **Mục tiêu:** Hiểu đúng project `mini-multimeter` từ phần cứng đến firmware; đủ khả năng trình bày kiến trúc, giải thích thuật toán, lần theo mã nguồn, nhận diện giới hạn và trả lời phỏng vấn **Embedded Firmware Engineer** liên quan trực tiếp đến project.
 >
@@ -7,6 +7,8 @@
 > **Repository:** [haikevins/mini-multimeter](https://github.com/haikevins/mini-multimeter).
 >
 > **Nguồn đối chiếu:** `README.md`, `ARCHITECTURE.md`, `docs/hardware.md`, `docs/measurement.md`, `docs/runtime.md`, `docs/validation.md`, `docs/build-and-flash.md` và các file `Application/`, `Services/`, `Drivers/`, `Infrastructure/`, `Platform/` trên nhánh `main` (truy cập ngày **05/11/2026**).
+>
+> **Mức tương đồng với tài liệu mẫu:** Giữ 7 phần chính, Phụ lục A ngay sau mục lục, bài nói phỏng vấn 90 giây, sơ đồ Mermaid, phân tích luồng/trạng thái, 12 chương kỹ thuật mỗi chương 10 bước và 30 câu hỏi, cùng các ví dụ tính và bảng tra cứu.
 >
 > **Phân biệt bằng chứng:** **[Code]**: có thể đối chiếu trực tiếp với triển khai; **[Docs]**: số liệu/thiết kế được ghi trong repo; **[Phân tích]**: suy luận kỹ thuật hoặc ví dụ tính toán; **[Đề xuất]**: cải tiến chưa được khẳng định có trong firmware. Các ví dụ mã giả không phải nguyên văn mã nguồn.
 
@@ -84,6 +86,8 @@
 | **Validation** | Kết quả thử nghiệm được ghi lại | Chứng nhận hiệu chuẩn/phòng thí nghiệm |
 
 **Cách viết trong toàn tài liệu:** Giữ nguyên tên API, file, macro, enum và thanh ghi trong dấu backtick. Dùng “dải đo” để nói về khoảng tần số/giá trị, “độ phân giải” cho bước nhỏ nhất có thể phân biệt, “độ chính xác” cho độ gần với giá trị chuẩn, “độ ổn định hiển thị” cho khả năng chống nhấp nháy. Ba khái niệm này không thay thế cho nhau.
+
+**Đi nhanh đến nhóm kiến thức:** [A.0. Thuật ngữ](#phu-luc-a-0) · [A.1. Tổng quan](#phu-luc-a-1) · [A.2. MCU](#phu-luc-a-2) · [A.3. ADC/Analog](#phu-luc-a-3) · [A.4. Timer](#phu-luc-a-4) · [A.5. I2C/UART/Flash](#phu-luc-a-5) · [A.6. Architecture/Test](#phu-luc-a-6) · [A.7. Ví dụ thuật toán](#phu-luc-a-7) · [A.8. Dễ nhầm](#phu-luc-a-8).
 
 <a id="phu-luc-a-1"></a>
 ### A.1. Bức tranh tổng quan: mỗi công nghệ giải quyết vấn đề gì? (trình bày dọc)
@@ -234,92 +238,58 @@ Trong firmware dùng ngưỡng `1241` (~1 V), `2482` (~2 V), `R=20 kΩ`, công t
 
 ---
 
-<a id="phu-luc-b"></a>
-## Phụ lục B. Thông số, chân MCU và bản đồ mã nguồn
+<a id="phu-luc-a-7"></a>
+### A.7. Ba ví dụ nhỏ để hiểu các thuật toán trong project
 
-### B.1. Các thông số phải nhớ khi phỏng vấn
+#### Ví dụ 1 — CRC-32: cùng dữ liệu và cùng tham số phải cho cùng mã
 
-| Hạng mục | Giá trị của project | Nguồn |
-|---|---|---|
-| MCU / CPU | STM32F103C8T6 / ARM Cortex-M3 | `docs/hardware.md` |
-| CPU clock / APB1 / APB2 | 72 MHz / 36 MHz / 72 MHz | `docs/hardware.md` |
-| Timer clock APB1 | 72 MHz (APB1 prescaler khác 1) | `docs/hardware.md` |
-| ADC clock | 12 MHz (`PCLK2 / 6`) | `docs/hardware.md` |
-| SysTick | 1 ms | `docs/hardware.md` |
-| ADC batch | 16 mẫu, ISR cộng số nguyên | `Drivers/adc_driver.c` |
-| ADC driver LPF | `alpha=0,2` | `docs/measurement.md` |
-| Điện trở tham chiếu | 10 kΩ | `docs/measurement.md` |
-| Điện trở RC | 20 kΩ | `docs/measurement.md` |
-| Điện áp giả định | 3,3 V | `docs/measurement.md` |
-| Ngưỡng tụ | ADC 1241 / 2482 (~1 V / 2 V) | `Services/measurement_service.c` |
-| Ngưỡng điện trở hở / có | ADC 4075 / 4060 | `Services/measurement_service.c` |
-| Debounce | 20 ms; FIFO 8 sự kiện | `docs/runtime.md` |
-| Timeout ADC batch | 100 ms | `Services/measurement_service.c` |
-| Timeout không có PWM | 1100 ms | `Services/measurement_service.c` |
-| PWM output | TIM2 CH2 PA1; 1 Hz–100 kHz; 1–100% | `docs/measurement.md` |
-| PWM low/mid/high | TIM4 PB6 / TIM3 PA6 / TIM1 PA8 | `docs/measurement.md` |
-| LCD | LCD1602, I2C2 100 kHz, PCF8574/PCF8574A | `docs/hardware.md` |
-| UART | USART1 9600 8-N-1 | `docs/runtime.md` |
-| Flash record | 24 byte, V1, CRC-32 | `docs/runtime.md` |
-| Trang Flash cấu hình | `0x0800FC00`–`0x0800FFFF` | `docs/runtime.md` |
-| Splash / save feedback | 2000 ms / 800 ms | `docs/runtime.md` |
-
-### B.2. Bản đồ chân (pin map)
-
-| Tín hiệu | Peripheral | Chân MCU | Chú ý |
-|---|---|---|---|
-| Điện trở | ADC1 CH3 | PA3 | Analog input, không cấp áp vượt mức cho phép |
-| Điện dung | ADC1 CH4 | PA4 | Đọc điện áp tụ |
-| Điều khiển nạp/xả | GPIOA | PA5 | Điều khiển qua Rtiming |
-| PWM phát | TIM2 CH2 | PA1 | Alternate-function push-pull |
-| PWM đo dải cao | TIM1 CH1/CH2 | PA8 | TIM1 PWM Input |
-| PWM đo dải giữa | TIM3 CH1/CH2 | PA6 | TIM3 PWM Input |
-| PWM đo dải thấp | TIM4 CH1/CH2 | PB6 | TIM4 PWM Input |
-| LCD SCL/SDA | I2C2 | PB10/PB11 | AF open-drain |
-| Nút UP/DOWN | GPIOB | PB12/PB13 | Pull-up, active-low |
-| Nút SELECT/CHARGE | GPIOB | PB14/PB15 | Pull-up, active-low |
-| UART TX/RX | USART1 | PA9/PA10 | Debug 9600 baud |
-
-> **An toàn khi thử nghiệm:** Không đấu điện áp lưới, nguồn áp cao hoặc tín hiệu ngoài vượt mức cho phép trực tiếp vào ADC/GPIO STM32. Mạch đo của repo không đồng nghĩa máy đo đa năng có bảo vệ đầu vào đạt chuẩn thương mại. Khi loopback PA1 sang PA8/PA6/PB6 cần **nối GND chung**, chọn đúng chân và kiểm tra mức logic.
-
-### B.3. Bản đồ file và nhiệm vụ
+**CRC-32/ISO-HDLC** (còn gọi CRC-32/IEEE) với chuỗi ASCII `123456789` có kết quả chuẩn `0xCBF43926`. `Flash_Calculate_CRC32()` của project khởi tạo `0xFFFFFFFF`, xử lý byte theo dạng reflected polynomial `0xEDB88320` và đảo bit cuối; input thực của nó là 20 byte đầu của record, **không phải chuỗi ví dụ này**.
 
 ```text
-mini-multimeter/
-├── Application/
-│   ├── main.c                     entry point
-│   ├── app_controller.c/.h         bootstrap và super-loop
-│   ├── ui_controller.c/.h          UI FSM và menu/action
-│   ├── ui_view.c/.h                LCD composition + shadow
-│   └── ui_formatter.c/.h           format giá trị đo
-├── Services/
-│   ├── measurement_service.c/.h    R/C/frequency/duty workflows
-│   ├── signal_generator_service.c/.h tính PSC/ARR/CCR PWM
-│   └── config_service.c/.h         cấu hình và yêu cầu save
-├── Drivers/
-│   ├── adc_driver.c/.h             ADC batch + EOC ISR
-│   ├── button_driver.c/.h          debounce + FIFO
-│   ├── capacitor_charge_driver.c/.h GPIO nạp/xả
-│   ├── pwm_capture_driver.c/.h     TIM1/TIM3/TIM4 input capture
-│   ├── pwm_output_driver.c/.h      TIM2 CH2 output
-│   ├── lcd1602_driver.c/.h         PCF8574 + I2C2 + LCD1602
-│   └── flash_storage_driver.c/.h   record + CRC + erase/program/verify
-├── Infrastructure/
-│   ├── error_manager.c/.h          lịch sử lỗi RAM
-│   └── debug_logger.c/.h           log dạng text
-├── Platform/
-│   ├── platform_init.c/.h          platform bootstrap
-│   ├── system_time.c/.h            1 ms tick
-│   └── uart_port.c/.h              USART1 transport
-├── MDK/                              Keil µVision, startup, CMSIS/RTE
-├── docs/                             tài liệu hardware/measurement/runtime...
-├── ARCHITECTURE.md
-└── README.md
+Record V1: [20 byte đầu cần bảo vệ] [CRC-32 4 byte]
+                          |               ^
+                          +--> tính CRC --+
 ```
 
-**Thứ tự đọc source:** `main.c` → `app_controller.c` → `ui_controller.c` → `measurement_service.c` → `adc_driver.c` → `pwm_capture_driver.c` → `signal_generator_service.c` → `flash_storage_driver.c` → `ui_view.c` → `error_manager.c` → `platform_init.c`. Đọc ngược từ màn hình cần hiểu đến service/driver tương ứng để kết nối các layer.
+**CRC-32 không phải hash mật mã hoặc chữ ký số**: ai sửa dữ liệu có chủ đích có thể tính lại CRC; cơ chế phù hợp để phát hiện cấu hình lưu trữ bị sai ngoài ý muốn.
 
----
+#### Ví dụ 2 — Adaptive EMA và lý do thay đổi hệ số
+
+Giả sử bộ lọc đang có `y_prev=1000 Ω`, kết quả mới `x=1100 Ω`. Vì mức đổi tương đối là 10%, thuật toán chọn α=0,30: `y_new=1000+0,30×(1100−1000)=1030 Ω`. Nếu chỉ có nhiễu 1% quanh giá trị hiện tại, α=0,05 giúp giảm dao động.
+
+Sau EMA, project **chưa nhất thiết** đổi ngay số trên LCD: vẫn có deadband và 300 ms sustained-change rồi 1 s sample-and-hold ở UI.
+
+#### Ví dụ 3 — Timer capture và công thức duty
+
+Với TIM3 clock 9 MHz, `period_ticks=9000`, `high_ticks=2250` thì frequency = 1000 Hz và duty = 25%. Timer Input Mode đo theo **cạnh xung trên chân input**, không phải suy tần số từ giá trị TIM2 output được cấu hình.
+
+<a id="phu-luc-a-8"></a>
+### A.8. Các cặp khái niệm rất dễ nhầm trong phỏng vấn
+
+| Dễ nhầm | Khác nhau ở đâu? |
+|---|---|
+| **MCU vs CPU** | Cortex-M3 là lõi xử lý; STM32F103C8T6 là MCU gồm core, bộ nhớ và ngoại vi. |
+| **Super-loop vs ISR** | Main xử lý tuần tự; ISR có thể chen vào để phản ứng sự kiện phần cứng. |
+| **ISR vs RTOS task** | ISR phục vụ ngắt; dự án này không dùng RTOS scheduler. |
+| **`volatile` vs atomic snapshot** | `volatile` ảnh hưởng optimizer; atomicity/critical section giải quyết tính nhất quán khi chia sẻ dữ liệu. |
+| **Sample time vs conversion time** | Sample time là thời gian lấy mẫu đầu vào; conversion time còn có bước ADC lượng tử hóa. |
+| **Average vs Median vs EMA** | Trung bình giảm noise, median chống outlier, EMA làm mượt có trạng thái. |
+| **Hysteresis vs Deadband** | Hysteresis giữ trạng thái PRESENT/ABSENT; deadband giữ số R đã công bố. |
+| **0 Ω vs No Resistor** | 0 Ω tạo ADC gần 0 V; open tạo ADC gần full-scale. |
+| **Capacitor discharge vs timed charge** | Xả là chuẩn bị về low threshold; thời gian nạp low→high mới dùng tính C. |
+| **PWM Output vs Input Capture** | TIM2 xuất xung PA1; TIM1/TIM3/TIM4 đo xung tại chân input tương ứng. |
+| **Expected frequency vs Measured frequency** | Expected dùng chọn dải capture; measured tính từ ticks thực. |
+| **PSC/ARR vs CCR** | PSC/ARR quyết định frequency; CCR quyết định duty trong PWM Mode 1. |
+| **PWM 100% setting vs 100% wave** | Code clamp CCR≤ARR; output có thể còn LOW tick. |
+| **UI State vs Measurement Status vs CAP State** | Điều hướng, kết quả đo, và FSM đo tụ là ba lớp state khác nhau. |
+| **I2C vs PCF8574 vs LCD1602** | Bus truyền, expander GPIO, và màn ký tự; không phải ba tên cùng một thiết bị. |
+| **Flash page vs Flash record** | Page lưu 1 KiB; record V1 là 24 byte. |
+| **CRC-32 vs digital signature** | CRC phát hiện lỗi dữ liệu; không xác thực nguồn tạo record. |
+| **Save Verify vs Power-fail-safe commit** | Read-back bảo đảm dữ liệu vừa ghi khớp; một slot vẫn có thể mất config khi mất nguồn. |
+| **Error Manager vs Logger** | Manager lưu/gộp lỗi; logger định dạng/vận chuyển thông điệp. |
+| **NO_SIGNAL vs NO_COMPONENT vs ERROR** | Không có PWM capture, không phát hiện linh kiện trong phép đo, và lỗi thao tác là ba nguyên nhân khác nhau. |
+
+**Học sâu theo chủ đề:** [ADC](#chuong-6-4) · [Điện trở](#chuong-6-5) · [Điện dung](#chuong-6-6) · [PWM Output](#chuong-6-7) · [PWM Input](#chuong-6-8) · [Flash](#chuong-6-10).
 
 <a id="phan-1"></a>
 ## Phần 1. Trình bày Project
@@ -395,7 +365,32 @@ Nguồn: [docs/validation.md](https://github.com/haikevins/mini-multimeter/blob/
 <a id="phan-2"></a>
 ## Phần 2. Trình bày System Architecture
 
-### 2.1. Góc nhìn phần cứng
+### 2.1. Bài nói khi phỏng vấn (khoảng 90 giây)
+
+> **System Architecture:** Dạ, hệ thống của em gồm hai phần chính: phần cứng STM32F103C8T6 cùng mạch đo, LCD, nút nhấn; và firmware bare-metal tổ chức thành Application, Services, Drivers, Infrastructure, Platform. Em sử dụng super-loop cộng ngắt, không dùng RTOS.
+>
+> Ở tầng Application, `AppController` điều phối khởi tạo và vòng lặp chính; `UiController` quản lý trạng thái, sự kiện nút; `UiView` chỉ quan tâm tới nội dung LCD. Các Services chứa thuật toán và chính sách đo, còn Drivers cấu hình ADC, Timer, GPIO, I2C và Internal Flash bằng SPL.
+>
+> Đối với điện trở, ADC đọc điện áp mạch chia áp, sau đó Service xử lý lọc và kiểm tra mạch hở. Đối với điện dung, GPIO điều khiển nạp/xả và ADC giám sát hai ngưỡng để tính thời gian RC. Đối với PWM, TIM2 tạo xung còn TIM1, TIM3 hoặc TIM4 thu period/high time tùy dải tần kỳ vọng.
+>
+> Hệ thống dùng LCD1602 qua I2C2 và bốn nút active-low. Cấu hình PWM lưu trong một trang Internal Flash có CRC-32 và Verify, đồng thời Error Manager ghi nhận lỗi cho logger UART. Điểm em ưu tiên trong thiết kế là giữ ISR ngắn, chia nhỏ công việc trong main context và phân biệt rõ giới hạn độ chính xác của phần cứng với khả năng lọc số.
+
+### 2.2. High-level System Architecture Diagram
+
+```mermaid
+flowchart TD
+    USER["Người dùng / 4 nút PB12..PB15"] --> APP["Application<br/>AppController / UiController / UiView"]
+    APP --> SERVICES["Services<br/>Measurement / Signal Generator / Config"]
+    SERVICES --> DRIVERS["Drivers<br/>ADC / Timer / GPIO / I2C / Flash"]
+    DRIVERS --> BOARD["STM32F103 + mạch chia áp / RC / PWM / LCD"]
+    DRIVERS --> INFR["Infrastructure<br/>Error Manager / Debug Logger"]
+    INFR --> PLAT["Platform<br/>SysTick / USART1 / Init"]
+    APP --> PLAT
+```
+
+> **Giới hạn sơ đồ:** Đây là luồng phụ thuộc **khái quát**. Trong source, một module tầng Application có thể gọi thẳng Driver/Platform khi có trách nhiệm trực tiếp; không phải mọi cuộc gọi đều đi qua Services. **PWM Output và PWM Input** là hai đường riêng biệt, không được nhầm với một chế độ đo tự động theo mọi tần số ngoài.
+
+### 2.3. Góc nhìn phần cứng
 
 ```mermaid
 flowchart TB
@@ -412,7 +407,7 @@ flowchart TB
 
 **Đường tín hiệu R/C** cần phân biệt với nguồn PWM. ADC đo mức analog; timer capture đo thời gian cạnh digital; TIM2 tạo PWM tại chân output; I2C phục vụ LCD, không tham gia tính điện trở/tần số.
 
-### 2.2. Góc nhìn software layer
+### 2.4. Góc nhìn software layer
 
 ```mermaid
 flowchart TD
@@ -438,7 +433,7 @@ flowchart TD
 
 **Đừng diễn giải sai:** `Application` có thể gọi `Drivers` trực tiếp (ví dụ `UiView` gọi LCD Driver); không phải kiến trúc cấm skip một lớp. Quy tắc chính là **phụ thuộc đi xuống**: Drivers không được gọi ngược Services/Application, Platform không phụ thuộc các lớp cao hơn. [ARCHITECTURE.md](https://github.com/haikevins/mini-multimeter/blob/main/ARCHITECTURE.md).
 
-### 2.3. Trách nhiệm và API tiêu biểu
+### 2.5. Trách nhiệm và API tiêu biểu
 
 | Module | Vai trò | Đọc gì trong code? |
 |---|---|---|
@@ -457,7 +452,7 @@ flowchart TD
 | `error_manager.c` | Lịch sử lỗi | Gộp lỗi 1 s, giữ 8 record |
 | `debug_logger.c` / `uart_port.c` | Text logs | Format, USART1 9600 baud |
 
-### 2.4. Luồng khởi động và xử lý chính
+### 2.6. Luồng khởi động và xử lý chính
 
 ```mermaid
 sequenceDiagram
@@ -485,7 +480,7 @@ sequenceDiagram
 
 Trong sơ đồ, phần gọi `MeasurementService_Process()` diễn tả **đường xử lý trong lượt cập nhật UI**, không nhất thiết mọi màn hình đều gọi phép đo. Đọc `ui_controller.c` để xác định guard của từng trạng thái.
 
-### 2.5. Quyền sở hữu tài nguyên phần cứng
+### 2.7. Quyền sở hữu tài nguyên phần cứng
 
 - **ADC1** dùng chung R và C, nên không thể tự ý cho hai workflow cùng cấu hình kênh/conversion batch mà không phối hợp.
 - **TIM1, TIM3, TIM4** phục vụ capture; chỉ một timer được enable theo dải kỳ vọng tại một thời điểm.
@@ -494,7 +489,7 @@ Trong sơ đồ, phần gọi `MeasurementService_Process()` diễn tả **đư�
 - **I2C2** dùng chung thao tác hiển thị; giới hạn bus và các khoảng blocking ngắn cần tính vào responsiveness.
 - **Internal Flash** được lập trình trong transaction có vô hiệu hóa ngắt tạm thời; không nên cho phép các luồng thời gian nhạy chạy kỳ vọng không gián đoạn trong thời gian erase/program.
 
-### 2.6. Phân biệt hai dạng state machine
+### 2.8. Phân biệt hai dạng state machine
 
 **UI State Machine** trả lời: “Người dùng đang ở màn hình nào và nút nhấn có tác dụng gì?”.
 
@@ -502,7 +497,7 @@ Trong sơ đồ, phần gọi `MeasurementService_Process()` diễn tả **đư�
 
 Ví dụ có thể đồng thời xảy ra: UI đang ở màn **Capacitor**, `MeasurementService` trả về trạng thái `CHARGING`, còn nội bộ FSM tụ là `CAP_DISCHARGING` ở bước khác của một lần đo. Các enum thuộc phạm vi khác nhau, đừng gộp làm một.
 
-### 2.7. Phân tách ISR và main context
+### 2.9. Phân tách ISR và main context
 
 ```text
 PHẦN CỨNG / NGẮT                    MAIN CONTEXT
@@ -521,7 +516,7 @@ GPIO raw --> ButtonDriver_Process --> FIFO event --> UI FSM
 
 **Lý do thiết kế:** ISR cần ngắn để giới hạn interrupt latency; tính float, định dạng chuỗi và gửi LCD qua I2C được thực hiện bên ngoài ISR. Tuy nhiên main context vẫn có thể bị chậm bởi tác vụ đồng bộ; “IRQ-based” không làm toàn bộ ứng dụng real-time hard deterministic.
 
-### 2.8. Phân tích trade-off
+### 2.10. Phân tích trade-off
 
 - **Super-loop thay RTOS:** đơn giản, ít RAM, dễ lần luồng; đánh đổi độ trễ phụ thuộc tác vụ chặn.
 - **ADC batch 16 mẫu:** giảm nhiễu ngẫu nhiên; đổi lại chậm hơn một mẫu đơn và vẫn có sai số hệ thống.
@@ -534,13 +529,40 @@ GPIO raw --> ButtonDriver_Process --> FIFO event --> UI FSM
 <a id="phan-3"></a>
 ## Phần 3. Trình bày các State Machine
 
-### 3.1. Vì sao project cần nhiều FSM?
+### 3.1. Bài nói khi phỏng vấn (khoảng 90 giây)
+
+> **State Machine:** Dạ, trong Mini Multimeter em phân biệt **UI State Machine**, **Measurement Mode**, **Capacitance FSM**, **Resistance Presence** và **Measurement Status**. Các cơ chế này liên quan với nhau nhưng không thay thế nhau.
+>
+> UI FSM quản lý điều hướng từ Splash qua Main, Measure/Transmit tới các màn đo hoặc chỉnh PWM. Sự kiện từ bốn nút đi qua debounce và hàng đợi, rồi `UiController` quyết định chuyển màn. Mỗi lần đổi mode, Measurement Service quản lý vòng đời ADC, timer hoặc GPIO, tránh sử dụng đồng thời tài nguyên không phù hợp.
+>
+> Khi đo điện trở, một state riêng phân biệt chưa xác định, có linh kiện và mạch hở bằng hysteresis cùng bộ đếm xác nhận. Khi đo tụ, FSM thực hiện nạp sơ bộ, xả về ngưỡng thấp, nạp có đo thời gian, rồi công bố READY hoặc NO_COMPONENT. Khi đo PWM, Timer Input Capture cung cấp dữ liệu mới; quá 1100 ms không có capture thì Service trả NO_SIGNAL.
+>
+> Thời gian giữ Splash 2 giây và phản hồi lưu 800 ms được thể hiện bằng trạng thái có timestamp, không gọi delay dài trong main. Nhờ vậy em dễ giải thích sự kiện nào hợp lệ ở trạng thái nào, khi chuyển state phải giải phóng tài nguyên gì và có thể đặt test case cho từng nhánh lỗi.
+
+### 3.2. High-level Transition Diagram
+
+```mermaid
+flowchart TD
+    RESET["Reset"] --> SPLASH["UI: SPLASH 2 s"]
+    SPLASH --> MAIN["UI: MAIN"]
+    MAIN --> MEASURE["MEASURE / SINGLE / ALL"]
+    MAIN --> TX["TRANSMIT / EDIT / SAVE_FEEDBACK"]
+    MEASURE --> MODE{"Measurement Mode"}
+    MODE --> R["Resistance Presence<br/>UNKNOWN / PRESENT / ABSENT"]
+    MODE --> C["Capacitance FSM<br/>IDLE → WAIT → DISCHARGING → CHARGING → DONE"]
+    MODE --> PWM["PWM Capture<br/>MEASURING / READY / NO_SIGNAL"]
+    TX --> CFG["ConfigService + Flash Save"]
+```
+
+> **Lưu ý:** Các node như `MEASURING`, `READY` và `NO_SIGNAL` là **trạng thái kết quả đo**, không phải menu UI hay enum nội bộ `CAP_*`. Sơ đồ tổng quan không thay thế điều kiện chuyển trạng thái trong mã nguồn.
+
+### 3.3. Vì sao project cần nhiều FSM?
 
 Một FSM xác định tập trạng thái, các sự kiện, điều kiện guard và hành động khi chuyển. Trong project, có ít nhất bốn bài toán có thể diễn tả dưới dạng FSM: điều hướng người dùng, vòng đời chế độ đo, nhận diện sự hiện diện của điện trở và chu trình nạp/xả tụ. Tách các FSM giúp không xuất hiện biến “state” khổng lồ mang nghĩa nhập nhằng.
 
 **Nguyên tắc đọc code:** Trước khi vẽ state machine, xác định (1) enum hoặc biến trạng thái thực có trong source; (2) sự kiện đến từ nút, timer hay ADC; (3) điều kiện chuyển; (4) hành động `Enter`/`Exit` đối với ngoại vi; (5) trạng thái kết quả biểu diễn cho UI.
 
-### 3.2. UI State Machine — nhóm menu
+### 3.4. UI State Machine — nhóm menu
 
 ```mermaid
 stateDiagram-v2
@@ -577,7 +599,7 @@ stateDiagram-v2
 
 **Sự kiện:** `UP`, `DOWN` thay đổi lựa chọn hoặc số đang chỉnh; `SELECT` vào menu/xác nhận/thực hiện bước tiếp; `CHARGE` dùng để khởi động phép đo tụ khi mode cho phép. Debounce không phải trách nhiệm của UI Controller.
 
-### 3.3. Measurement Mode — quyền sở hữu ngoại vi
+### 3.5. Measurement Mode — quyền sở hữu ngoại vi
 
 ```mermaid
 stateDiagram-v2
@@ -595,7 +617,7 @@ stateDiagram-v2
 
 Đây là **mô hình hóa** các giá trị `Measurement_Mode_t`; trong code chuyển mode được xử lý bằng một hàm duy nhất `MeasurementService_SetMode()` có logic exit mode cũ, rồi enter mode mới. Việc chuyển từ Frequency sang Duty khi cả hai dùng `MEASUREMENT_MODE_FREQUENCY_DUTY` không cần restart timer, vì `SetMode` nhận ra mode không đổi và trả về sớm.
 
-### 3.4. Resistance Presence FSM
+### 3.6. Resistance Presence FSM
 
 ```mermaid
 stateDiagram-v2
@@ -610,7 +632,7 @@ stateDiagram-v2
 
 **Một trạng thái bị bỏ quên dễ gây bug:** Nếu vừa rút điện trở ra mà ngay sau đó cắm vào, history của EMA/median từ linh kiện trước có thể làm giá trị mới sai lệch. Source reset lọc trong các chuyển presence quan trọng để tránh rò trạng thái.
 
-### 3.5. Capacitance FSM — trạng thái nội bộ thực
+### 3.7. Capacitance FSM — trạng thái nội bộ thực
 
 ```mermaid
 stateDiagram-v2
@@ -636,7 +658,7 @@ Mỗi trạng thái có vai trò:
 
 **Phân biệt với status:** `MEASUREMENT_STATUS_WAIT_CHARGE`, `CHARGING`, `DISCHARGING`, `READY`, `NO_COMPONENT`, `ERROR` mô tả để UI render; `CAP_WAIT` và `CAP_CHARGING` là **biến trạng thái điều khiển kỹ thuật**. Không tự suy ra các tên `CAP_*` chính là label hiển thị.
 
-### 3.6. PWM signal state và timeout
+### 3.8. PWM signal state và timeout
 
 ```mermaid
 stateDiagram-v2
@@ -651,7 +673,7 @@ stateDiagram-v2
 
 Sơ đồ mô tả logic mong muốn khi chuyển giữa các trạng thái; trường hợp cụ thể `ERROR` hay giữ trạng thái trước phụ thuộc nhánh xử lý trong `MeasurementService_ProcessFrequencyDuty()`, cần kiểm tra bằng code khi sửa. Một mẫu hợp lệ đòi hỏi `period_ticks > 0` và `high_ticks <= period_ticks`.
 
-### 3.7. Flash Load/Save như workflow có điều kiện
+### 3.9. Flash Load/Save như workflow có điều kiện
 
 ```mermaid
 flowchart TD
@@ -675,7 +697,7 @@ flowchart TD
 
 Vùng cấu hình có một page, không phải hai slot. “Tự khôi phục dữ liệu cũ sau mất nguồn giữa erase” là điều **chưa được bảo đảm**.
 
-### 3.8. Bảng trạng thái → sự kiện → hành động
+### 3.10. Bảng trạng thái → sự kiện → hành động
 
 | Phạm vi | State hiện tại | Event/điều kiện | Hành động | State/kết quả tiếp |
 |---|---|---|---|---|
@@ -690,7 +712,7 @@ Vùng cấu hình có một page, không phải hai slot. “Tự khôi phục d
 | PWM | đo đang hoạt động | quá 1100 ms không fresh | xóa f/duty, báo mất tín hiệu | `NO_SIGNAL` |
 | ADC | pending | quá 100 ms | Cancel, báo lỗi | `ERROR` |
 
-### 3.9. Checklist khi giải thích FSM trong phỏng vấn
+### 3.11. Checklist khi giải thích FSM trong phỏng vấn
 
 Trình bày theo một ví dụ cụ thể: “Khi người dùng nhấn CHARGE...” → sự kiện vào UI → service đổi `CAP_IDLE` sang `CAP_WAIT` → driver đưa PA5 HIGH → ADC batch liên tục → tới ngưỡng cao chuyển xả → tới ngưỡng thấp bắt đầu timing → ngưỡng cao lần hai tính C → status `READY` → UI định dạng/hiển thị. Sau đó chủ động nêu timeout và giới hạn độ phân giải. Cách trình bày này thuyết phục hơn chỉ liệt kê tên enum.
 
@@ -701,6 +723,27 @@ Trình bày theo một ví dụ cụ thể: “Khi người dùng nhấn CHARGE.
 
 <a id="luong-1"></a>
 ### 4.1. Luồng 1 — Reset → Khởi tạo → Super-loop
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["STM32 Reset"]
+    S2["Platform + Error Manager"]
+    S1 --> S2
+    S3["Config + SysTick"]
+    S2 --> S3
+    S4["Buttons + UART + Services"]
+    S3 --> S4
+    S5["LCD + UI"]
+    S4 --> S5
+    S6["RunOnce super-loop"]
+    S5 --> S6
+```
+
+
 
 #### 4.1.1. Tại sao `main()` rất ngắn?
 
@@ -761,6 +804,33 @@ Platform_InitSystem
 
 **File cần đọc:** [`Application/main.c`](https://github.com/haikevins/mini-multimeter/blob/main/Application/main.c), [`Application/app_controller.c`](https://github.com/haikevins/mini-multimeter/blob/main/Application/app_controller.c), `Platform/platform_init.c`, `Platform/system_time.c`.
 
+#### Bài nói khi phỏng vấn: Reset → Khởi tạo → Super-loop
+
+> Khi reset, `main()` chỉ gọi `AppController_Init()` rồi chạy `AppController_RunOnce()` liên tục. Thứ tự khởi tạo đảm bảo Error Manager có thể giữ lỗi Flash trước khi UART sẵn sàng; SysTick, nút, đo lường, PWM và LCD được chuẩn bị đúng chuỗi. Trong mỗi vòng lặp, firmware đọc sự kiện nút, xử lý UI và quan sát lỗi UART, còn ADC/TIM dùng ngắt cho dữ liệu bất đồng bộ.
+
+#### Câu hỏi ôn tập: Reset → Khởi tạo → Super-loop
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Vì sao `main()` ngắn? | Giữ một điểm vào đơn giản; khởi tạo và trách nhiệm runtime nằm ở AppController. |
+| Vì sao Error Manager được khởi tạo trước UART? | Lỗi khởi động có thể được lưu trong RAM và flush khi logger sẵn sàng. |
+| Super-loop có làm mọi việc non-blocking tuyệt đối không? | Không. LCD/I2C và lưu Flash có thao tác chặn; cần đánh giá worst-case latency. |
+| Nếu ISR vẫn chạy nhưng UI chậm? | Đo thời gian chặn ở LCD/Flash, tần suất quét nút và chu kỳ RunOnce. |
+| Systick có thực thi toàn bộ UI không? | Không; SysTick cấp tick, UI được cập nhật trong main context. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Vì sao `main()` ngắn:** Giữ một điểm vào đơn giản; khởi tạo và trách nhiệm runtime nằm ở AppController.
+- **Vì sao Error Manager được khởi tạo trước UART:** Lỗi khởi động có thể được lưu trong RAM và flush khi logger sẵn sàng.
+
+#### Các file mã nguồn quan trọng
+
+- `Application/main.c`
+- `Application/app_controller.c`
+- `Platform/system_time.c`
+
+
 ---
 
 <a id="luong-2"></a>
@@ -816,6 +886,34 @@ LCD ký tự giữ ký tự cũ cho đến khi có lệnh ghi đè. Ví dụ dò
 **Trade-off:** Có thêm 32 byte dữ liệu hiển thị và logic compare, đổi lại giảm thời gian truyền qua I2C 100 kHz. Tuy nhiên, khi ghi màn hình vẫn có thời gian blocking ở LCD Driver (đặc biệt init/clear), nên không được nói “mỗi vòng lặp chắc chắn không bị chặn”.
 
 **File cần đọc:** `Drivers/button_driver.c`, `Application/ui_controller.c`, `Application/ui_view.c`, `Application/ui_formatter.c`, `Drivers/lcd1602_driver.c`.
+
+#### Bài nói khi phỏng vấn: Button → Event FIFO → UI → LCD
+
+> Bốn chân PB12–PB15 dùng active-low với pull-up. ButtonDriver quét và debounce 20 ms, rồi đẩy sự kiện vào FIFO tám phần tử. AppController lấy event, chuyển cho UiController; UiView tạo hai hàng 16 ký tự và tránh ghi lại hàng không đổi thông qua shadow buffer. UI state quyết định nội dung, còn driver LCD thực hiện thao tác I2C2.
+
+#### Câu hỏi ôn tập: Button → Event FIFO → UI → LCD
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Vì sao không đọc nút trực tiếp trong UI? | Tách mức điện với sự kiện đã debounce, giúp UI độc lập GPIO và dễ test. |
+| Bấm nhanh hơn 20 ms có được nhận không? | Có thể không; đó là mục đích loại xung nhiễu và rung tiếp điểm. |
+| Nếu FIFO đầy? | Có nguy cơ mất sự kiện; phải quan sát/error và kiểm thử hành vi khi queue quá tải. |
+| Vì sao ghi đúng 16 ký tự mỗi hàng? | Xóa ký tự còn sót từ nội dung dài trước đó. |
+| Shadow buffer giải quyết vấn đề gì? | Giảm giao dịch LCD/I2C không cần thiết, không phải phần cứng double buffering. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Vì sao không đọc nút trực tiếp trong UI:** Tách mức điện với sự kiện đã debounce, giúp UI độc lập GPIO và dễ test.
+- **Bấm nhanh hơn 20 ms có được nhận không:** Có thể không; đó là mục đích loại xung nhiễu và rung tiếp điểm.
+
+#### Các file mã nguồn quan trọng
+
+- `Drivers/button_driver.c`
+- `Application/ui_controller.c`
+- `Application/ui_view.c`
+- `Drivers/lcd1602_driver.c`
+
 
 ---
 
@@ -917,10 +1015,58 @@ Khoảng 4060..4075 tạo hysteresis; hai hướng chuyển có thời gian/đi�
 
 **File cần đọc:** `Services/measurement_service.c`, `Drivers/adc_driver.c`, `Application/ui_view.c`. **Câu hỏi tự kiểm tra:** Tại sao LPF của ADC nằm trong Driver, nhưng Median/EMA/Deadband lại nằm ở Service?
 
+#### Bài nói khi phỏng vấn: Mạch chia áp → ADC → điện trở
+
+> Mạch Rref 10 kΩ kết hợp Rx tạo điện áp ở PA3; ADC1 CH3 chuyển đổi theo batch 16 mẫu, EOC ISR cộng mẫu rồi main đọc average/LPF. Measurement Service dùng median 5, adaptive EMA, deadband và xác nhận thay đổi 300 ms trước khi công bố giá trị. State riêng phát hiện open/present với hai ngưỡng ADC và xác nhận đếm/time.
+
+#### Câu hỏi ôn tập: Mạch chia áp → ADC → điện trở
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Tại sao điện áp gần 3,3 V nguy hiểm cho phép tính? | Mẫu số `Vcc−Vadc` rất nhỏ làm nhiễu ADC bị khuếch đại thành sai số R lớn. |
+| Đo 0 Ω khác mạch hở thế nào? | 0 Ω cho Vadc gần 0 V; mạch hở cho ADC gần full-scale. |
+| Median loại được gì? | Outlier nhất thời; không sửa sai số dung sai Rref. |
+| Hysteresis có thay thế deadband không? | Không. Hysteresis dành cho trạng thái mạch hở/có linh kiện, deadband ổn định giá trị số. |
+| Lỗi ADC request >100 ms? | Service cancel request, báo ERROR và ghi ADC_CONVERSION_TIMEOUT. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Tại sao điện áp gần 3,3 V nguy hiểm cho phép tính:** Mẫu số `Vcc−Vadc` rất nhỏ làm nhiễu ADC bị khuếch đại thành sai số R lớn.
+- **Đo 0 Ω khác mạch hở thế nào:** 0 Ω cho Vadc gần 0 V; mạch hở cho ADC gần full-scale.
+
+#### Các file mã nguồn quan trọng
+
+- `Drivers/adc_driver.c`
+- `Services/measurement_service.c`
+- `Application/ui_view.c`
+
+
 ---
 
 <a id="luong-4"></a>
 ### 4.4. Luồng 4 — Mạch RC → ADC + SysTick → đo điện dung
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["PA5 drive HIGH"]
+    S2["ADC1 CH4 high 2482"]
+    S1 --> S2
+    S3["PA5 LOW đến low 1241"]
+    S2 --> S3
+    S4["Timed CHARGE + SysTick"]
+    S3 --> S4
+    S5["High crossing"]
+    S4 --> S5
+    S6["READY hoặc NO_COMPONENT"]
+    S5 --> S6
+```
+
+
 
 #### 4.4.1. Vì sao không thể chỉ đọc ADC một lần?
 
@@ -976,6 +1122,33 @@ FSM tụ tiến từng bước trong `MeasurementService_ProcessCapacitor()`, kh
 - Khi rời mode, service phải hạ charge pin/cancel pending ADC và trả trạng thái phần cứng về an toàn.
 
 **File cần đọc:** `Services/measurement_service.c` (nhóm `CAP_*`, `StartCapacitor`, `ProcessCapacitor`), `Drivers/capacitor_charge_driver.c`, `Drivers/adc_driver.c`, `Platform/system_time.c`.
+
+#### Bài nói khi phỏng vấn: Mạch RC → ADC + SysTick → điện dung
+
+> PA5 điều khiển nạp/xả qua điện trở 20 kΩ, PA4 ADC1 CH4 theo dõi điện áp. FSM đợi nhấn CHARGE, nạp sơ bộ tới ngưỡng cao, xả đến ngưỡng thấp, sau đó nạp có bấm giờ từ khoảng 1 V tới 2 V. Service tính C bằng hằng 1,74563473 × t / 20000 và phân loại NO_COMPONENT khi high ngay batch đầu.
+
+#### Câu hỏi ôn tập: Mạch RC → ADC + SysTick → điện dung
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Vì sao cần hai pha nạp? | Pha đầu đưa mạch qua vùng đã biết, pha xả tạo điểm xuất phát, pha thứ hai mới đo Δt. |
+| Vì sao dùng SysTick có hạn chế? | 1 ms có sai số tương đối lớn khi thời gian đo gần 1–2 ms. |
+| NO_COMPONENT có chứng minh không có tụ không? | Không; tụ nhỏ ngoài dải cũng có thể vượt ngưỡng ngay batch đầu. |
+| Nếu tụ short, ADC vẫn hoạt động? | FSM có thể chờ ngưỡng không đạt; hiện chưa có timeout tổng thể riêng từng pha. |
+| Rời mode khi đang nạp? | Cần gọi exit/cancel và đưa PA5 về LOW để không giữ mạch nạp. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Vì sao cần hai pha nạp:** Pha đầu đưa mạch qua vùng đã biết, pha xả tạo điểm xuất phát, pha thứ hai mới đo Δt.
+- **Vì sao dùng SysTick có hạn chế:** 1 ms có sai số tương đối lớn khi thời gian đo gần 1–2 ms.
+
+#### Các file mã nguồn quan trọng
+
+- `Services/measurement_service.c`
+- `Drivers/capacitor_charge_driver.c`
+- `Drivers/adc_driver.c`
+
 
 ---
 
@@ -1053,10 +1226,59 @@ Firmware hiện gọi chọn timer dựa trên **giá trị expected frequency**
 
 **File cần đọc:** `Services/signal_generator_service.c`, `Drivers/pwm_output_driver.c`, `Drivers/pwm_capture_driver.c`, `Services/measurement_service.c`.
 
+#### Bài nói khi phỏng vấn: TIM2 PWM Output → PWM Input Capture
+
+> Signal Generator tính PSC/ARR/CCR để TIM2 CH2 tạo xung PA1; phần capture sử dụng TIM4/PB6, TIM3/PA6 hoặc TIM1/PA8 theo expected frequency. CH1 đo period, CH2 đo high time trong PWM Input Mode; ISR công bố cặp dữ liệu và main tính Hz/% với snapshot nhất quán.
+
+#### Câu hỏi ôn tập: TIM2 PWM Output → PWM Input Capture
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Tại sao phải tính `PSC+1` và `ARR+1`? | Prescaler và auto reload mã hóa số đếm dạng trừ một, không phải số tick trực tiếp. |
+| Vì sao duty 100% có thể không HIGH hoàn toàn? | Driver clamp CCR về ARR; ở chu kỳ có thể vẫn còn một tick LOW. |
+| Timer capture được chọn tự động theo tín hiệu ngoài? | Không; dựa trên tần số kỳ vọng, hiện lấy từ cấu hình PWM generator. |
+| Vì sao dùng critical section khi copy capture? | Tránh cặp period/high bị cập nhật xen kẽ bởi ISR. |
+| Không có tín hiệu bao lâu thì NO_SIGNAL? | Lâu hơn 1100 ms không có capture mới. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Tại sao phải tính `PSC+1` và `ARR+1`:** Prescaler và auto reload mã hóa số đếm dạng trừ một, không phải số tick trực tiếp.
+- **Vì sao duty 100% có thể không HIGH hoàn toàn:** Driver clamp CCR về ARR; ở chu kỳ có thể vẫn còn một tick LOW.
+
+#### Các file mã nguồn quan trọng
+
+- `Services/signal_generator_service.c`
+- `Drivers/pwm_output_driver.c`
+- `Drivers/pwm_capture_driver.c`
+- `Services/measurement_service.c`
+
+
 ---
 
 <a id="luong-6"></a>
 ### 4.6. Luồng 6 — UI Setting → Config Service → Internal Flash
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["UI chỉnh thông số"]
+    S2["ConfigService range check"]
+    S1 --> S2
+    S3["Finalize V1 + CRC-32"]
+    S2 --> S3
+    S4["Flash erase/program"]
+    S3 --> S4
+    S5["Read-back Verify"]
+    S4 --> S5
+    S6["SAVE_FEEDBACK"]
+    S5 --> S6
+```
+
+
 
 #### 4.6.1. Có những cấu hình nào?
 
@@ -1137,6 +1359,33 @@ Khi boot, driver thử V1. Nếu invalid, nó thử layout V0 hợp lệ để m
 
 **File cần đọc:** `Services/config_service.c`, `Drivers/flash_storage_driver.c`, `Application/ui_controller.c`, `MDK/mini-multimeter.uvprojx`/linker setting.
 
+#### Bài nói khi phỏng vấn: UI Setting → Config → Internal Flash
+
+> UI chỉnh frequency, duty và bước nhảy; Config Service quản lý giá trị runtime. Khi yêu cầu lưu, driver tạo record V1 có magic/version/size/payload/CRC-32; nếu thay đổi thì erase trang tại 0x0800FC00, program theo half-word rồi đọc lại validate và so sánh. Lúc boot, V1 hợp lệ được dùng; nếu không có, thử V0 rồi default.
+
+#### Câu hỏi ôn tập: UI Setting → Config → Internal Flash
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Save có luôn erase Flash không? | Không. Code kiểm tra thay đổi và có thể bỏ qua ghi không cần thiết. |
+| CRC bảo vệ tính gì? | Phát hiện record lỗi do lưu/đọc; không xác thực người ghi. |
+| Mất điện giữa erase/program thì sao? | Có thể mất record hợp lệ; thiết kế chỉ dùng một trang, chưa có A/B an toàn nguồn. |
+| Khi V0 hợp lệ? | Migration sang V1 trong RAM và đánh dấu cần ghi lại ở lần save sau. |
+| Vì sao read-back verify? | Program trả OK chưa đủ để bảo đảm byte thực trên Flash khớp record dự kiến. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Save có luôn erase Flash không:** Không. Code kiểm tra thay đổi và có thể bỏ qua ghi không cần thiết.
+- **CRC bảo vệ tính gì:** Phát hiện record lỗi do lưu/đọc; không xác thực người ghi.
+
+#### Các file mã nguồn quan trọng
+
+- `Services/config_service.c`
+- `Drivers/flash_storage_driver.c`
+- `Application/ui_controller.c`
+
+
 ---
 
 <a id="luong-7"></a>
@@ -1190,6 +1439,33 @@ Ví dụ này là format log minh họa được tài liệu repo ghi lại. Kh�
 
 **File cần đọc:** `Infrastructure/error_manager.c`, `Infrastructure/debug_logger.c`, `Platform/uart_port.c`, `Application/app_controller.c`.
 
+#### Bài nói khi phỏng vấn: Driver/Service → Error Manager → UART
+
+> Khi driver hoặc service phát hiện lỗi, nó báo mã nguồn và severity qua Error Manager. Lịch sử RAM có tám record, gộp lỗi trùng liền kề trong 1000 ms. Khi UART logger sẵn sàng, các lỗi trước đó được flush; nhật ký USART1 9600 baud giúp quan sát luồng khởi động và lỗi runtime.
+
+#### Câu hỏi ôn tập: Driver/Service → Error Manager → UART
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Error Manager và Debug Logger khác nhau? | Manager lưu, gộp và phân loại record; logger định dạng/gửi text qua UART. |
+| Lỗi trước khi UART init có mất không? | Nếu Error Manager đã init, record có thể tồn tại trong RAM và được flush sau. |
+| Log có được lưu qua reset không? | Lịch sử hiện ở RAM, không phải log persistent sau power loss. |
+| UART RX có command protocol đầy đủ chưa? | Chưa; có buffer gom đến `!`, chưa có parser lệnh ứng dụng hoàn chỉnh. |
+| Logger có thể gây latency? | Có thể; baud 9600 và TX polling/timeout cần được tính vào timing budget. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Error Manager và Debug Logger khác nhau:** Manager lưu, gộp và phân loại record; logger định dạng/gửi text qua UART.
+- **Lỗi trước khi UART init có mất không:** Nếu Error Manager đã init, record có thể tồn tại trong RAM và được flush sau.
+
+#### Các file mã nguồn quan trọng
+
+- `Infrastructure/error_manager.c`
+- `Infrastructure/debug_logger.c`
+- `Platform/uart_port.c`
+
+
 ---
 <a id="phan-5"></a>
 ## Phần 5. Phân tích chi tiết State Machine và tình huống runtime
@@ -1198,6 +1474,27 @@ Ví dụ này là format log minh họa được tài liệu repo ghi lại. Kh�
 
 <a id="chuong-5-1"></a>
 ### 5.1. UI Navigation và vòng đời màn hình
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["SPLASH 2000 ms"]
+    S2["MAIN"]
+    S1 --> S2
+    S3["MEASURE / TRANSMIT"]
+    S2 --> S3
+    S4["Editor/Measurement"]
+    S3 --> S4
+    S5["SELECT / Back"]
+    S4 --> S5
+    S6["Exit + resource cleanup"]
+    S5 --> S6
+```
+
+
 
 #### 5.1.1. Startup: từ reset đến menu
 
@@ -1254,8 +1551,49 @@ Khi vào Resistor: MeasurementService cấu hình mode và ADC. Khi thoát màn 
 | UI-06 | Save cấu hình lỗi | Hiển thị fail và trở về editor tương ứng |
 | UI-07 | Gửi >8 button event trước khi dequeue | FIFO overflow được phát hiện/log |
 
+
+#### Bài nói khi phỏng vấn: UI Navigation và vòng đời màn hình
+
+> Các event UP/DOWN/SELECT do ButtonDriver tạo đi vào UI FSM; Splash 2000 ms và Save Feedback 800 ms sử dụng timestamp. Khi đi khỏi measurement screen, UI gọi xử lý exit để giải phóng peripheral. Mỗi menu giữ cursor riêng và nút Back không trở thành điểm resume lâu dài.
+
+#### Câu hỏi ôn tập: UI Navigation và vòng đời màn hình
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Splash có `delay_ms(2000)` trong app không? | Không; là trạng thái có elapsed time, main loop vẫn chạy. |
+| SAVE_FEEDBACK có phải trạng thái riêng? | Có, dùng biến return target để biết thành công/thất bại quay về đâu. |
+| Điểm cần test khi Back? | Mode exit, PA5 an toàn, timer/ADC cancel và khôi phục con trỏ menu. |
+| Nút bị bỏ qua trong Splash có làm main ngừng chạy? | Không; event bị ignore theo UI policy, super-loop còn chạy. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Splash có `delay_ms(2000)` trong app không:** Không; là trạng thái có elapsed time, main loop vẫn chạy.
+- **SAVE_FEEDBACK có phải trạng thái riêng:** Có, dùng biến return target để biết thành công/thất bại quay về đâu.
+
 <a id="chuong-5-2"></a>
 ### 5.2. Đo điện trở: trạng thái có/không có linh kiện và ổn định kết quả
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["UNKNOWN"]
+    S2["ADC batch mới"]
+    S1 --> S2
+    S3["Open x3 → ABSENT"]
+    S2 --> S3
+    S4["Present x5 + 200 ms"]
+    S3 --> S4
+    S5["PRESENT + filter"]
+    S4 --> S5
+    S6["READY ổn định"]
+    S5 --> S6
+```
+
+
 
 #### 5.2.1. Khi vừa vào mode
 
@@ -1316,8 +1654,49 @@ Chính sách bất đối xứng: “rút ra” và “cắm vào” có ngưỡ
 
 **“Làm sao chứng minh filter không làm mất thay đổi thực?”** Dùng step test thay điện trở, ghi raw/filtered/published theo timestamp, xác nhận rise/settling time, xác minh giá trị ổn định và các case gần ngưỡng presence.
 
+
+#### Bài nói khi phỏng vấn: Resistance Presence và ổn định giá trị
+
+> Khi vừa vào mode, presence là UNKNOWN. ADC gần open phải xác nhận ba batch mới vào ABSENT; từ ABSENT muốn quay lại PRESENT cần ít nhất năm batch dưới ngưỡng và 200 ms. Khi PRESENT, median/EMA/deadband giữ số ổn định, không phát lại giá trị mới cho tới khi chênh lệch cùng chiều bền 300 ms.
+
+#### Câu hỏi ôn tập: Resistance Presence và ổn định giá trị
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Nói 4075/4060 là một ngưỡng được không? | Không, hai ngưỡng tạo hysteresis. |
+| 5 batch đủ reinsert chưa? | Chưa; còn điều kiện ít nhất 200 ms liên tục. |
+| R vừa rút khi còn READY? | Giữ giá trị cũ trong giai đoạn đếm ba batch để tránh chatter. |
+| Deadband có đồng nghĩa NO_COMPONENT? | Không; deadband chỉ giữ giá trị stable khi biến thiên nhỏ. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Nói 4075/4060 là một ngưỡng được không:** Không, hai ngưỡng tạo hysteresis.
+- **5 batch đủ reinsert chưa:** Chưa; còn điều kiện ít nhất 200 ms liên tục.
+
 <a id="chuong-5-3"></a>
 ### 5.3. Đo tụ: chu trình nạp–xả–đo
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["CAP_IDLE"]
+    S2["CHARGE → CAP_WAIT"]
+    S1 --> S2
+    S3["High → DISCHARGING"]
+    S2 --> S3
+    S4["Low → CHARGING"]
+    S3 --> S4
+    S5["High → CAP_DONE"]
+    S4 --> S5
+    S6["READY / NO_COMPONENT"]
+    S5 --> S6
+```
+
+
 
 #### 5.3.1. Từng bước theo code
 
@@ -1369,8 +1748,49 @@ Các số tính từ `t = C × 20000 / 1.74563473`, **chưa tính** độ trễ 
 
 **“Nếu cải tiến để đo 100 nF chính xác hơn?”** Dùng timer capture/comparator hoặc timebase µs, tối ưu ADC acquisition/detection, chuyển điện trở timing phù hợp, hiệu chuẩn điện trở và offset/latency; cần xác minh bằng oscilloscope và mẫu chuẩn.
 
+
+#### Bài nói khi phỏng vấn: Capacitance FSM
+
+> Từ CAP_IDLE, CHARGE bắt đầu nạp sơ bộ ở CAP_WAIT. Sau high threshold chuyển CAP_DISCHARGING; xuống low threshold chuyển CAP_CHARGING, ghi tick bắt đầu và reset filter. Crossing high đúng điều kiện cho READY/CAP_DONE; high ngay first batch được phân loại NO_COMPONENT. Rời mode phải đưa GPIO charge về trạng thái an toàn.
+
+#### Câu hỏi ôn tập: Capacitance FSM
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Bấm CHARGE tác động khi nào? | Chỉ khi UI đang ở màn capacitor/driver được cho phép. |
+| High đầu tiên đã là kết quả đo chưa? | Chưa, chỉ kết thúc nạp sơ bộ. |
+| Nếu không đạt low threshold? | Có thể kẹt DISCHARGING; nên bổ sung state timeout. |
+| NO_COMPONENT có thể là tụ quá nhỏ? | Có, do first-batch heuristic/dải đo. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Bấm CHARGE tác động khi nào:** Chỉ khi UI đang ở màn capacitor/driver được cho phép.
+- **High đầu tiên đã là kết quả đo chưa:** Chưa, chỉ kết thúc nạp sơ bộ.
+
 <a id="chuong-5-4"></a>
 ### 5.4. Đo PWM: chọn dải, nhận capture và mất tín hiệu
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["Chọn expected frequency"]
+    S2["Disable timer cũ"]
+    S1 --> S2
+    S3["Enable TIM4/3/1"]
+    S2 --> S3
+    S4["Input Capture IRQ"]
+    S3 --> S4
+    S5["Validate period/high"]
+    S4 --> S5
+    S6["READY / NO_SIGNAL"]
+    S5 --> S6
+```
+
+
 
 #### 5.4.1. Bắt đầu đo frequency/duty
 
@@ -1405,8 +1825,49 @@ Với TIM1 clock 72 MHz, f=100 kHz ⇒ `period≈720` tick (độ phân giải d
 
 Ví dụ đặt expected 50 kHz nhưng đưa xung ngoài 100 Hz vào: driver có thể đang dùng TIM1 72 MHz, thời gian chu kỳ cần khoảng 720000 tick, vượt 16 bit. Phép đo có thể sai/hết hạn/không hợp lệ tùy phản ứng timer. **[Đề xuất]** Một firmware auto-ranging sẽ đo thô, phát hiện overflow/no-signal, thử dải chậm hơn rồi chốt dải có period hợp lệ; phải tính cả transient khi chuyển timer và debounce kết quả.
 
+
+#### Bài nói khi phỏng vấn: PWM Range, Capture và mất tín hiệu
+
+> Mode PWM chọn một timer dựa expected frequency và xóa flag cũ trước enable. Khi ISR xuất cặp period/high, Service kiểm tra hợp lệ rồi tính Hz và duty. Nếu dừng xung trên 1100 ms, status NO_SIGNAL. Frequency và Duty dùng cùng tài nguyên capture, nên chuyển giữa hai màn không bắt buộc reinit timer.
+
+#### Câu hỏi ôn tập: PWM Range, Capture và mất tín hiệu
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Chuyển frequency→duty có được giữ TIM? | Có trong All Mode theo optimization của Service. |
+| PSC TIM4 thấp tần là bao nhiêu? | 1098, clock hiệu dụng 72 MHz/1099. |
+| Expected frequency lấy từ đâu? | Cấu hình Signal Generator, không phải auto-detect tín hiệu ngoài. |
+| Capture mâu thuẫn high>period? | Bỏ mẫu và không công bố giá trị không hợp lệ. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Chuyển frequency→duty có được giữ TIM:** Có trong All Mode theo optimization của Service.
+- **PSC TIM4 thấp tần là bao nhiêu:** 1098, clock hiệu dụng 72 MHz/1099.
+
 <a id="chuong-5-5"></a>
 ### 5.5. Chỉnh PWM và lưu cấu hình
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["Edit F/D/Step"]
+    S2["UP/DOWN clamp"]
+    S1 --> S2
+    S3["SELECT → Save"]
+    S2 --> S3
+    S4["Flash status"]
+    S3 --> S4
+    S5["SAVE_FEEDBACK 800 ms"]
+    S4 --> S5
+    S6["Menu hoặc editor"]
+    S5 --> S6
+```
+
+
 
 #### 5.5.1. Tách thời điểm chỉnh và thời điểm lưu
 
@@ -1456,6 +1917,26 @@ DUTY_STEP
 
 **[Đề xuất]:** hai trang A/B, sequence/generation, CRC từng record, commit marker được ghi cuối; sau mất nguồn chọn bản valid mới nhất, không xóa cả hai trong cùng transaction. Cần tính wear và chọn thứ tự erase/program đúng đặc tính NOR Flash.
 
+
+#### Bài nói khi phỏng vấn: Chỉnh PWM và lưu cấu hình
+
+> Editor có giá trị runtime và bước nhảy. UP/DOWN cập nhật frequency/duty trong giới hạn; SELECT yêu cầu lưu qua ConfigService. UI chuyển vào SAVE_FEEDBACK 800 ms, thành công quay menu đích, lỗi về editor tương ứng. Flash Save chỉ làm thao tác erase/program khi thay đổi.
+
+#### Câu hỏi ôn tập: Chỉnh PWM và lưu cấu hình
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Bấm SELECT có tác dụng gì? | Lưu và điều hướng theo kết quả save, không tự mặc định thành công. |
+| Tại sao màn feedback không block? | Đây là state có mốc thời gian, không delay dài. |
+| Cấu hình mặc định? | 50 kHz, 50% duty, frequency step 1000 Hz, duty step 1%. |
+| Save hỏng cần hiển thị? | Giữ thông báo lỗi và quay editor, record không được xem là persist thành công. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Bấm SELECT có tác dụng gì:** Lưu và điều hướng theo kết quả save, không tự mặc định thành công.
+- **Tại sao màn feedback không block:** Đây là state có mốc thời gian, không delay dài.
+
 <a id="chuong-5-6"></a>
 ### 5.6. All Mode và quyền sở hữu ngoại vi
 
@@ -1489,8 +1970,49 @@ Hai mode dùng tài nguyên khác nhau. Service phải hạ PA5, hủy ADC conve
 
 Nếu mọi màn hình tự bật/tắt thiết bị, logic cleanup phân tán và dễ sót. Khi `MeasurementService_SetMode()` sở hữu transition, service có thể kiểm tra previous/new mode và ra quyết định giữ lại hoặc release tài nguyên. Đây là một dạng **resource ownership policy** đặt trong Service thay vì phân tán ở View.
 
+
+#### Bài nói khi phỏng vấn: All Mode và resource ownership
+
+> All Mode đi theo thứ tự Resistor→Capacitor→Frequency→Duty; SELECT chuyển bước và trở về Measure menu sau bước cuối. Resistor→Capacitor có thể giữ ADC hoạt động nhưng cancel batch cũ. Frequency→Duty giữ Measurement Mode chung, tránh restart capture không cần thiết.
+
+#### Câu hỏi ôn tập: All Mode và resource ownership
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Tại sao cần resource owner? | Tránh GPIO/timer/ADC ở trạng thái cũ gây đo sai hoặc xung ngoài ý muốn. |
+| R→C giữ ADC có nguy cơ dùng sample cũ không? | Cần cancel request cũ và reset history filter đúng chỗ. |
+| F→D có đo lại PWM được không? | Có, cùng dữ liệu period/high phục vụ hai công thức. |
+| Cần kiểm tra gì sau bước cuối? | Đúng menu, cleanup và không còn PA5 HIGH. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Tại sao cần resource owner:** Tránh GPIO/timer/ADC ở trạng thái cũ gây đo sai hoặc xung ngoài ý muốn.
+- **R→C giữ ADC có nguy cơ dùng sample cũ không:** Cần cancel request cũ và reset history filter đúng chỗ.
+
 <a id="chuong-5-7"></a>
 ### 5.7. Lỗi, timeout, khôi phục và các chuyển trạng thái cần tránh
+
+> **Mục tiêu:** Theo dõi đúng chuỗi sự kiện, đầu vào, điều kiện chuyển và kết quả của riêng luồng này; phân biệt code đã triển khai với phương án cải tiến.
+
+#### Sơ đồ luồng hoạt động
+
+```mermaid
+flowchart TD
+    S1["ADC pending"]
+    S2["Timeout >100 ms"]
+    S1 --> S2
+    S3["ERROR"]
+    S2 --> S3
+    S4["PWM no capture >1100ms"]
+    S3 --> S4
+    S5["NO_SIGNAL"]
+    S4 --> S5
+    S6["Report diagnostics"]
+    S5 --> S6
+```
+
+
 
 #### 5.7.1. Ma trận fault handling
 
@@ -1537,6 +2059,26 @@ Nếu mọi màn hình tự bật/tắt thiết bị, logic cleanup phân tán v
 
 **Case 4:** Config không giữ sau power loss khi người dùng vừa save. Một trang Flash duy nhất có thể bị hỏng nếu mất nguồn lúc erase/program; CRC giúp phát hiện và fallback, không khôi phục bản cũ. Đề xuất A/B journal.
 
+#### Bài nói khi phỏng vấn: Timeout, lỗi và illegal transition
+
+> ADC batch chờ quá 100 ms sinh ERROR; PWM không có capture mới quá 1100 ms sinh NO_SIGNAL. Capacitance FSM hiện chưa có timeout tổng cho các pha ngưỡng, nên một RC bất thường có thể chờ lâu. Illegal transition cần chặn là xử lý CHARGE ngoài capacitor, dùng sample ADC của mode cũ và để timer capture cũ chạy sau range switch.
+
+#### Câu hỏi ôn tập: Timeout, lỗi và illegal transition
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| Timeout ADC có thay timeout RC không? | Không; ADC vẫn trả batch bình thường trong khi RC không đạt ngưỡng. |
+| Một period_ticks=0 có được chia? | Không; validate trước khi tính f. |
+| Chuyển range tại sao clear stale flag? | Tránh đọc dữ liệu của timer cũ thành kết quả timer mới. |
+| Nếu LCD không giao tiếp? | Xem error/timeout I2C, không được coi là lỗi đo tự động. |
+
+#### Điểm cần ghi nhớ
+
+- **Câu hỏi:** Ý chính cần trả lời
+- **Timeout ADC có thay timeout RC không:** Không; ADC vẫn trả batch bình thường trong khi RC không đạt ngưỡng.
+- **Một period_ticks=0 có được chia:** Không; validate trước khi tính f.
+
+
 ---
 <a id="phan-6"></a>
 ## Phần 6. Ôn tập kiến thức kỹ thuật chuyên sâu
@@ -1545,6 +2087,139 @@ Nếu mọi màn hình tự bật/tắt thiết bị, logic cleanup phân tán v
 
 <a id="chuong-6-1"></a>
 ### 6.1. STM32F103C8T6, ARM Cortex-M3, CMSIS và SPL
+
+> **Mục tiêu:** Nắm bộ xử lý, khởi động, mô hình bộ nhớ và lý do chia kiến trúc theo module; không nhầm core với peripheral driver.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: STM32F103C8T6, ARM Cortex-M3, CMSIS và SPL
+
+```mermaid
+flowchart TD
+    S1["Phân biệt MCU với CPU"]
+    S2["Đọc Memory Map"]
+    S1 --> S2
+    S3["Hiểu reset và startup"]
+    S2 --> S3
+    S4["Phân biệt MSP, SP và stack"]
+    S3 --> S4
+    S5["Hiểu NVIC"]
+    S4 --> S5
+    S6["Phân biệt CMSIS và SPL"]
+    S5 --> S6
+    S7["Đọc cấu hình clock"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Phân biệt MCU với CPU
+
+**Nguyên lý cần hiểu:** STM32F103C8T6 tích hợp lõi Cortex-M3, SRAM, Internal Flash và bộ ngoại vi; Cortex-M3 không phải tên một board cụ thể.
+
+**Liên hệ project:** Trong project chỉ một MCU nhận ADC, điều khiển Timer, LCD và xử lý giao diện; các luồng chạy luân phiên theo ngắt và super-loop.
+
+> **Giới hạn / bẫy phỏng vấn:** Không thể suy ra hiệu năng đo hoặc mức điện áp chân chỉ từ tên Cortex-M3.
+
+#### Bước 2. Đọc Memory Map
+
+**Nguyên lý cần hiểu:** Flash chứa instruction và dữ liệu lưu bền vững, SRAM chứa stack/biến chạy, ngoại vi nằm trong memory-mapped I/O.
+
+**Liên hệ project:** Flash cấu hình có một page riêng ở 0x0800FC00; SRAM chứa FIFO, filter state và Error Manager history.
+
+> **Giới hạn / bẫy phỏng vấn:** Dùng pointer tới địa chỉ Flash như RAM khi ghi mà bỏ qua erase/program là sai về phần cứng.
+
+#### Bước 3. Hiểu reset và startup
+
+**Nguyên lý cần hiểu:** Khi reset, CPU lấy MSP ban đầu và Reset Handler từ vector table; startup thực hiện khởi tạo data/bss trước main.
+
+**Liên hệ project:** Keil startup và CMSIS trong MDK cung cấp phần khởi động; main gọi AppController_Init.
+
+> **Giới hạn / bẫy phỏng vấn:** Nói main là lệnh đầu tiên sau reset bỏ qua startup và SystemInit là không đúng.
+
+#### Bước 4. Phân biệt MSP, SP và stack
+
+**Nguyên lý cần hiểu:** Cortex-M dùng stack để lưu call frame và exception context; ISR có thể lồng nhau tùy ưu tiên.
+
+**Liên hệ project:** Các ISR ADC/TIM/USART dùng stack và chạy đồng thời về mặt chen ngang với main; cần tránh buffer stack quá lớn.
+
+> **Giới hạn / bẫy phỏng vấn:** Không tính stack worst case dễ dẫn đến ghi đè SRAM khi nhiều ngắt lồng.
+
+#### Bước 5. Hiểu NVIC
+
+**Nguyên lý cần hiểu:** NVIC cấp phép, phân nhóm ưu tiên và điều phối exception/interrupt; ưu tiên thấp hơn số có thể preempt cao hơn theo cấu hình.
+
+**Liên hệ project:** TIM capture có preemption priority 0, ADC priority 1 trong thiết kế được tài liệu mô tả.
+
+> **Giới hạn / bẫy phỏng vấn:** Không suy ra mọi ngắt cùng mức hoặc priority của SysTick chỉ từ tên handler.
+
+#### Bước 6. Phân biệt CMSIS và SPL
+
+**Nguyên lý cần hiểu:** CMSIS định nghĩa lõi, NVIC, SysTick và intrinsics; SPL đóng gói API cho GPIO/ADC/TIM/I2C/Flash của STM32F1.
+
+**Liên hệ project:** Driver gọi GPIO_Init, TIM_TimeBaseInit, ADC_* từ SPL và __disable_irq từ CMSIS khi cần.
+
+> **Giới hạn / bẫy phỏng vấn:** SPL không phải HAL và không được giả định API hay timing tương đương HAL mới.
+
+#### Bước 7. Đọc cấu hình clock
+
+**Nguyên lý cần hiểu:** SYSCLK, AHB, APB1/APB2 và clock nhân hai cho timer không giống nhau; ngoại vi phải bật RCC trước khi dùng.
+
+**Liên hệ project:** Project khai báo HCLK 72 MHz, PCLK1 36 MHz, APB1 timer 72 MHz, ADC 12 MHz.
+
+> **Giới hạn / bẫy phỏng vấn:** Tính timer bằng PCLK1=36 MHz thay vì clock timer 72 MHz sẽ sai tần số một hệ số hai.
+
+#### Bước 8. Hiểu chân và alternate function
+
+**Nguyên lý cần hiểu:** Một pin có thể nhận GPIO input, ADC analog hoặc timer alternate function tùy thiết lập mode và mapping.
+
+**Liên hệ project:** PA1 TIM2_CH2 phát PWM, PA3/PA4 là analog input, PB10/PB11 I2C2; các pin capture khác được bật theo dải.
+
+> **Giới hạn / bẫy phỏng vấn:** Một chân đang ở chế độ analog không thể tự được dùng làm GPIO output mà không chuyển mode.
+
+#### Bước 9. Theo dõi vector handler thực
+
+**Nguyên lý cần hiểu:** Handler thường do startup đặt tên cố định, ví dụ ADC1_2_IRQHandler, TIMx_IRQHandler, SysTick_Handler.
+
+**Liên hệ project:** Đọc file vector/startup và source Drivers để biết handler nào nối tới driver và biến shared nào được cập nhật.
+
+> **Giới hạn / bẫy phỏng vấn:** Đổi tên ISR tùy ý mà không khớp vector table sẽ làm ngắt không chạy như dự kiến.
+
+#### Bước 10. Ranh giới kiến trúc
+
+**Nguyên lý cần hiểu:** Application quyết định trạng thái; Service tính toán chính sách; Driver viết ngoại vi; Platform bọc time/uart/init.
+
+**Liên hệ project:** `AppController_RunOnce()` chịu trách nhiệm orchestration, `measurement_service.c` không cập nhật thẳng LCD từng ký tự.
+
+> **Giới hạn / bẫy phỏng vấn:** Không nên mô tả phụ thuộc bắt buộc đi qua lớp liền kề; Architecture cho phép tầng cao gọi trực tiếp tầng thấp khi cần.
+
+#### Case study 1 — Theo dấu một lần reset
+
+```text
+Power on
+  → Reset Handler (startup / SystemInit)
+  → initialize .data, clear .bss
+  → main()
+  → AppController_Init()
+  → AppController_RunOnce() lặp lại
+```
+
+**Tự kiểm tra:** Nếu một global có giá trị rác sau reset, phân biệt lỗi startup/linker/định nghĩa biến với lỗi logic `AppController_Init`. Nếu ADC ISR không đến, kiểm tra có clock NVIC/ADC và đúng tên vector handler hay không, thay vì chỉ xem menu LCD.
+
+#### Case study 2 — Bảng vùng nhớ thực sự quan trọng
+
+| Vùng | Địa chỉ gợi nhớ | Vai trò | Có mất khi tắt nguồn? |
+|---|---|---|---|
+| Internal Flash | Bắt đầu `0x08000000` | Code firmware và bản ghi cấu hình | Không |
+| SRAM | Bắt đầu `0x20000000` | Stack, state, queue, filter | Có |
+| Peripheral MMIO | Khoảng `0x40000000` trở lên | Thanh ghi RCC/GPIO/ADC/TIM | Không phải lưu bền vững dữ liệu ứng dụng |
+| Trang config | `0x0800FC00` | Record V1 24 byte trong trang 1 KiB | Không, nếu đã ghi đúng nhưng vẫn có rủi ro ghi dở |
+
+> **Lưu ý:** Bộ nhớ ngoại vi là các register được CPU ánh xạ địa chỉ, không phải một vùng SRAM có thể đọc/ghi tùy ý như mảng C.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.1.1. Cấu trúc MCU
 
@@ -1587,8 +2262,197 @@ C dễ liên hệ tới thanh ghi, kiểu cố định `uint8_t`/`uint16_t`/`uin
 
 ---
 
+
+#### Bài nói khi phỏng vấn: STM32F103C8T6, ARM Cortex-M3, CMSIS và SPL (khoảng 90 giây)
+
+> Dạ, em sử dụng STM32F103C8T6 là một MCU dùng lõi ARM Cortex-M3, với Internal Flash lưu firmware, SRAM cho stack/biến và các thanh ghi ngoại vi được ánh xạ vào không gian địa chỉ. Sau reset, startup thiết lập môi trường C rồi chuyển vào `main()`. Firmware của em dùng CMSIS cho phần core và STM32 SPL để cấu hình GPIO, ADC, TIM, I2C, UART và Flash. Về kiến trúc, em tách Application, Services, Drivers, Infrastructure và Platform để các quy tắc đo không bị trộn với chi tiết register. Khi debug một lỗi không có ngắt hoặc sai timer, em lần từ clock RCC, pin mode, tên ISR trong startup và NVIC, thay vì chỉ sửa ở UI.
+
+#### Câu hỏi ôn tập Chương 6.1 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Phân biệt MCU với CPU: nguyên lý và vai trò trong project? | STM32F103C8T6 tích hợp lõi Cortex-M3, SRAM, Internal Flash và bộ ngoại vi; Cortex-M3 không phải tên một board cụ thể. Trong project chỉ một MCU nhận ADC, điều khiển Timer, LCD và xử lý giao diện; các luồng chạy luân phiên theo ngắt và super-loop. |
+| 2. Rủi ro/giới hạn tại bước “Phân biệt MCU với CPU” là gì? | Không thể suy ra hiệu năng đo hoặc mức điện áp chân chỉ từ tên Cortex-M3. |
+| 3. Đọc Memory Map: nguyên lý và vai trò trong project? | Flash chứa instruction và dữ liệu lưu bền vững, SRAM chứa stack/biến chạy, ngoại vi nằm trong memory-mapped I/O. Flash cấu hình có một page riêng ở 0x0800FC00; SRAM chứa FIFO, filter state và Error Manager history. |
+| 4. Rủi ro/giới hạn tại bước “Đọc Memory Map” là gì? | Dùng pointer tới địa chỉ Flash như RAM khi ghi mà bỏ qua erase/program là sai về phần cứng. |
+| 5. Hiểu reset và startup: nguyên lý và vai trò trong project? | Khi reset, CPU lấy MSP ban đầu và Reset Handler từ vector table; startup thực hiện khởi tạo data/bss trước main. Keil startup và CMSIS trong MDK cung cấp phần khởi động; main gọi AppController_Init. |
+| 6. Rủi ro/giới hạn tại bước “Hiểu reset và startup” là gì? | Nói main là lệnh đầu tiên sau reset bỏ qua startup và SystemInit là không đúng. |
+| 7. Phân biệt MSP, SP và stack: nguyên lý và vai trò trong project? | Cortex-M dùng stack để lưu call frame và exception context; ISR có thể lồng nhau tùy ưu tiên. Các ISR ADC/TIM/USART dùng stack và chạy đồng thời về mặt chen ngang với main; cần tránh buffer stack quá lớn. |
+| 8. Rủi ro/giới hạn tại bước “Phân biệt MSP, SP và stack” là gì? | Không tính stack worst case dễ dẫn đến ghi đè SRAM khi nhiều ngắt lồng. |
+| 9. Hiểu NVIC: nguyên lý và vai trò trong project? | NVIC cấp phép, phân nhóm ưu tiên và điều phối exception/interrupt; ưu tiên thấp hơn số có thể preempt cao hơn theo cấu hình. TIM capture có preemption priority 0, ADC priority 1 trong thiết kế được tài liệu mô tả. |
+| 10. Rủi ro/giới hạn tại bước “Hiểu NVIC” là gì? | Không suy ra mọi ngắt cùng mức hoặc priority của SysTick chỉ từ tên handler. |
+| 11. Phân biệt CMSIS và SPL: nguyên lý và vai trò trong project? | CMSIS định nghĩa lõi, NVIC, SysTick và intrinsics; SPL đóng gói API cho GPIO/ADC/TIM/I2C/Flash của STM32F1. Driver gọi GPIO_Init, TIM_TimeBaseInit, ADC_* từ SPL và __disable_irq từ CMSIS khi cần. |
+| 12. Rủi ro/giới hạn tại bước “Phân biệt CMSIS và SPL” là gì? | SPL không phải HAL và không được giả định API hay timing tương đương HAL mới. |
+| 13. Đọc cấu hình clock: nguyên lý và vai trò trong project? | SYSCLK, AHB, APB1/APB2 và clock nhân hai cho timer không giống nhau; ngoại vi phải bật RCC trước khi dùng. Project khai báo HCLK 72 MHz, PCLK1 36 MHz, APB1 timer 72 MHz, ADC 12 MHz. |
+| 14. Rủi ro/giới hạn tại bước “Đọc cấu hình clock” là gì? | Tính timer bằng PCLK1=36 MHz thay vì clock timer 72 MHz sẽ sai tần số một hệ số hai. |
+| 15. Hiểu chân và alternate function: nguyên lý và vai trò trong project? | Một pin có thể nhận GPIO input, ADC analog hoặc timer alternate function tùy thiết lập mode và mapping. PA1 TIM2_CH2 phát PWM, PA3/PA4 là analog input, PB10/PB11 I2C2; các pin capture khác được bật theo dải. |
+| 16. Rủi ro/giới hạn tại bước “Hiểu chân và alternate function” là gì? | Một chân đang ở chế độ analog không thể tự được dùng làm GPIO output mà không chuyển mode. |
+| 17. Theo dõi vector handler thực: nguyên lý và vai trò trong project? | Handler thường do startup đặt tên cố định, ví dụ ADC1_2_IRQHandler, TIMx_IRQHandler, SysTick_Handler. Đọc file vector/startup và source Drivers để biết handler nào nối tới driver và biến shared nào được cập nhật. |
+| 18. Rủi ro/giới hạn tại bước “Theo dõi vector handler thực” là gì? | Đổi tên ISR tùy ý mà không khớp vector table sẽ làm ngắt không chạy như dự kiến. |
+| 19. Ranh giới kiến trúc: nguyên lý và vai trò trong project? | Application quyết định trạng thái; Service tính toán chính sách; Driver viết ngoại vi; Platform bọc time/uart/init. `AppController_RunOnce()` chịu trách nhiệm orchestration, `measurement_service.c` không cập nhật thẳng LCD từng ký tự. |
+| 20. Rủi ro/giới hạn tại bước “Ranh giới kiến trúc” là gì? | Không nên mô tả phụ thuộc bắt buộc đi qua lớp liền kề; Architecture cho phép tầng cao gọi trực tiếp tầng thấp khi cần. |
+| 21. CPU Cortex-M3 có phải là toàn bộ STM32 không? | Không; Cortex-M3 là lõi CPU trong MCU STM32 có Flash/SRAM/ngoại vi. |
+| 22. Mã C chạy ở đâu sau reset? | Mã khởi động từ vector/startup, rồi đến main trong firmware ở Internal Flash. |
+| 23. SPL khác CMSIS ở lớp nào? | CMSIS lo core/định nghĩa nền; SPL đóng gói ngoại vi STM32F1. |
+| 24. ISR có thể dùng stack nhiều hơn main dự kiến không? | Có; khi ngắt lồng nhau và handler dùng nhiều local variables, stack worst-case tăng. |
+| 25. Dùng Memory Map khi debug lỗi Flash thế nào? | Xác định địa chỉ và ranh giới page/config, xem linker có giữ page cuối không. |
+| 26. Khi nào cần xem linker/scatter? | Khi kiểm tra ranh giới Flash firmware/config và RAM stack/data. |
+| 27. Tại sao firmware không dùng RTOS? | Workflow đơn giản đủ điều phối bằng super-loop + IRQ, giảm overhead nhưng phải tự kiểm soát latency. |
+| 28. GPIO alternate-function có phải CPU pin mode mặc định không? | Không; cần cấu hình RCC và GPIO mode phù hợp. |
+| 29. Có thể dùng 64 KiB Flash như 64 KiB RAM không? | Không; Flash và SRAM khác cách ghi, tốc độ và endurance. |
+| 30. Lỗi gì khi ISR không khớp tên vector? | Ngắt không gọi handler mong muốn, có thể rơi vào default handler. |
+
+#### Điểm cần ghi nhớ
+
+- **Phân biệt MCU với CPU:** Trong project chỉ một MCU nhận ADC, điều khiển Timer, LCD và xử lý giao diện; các luồng chạy luân phiên theo ngắt và super-loop.
+- **Phân biệt MSP, SP và stack:** Các ISR ADC/TIM/USART dùng stack và chạy đồng thời về mặt chen ngang với main; cần tránh buffer stack quá lớn.
+- **Đọc cấu hình clock:** Project khai báo HCLK 72 MHz, PCLK1 36 MHz, APB1 timer 72 MHz, ADC 12 MHz.
+- **Ranh giới kiến trúc:** `AppController_RunOnce()` chịu trách nhiệm orchestration, `measurement_service.c` không cập nhật thẳng LCD từng ký tự.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Platform/platform_init.c`
+- `Application/main.c`
+- `Application/app_controller.c`
+- `MDK/`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-2"></a>
 ### 6.2. Clock Tree, SysTick, interrupt và `volatile`
+
+> **Mục tiêu:** Hiểu thời gian thực trong firmware: lấy clock đúng, giữ ISR ngắn, đồng bộ snapshot và dùng tick an toàn.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: Clock Tree, SysTick, interrupt và volatile
+
+```mermaid
+flowchart TD
+    S1["Tách SYSCLK, HCLK và bus clock"]
+    S2["Tại sao APB1 timer có x2"]
+    S1 --> S2
+    S3["Tạo tick 1 ms"]
+    S2 --> S3
+    S4["Tránh delay trong ứng dụng"]
+    S3 --> S4
+    S5["Phân biệt IRQ latency và ISR execution"]
+    S4 --> S5
+    S6["Ưu tiên ngắt"]
+    S5 --> S6
+    S7["volatile để làm gì"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Tách SYSCLK, HCLK và bus clock
+
+**Nguyên lý cần hiểu:** Clock tree chia 72 MHz từ nguồn/PLL tới AHB và APB; mỗi ngoại vi có clock enable và prescaler riêng.
+
+**Liên hệ project:** Project dùng HCLK/APB2 72 MHz, APB1 36 MHz; TIM2/TIM3/TIM4 được tính theo clock timer thực.
+
+> **Giới hạn / bẫy phỏng vấn:** Áp một tần số 72 MHz cho cả ADC và I2C sẽ sai dù SYSCLK đúng.
+
+#### Bước 2. Tại sao APB1 timer có x2
+
+**Nguyên lý cần hiểu:** Với STM32F1, khi APB prescaler khác 1, clock timer trên bus tương ứng thường bằng 2 lần PCLK.
+
+**Liên hệ project:** TIM2 cần 72 MHz dù PCLK1 là 36 MHz, vì vậy công thức PSC/ARR dùng 72e6.
+
+> **Giới hạn / bẫy phỏng vấn:** Nhầm hệ số x2 tạo PWM sai một nửa hoặc gấp đôi mong muốn.
+
+#### Bước 3. Tạo tick 1 ms
+
+**Nguyên lý cần hiểu:** SysTick đếm chu kỳ HCLK để phát ngắt đều đặn, cộng biến tick dùng cho deadline UI và timeout đo.
+
+**Liên hệ project:** `SystemTime_Init` và `SystemTime_GetMs` phục vụ Splash 2000 ms, Save 800 ms, ADC 100 ms, PWM 1100 ms.
+
+> **Giới hạn / bẫy phỏng vấn:** Một tick 1 ms không đủ phân giải để đo chính xác mọi tụ nhỏ.
+
+#### Bước 4. Tránh delay trong ứng dụng
+
+**Nguyên lý cần hiểu:** Non-blocking time check dùng now-start thay vì chờ cứng; mỗi lần RunOnce có thể xử lý nhiều subsystem.
+
+**Liên hệ project:** UI trạng thái Splash/Save_FeedBack chờ bằng timestamp, cho main loop tiếp tục hoạt động.
+
+> **Giới hạn / bẫy phỏng vấn:** Không được nói toàn hệ thống non-blocking vì LCD clear/init và Flash save còn thao tác chặn.
+
+#### Bước 5. Phân biệt IRQ latency và ISR execution
+
+**Nguyên lý cần hiểu:** Latency là thời gian từ event tới lúc handler bắt đầu; thời gian trong handler quyết định thời gian chặn interrupt khác.
+
+**Liên hệ project:** ADC ISR cộng số nguyên, không chạy median, float formatting hoặc I2C.
+
+> **Giới hạn / bẫy phỏng vấn:** Đặt printf trong ISR dễ gây jitter và bỏ lỡ cạnh nhanh.
+
+#### Bước 6. Ưu tiên ngắt
+
+**Nguyên lý cần hiểu:** NVIC preemption priority và subpriority phục vụ thời gian phản ứng khi nhiều nguồn đồng thời.
+
+**Liên hệ project:** Timer capture ưu tiên trên ADC theo docs/runtime; không nên cho xử lý LCD chiếm CPU dài trong ISR.
+
+> **Giới hạn / bẫy phỏng vấn:** Đặt priority theo cảm tính mà không kiểm tra priority grouping có thể không cho preemption như mong đợi.
+
+#### Bước 7. volatile để làm gì
+
+**Nguyên lý cần hiểu:** `volatile` yêu cầu compiler không loại bỏ/lưu cache các truy cập biểu thức volatile, nhưng không khóa dữ liệu và không bảo đảm snapshot nhiều trường.
+
+**Liên hệ project:** Ready flags/tick/capture data được ISR và main chia sẻ; driver cần đọc/ghi đúng quy tắc.
+
+> **Giới hạn / bẫy phỏng vấn:** Sửa vài biến cùng nhau vẫn có thể bị ISR chen giữa dù tất cả đều volatile.
+
+#### Bước 8. Critical section ngắn
+
+**Nguyên lý cần hiểu:** Khóa IRQ trong thời gian tối thiểu để copy dữ liệu shared thống nhất, sau đó bật lại theo trạng thái cũ.
+
+**Liên hệ project:** PWM driver tạo snapshot capture để Service không đọc period/high của hai chu kỳ khác nhau.
+
+> **Giới hạn / bẫy phỏng vấn:** Giữ IRQ disabled khi tính float hoặc gọi LCD khiến jitter và mất xung.
+
+#### Bước 9. Xử lý overflow thời gian
+
+**Nguyên lý cần hiểu:** Unsigned subtraction `(uint32_t)(now - start)` hoạt động qua wrap nếu khoảng cần đo ngắn hơn nửa miền phù hợp.
+
+**Liên hệ project:** Các deadline mili-giây của UI và service đều nhỏ so với chu kỳ wrap 32-bit.
+
+> **Giới hạn / bẫy phỏng vấn:** So sánh trực tiếp `now > start+timeout` có thể hỏng tại ranh giới wrap nếu không thiết kế đúng.
+
+#### Bước 10. Thiết kế test timing
+
+**Nguyên lý cần hiểu:** Đo thời gian qua GPIO toggle, logic analyzer hoặc UART timestamp để thấy các tác vụ blocking và ISR scheduling.
+
+**Liên hệ project:** Test ADC timeout giả, PWM timeout và button latency khi Save Flash hoặc LCD cập nhật.
+
+> **Giới hạn / bẫy phỏng vấn:** Một log có timestamp 1 ms không đo được jitter vài microsecond.
+
+#### Case study 1 — Từ Clock Tree đến PWM và ADC
+
+```text
+HCLK 72 MHz
+├── APB2 = 72 MHz ── ADC prescaler /6 ──> ADC 12 MHz
+└── APB1 = 36 MHz ── timer x2 ────────> TIM2/3/4 72 MHz
+
+TIM2 PSC = 0, ARR = 1439
+fPWM = 72,000,000 / (1 × 1440) = 50,000 Hz
+```
+
+Nếu ai đó nhầm PCLK1=36 MHz là timer clock, phép tính trên sẽ ra 25 kHz và dẫn đến kết luận sai về mã nguồn. Hãy dùng RCC thực tế và công thức prescaler, không suy từ câu “APB1 là 36 MHz”.
+
+#### Case study 2 — So sánh thời gian không an toàn và an toàn khi overflow
+
+```c
+/* Minh họa: không trích nguyên văn source */
+if ((uint32_t)(now_ms - started_ms) >= 300U) {
+    /* elapsed >= 300 ms */
+}
+```
+
+Khi `started_ms` rất gần `UINT32_MAX` rồi tick quay về 0, phép trừ số nguyên không dấu vẫn cho chênh lệch modulo đúng với interval ngắn. Tuy nhiên ISR SysTick mà bị khóa quá lâu khiến tick *không tăng* trong lúc đó thì phép trừ không đo được thời gian thực đã mất; đó là lý do critical section phải ngắn.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.2.1. Clock tree phải nhìn theo ngoại vi
 
@@ -1656,8 +2520,192 @@ Với `uint32_t now`, `uint32_t start`, `elapsed=(uint32_t)(now-start)` hoạt �
 
 ---
 
+
+#### Bài nói khi phỏng vấn: Clock Tree, SysTick, interrupt và volatile (khoảng 90 giây)
+
+> Dạ, khi làm việc với STM32, em luôn xác định clock thực của từng peripheral. Project có HCLK 72 MHz, APB1 36 MHz nhưng timer trên APB1 dùng clock 72 MHz do cơ chế nhân hai khi prescaler khác một; ADC có clock riêng 12 MHz. SysTick cung cấp tick 1 ms để debounce, timeout và đo thời gian RC. Em ưu tiên ISR ngắn: ADC ISR cộng mẫu, Timer ISR chụp dữ liệu, còn float/filter/format LCD chạy ở main context. Với dữ liệu dùng chung, `volatile` không bảo đảm đọc một cặp period/high nhất quán; em cần snapshot hoặc critical section ngắn. Khi kiểm thử, em phân biệt mốc thời gian theo tick với jitter thực ở mức microsecond.
+
+#### Câu hỏi ôn tập Chương 6.2 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Tách SYSCLK, HCLK và bus clock: nguyên lý và vai trò trong project? | Clock tree chia 72 MHz từ nguồn/PLL tới AHB và APB; mỗi ngoại vi có clock enable và prescaler riêng. Project dùng HCLK/APB2 72 MHz, APB1 36 MHz; TIM2/TIM3/TIM4 được tính theo clock timer thực. |
+| 2. Rủi ro/giới hạn tại bước “Tách SYSCLK, HCLK và bus clock” là gì? | Áp một tần số 72 MHz cho cả ADC và I2C sẽ sai dù SYSCLK đúng. |
+| 3. Tại sao APB1 timer có x2: nguyên lý và vai trò trong project? | Với STM32F1, khi APB prescaler khác 1, clock timer trên bus tương ứng thường bằng 2 lần PCLK. TIM2 cần 72 MHz dù PCLK1 là 36 MHz, vì vậy công thức PSC/ARR dùng 72e6. |
+| 4. Rủi ro/giới hạn tại bước “Tại sao APB1 timer có x2” là gì? | Nhầm hệ số x2 tạo PWM sai một nửa hoặc gấp đôi mong muốn. |
+| 5. Tạo tick 1 ms: nguyên lý và vai trò trong project? | SysTick đếm chu kỳ HCLK để phát ngắt đều đặn, cộng biến tick dùng cho deadline UI và timeout đo. `SystemTime_Init` và `SystemTime_GetMs` phục vụ Splash 2000 ms, Save 800 ms, ADC 100 ms, PWM 1100 ms. |
+| 6. Rủi ro/giới hạn tại bước “Tạo tick 1 ms” là gì? | Một tick 1 ms không đủ phân giải để đo chính xác mọi tụ nhỏ. |
+| 7. Tránh delay trong ứng dụng: nguyên lý và vai trò trong project? | Non-blocking time check dùng now-start thay vì chờ cứng; mỗi lần RunOnce có thể xử lý nhiều subsystem. UI trạng thái Splash/Save_FeedBack chờ bằng timestamp, cho main loop tiếp tục hoạt động. |
+| 8. Rủi ro/giới hạn tại bước “Tránh delay trong ứng dụng” là gì? | Không được nói toàn hệ thống non-blocking vì LCD clear/init và Flash save còn thao tác chặn. |
+| 9. Phân biệt IRQ latency và ISR execution: nguyên lý và vai trò trong project? | Latency là thời gian từ event tới lúc handler bắt đầu; thời gian trong handler quyết định thời gian chặn interrupt khác. ADC ISR cộng số nguyên, không chạy median, float formatting hoặc I2C. |
+| 10. Rủi ro/giới hạn tại bước “Phân biệt IRQ latency và ISR execution” là gì? | Đặt printf trong ISR dễ gây jitter và bỏ lỡ cạnh nhanh. |
+| 11. Ưu tiên ngắt: nguyên lý và vai trò trong project? | NVIC preemption priority và subpriority phục vụ thời gian phản ứng khi nhiều nguồn đồng thời. Timer capture ưu tiên trên ADC theo docs/runtime; không nên cho xử lý LCD chiếm CPU dài trong ISR. |
+| 12. Rủi ro/giới hạn tại bước “Ưu tiên ngắt” là gì? | Đặt priority theo cảm tính mà không kiểm tra priority grouping có thể không cho preemption như mong đợi. |
+| 13. volatile để làm gì: nguyên lý và vai trò trong project? | `volatile` yêu cầu compiler không loại bỏ/lưu cache các truy cập biểu thức volatile, nhưng không khóa dữ liệu và không bảo đảm snapshot nhiều trường. Ready flags/tick/capture data được ISR và main chia sẻ; driver cần đọc/ghi đúng quy tắc. |
+| 14. Rủi ro/giới hạn tại bước “volatile để làm gì” là gì? | Sửa vài biến cùng nhau vẫn có thể bị ISR chen giữa dù tất cả đều volatile. |
+| 15. Critical section ngắn: nguyên lý và vai trò trong project? | Khóa IRQ trong thời gian tối thiểu để copy dữ liệu shared thống nhất, sau đó bật lại theo trạng thái cũ. PWM driver tạo snapshot capture để Service không đọc period/high của hai chu kỳ khác nhau. |
+| 16. Rủi ro/giới hạn tại bước “Critical section ngắn” là gì? | Giữ IRQ disabled khi tính float hoặc gọi LCD khiến jitter và mất xung. |
+| 17. Xử lý overflow thời gian: nguyên lý và vai trò trong project? | Unsigned subtraction `(uint32_t)(now - start)` hoạt động qua wrap nếu khoảng cần đo ngắn hơn nửa miền phù hợp. Các deadline mili-giây của UI và service đều nhỏ so với chu kỳ wrap 32-bit. |
+| 18. Rủi ro/giới hạn tại bước “Xử lý overflow thời gian” là gì? | So sánh trực tiếp `now > start+timeout` có thể hỏng tại ranh giới wrap nếu không thiết kế đúng. |
+| 19. Thiết kế test timing: nguyên lý và vai trò trong project? | Đo thời gian qua GPIO toggle, logic analyzer hoặc UART timestamp để thấy các tác vụ blocking và ISR scheduling. Test ADC timeout giả, PWM timeout và button latency khi Save Flash hoặc LCD cập nhật. |
+| 20. Rủi ro/giới hạn tại bước “Thiết kế test timing” là gì? | Một log có timestamp 1 ms không đo được jitter vài microsecond. |
+| 21. APB1 timer x2 xuất hiện khi nào? | Khi APB prescaler khác 1 theo quy tắc clock timer STM32F1. |
+| 22. Độ phân giải SysTick 1 ms có đủ cho 100 nF không? | Không đủ độ phân giải để có sai số thời gian nhỏ khi khoảng RC chỉ xấp xỉ 1,15 ms. |
+| 23. Ngắt ưu tiên 0 và 1 khác nhau thế nào? | Priority preemption thấp số thường có mức ưu tiên cao hơn, phụ thuộc grouping; capture ưu tiên hơn ADC trong thiết kế. |
+| 24. Khóa IRQ rồi làm I2C dài có nguy cơ gì? | Tăng interrupt latency, mất cạnh/tick, làm dữ liệu đo thiếu hoặc timeout giả. |
+| 25. Có thể dùng phép trừ unsigned qua tick overflow không? | Có đối với interval nhỏ và unsigned modulo đúng; phải giữ ISR SysTick hoạt động đều. |
+| 26. SysTick là timer hay RTOS scheduler? | SysTick là timer hệ thống có thể cấp tick; ở đây không có RTOS scheduler. |
+| 27. Vì sao blocking LCD vẫn ảnh hưởng UI dù ADC dùng IRQ? | IRQ vẫn hoạt động nhưng main không xử lý sự kiện/định dạng khi đang bị chặn. |
+| 28. Có nên disable IRQ suốt Flash erase không? | Trong code có vô hiệu hóa IRQ khi transaction Flash; phải nhận thức hệ quả latency và đánh giá giới hạn. |
+| 29. Tại sao capture cần priority cao? | Lấy dữ liệu cạnh thời gian nhạy, giảm nguy cơ lệch/mất event do handler khác. |
+| 30. Tick 1 ms có đủ định lượng jitter timer 1 µs không? | Không, cần logic analyzer/timer/cycle counter có độ phân giải phù hợp. |
+
+#### Điểm cần ghi nhớ
+
+- **Tách SYSCLK, HCLK và bus clock:** Project dùng HCLK/APB2 72 MHz, APB1 36 MHz; TIM2/TIM3/TIM4 được tính theo clock timer thực.
+- **Tránh delay trong ứng dụng:** UI trạng thái Splash/Save_FeedBack chờ bằng timestamp, cho main loop tiếp tục hoạt động.
+- **volatile để làm gì:** Ready flags/tick/capture data được ISR và main chia sẻ; driver cần đọc/ghi đúng quy tắc.
+- **Thiết kế test timing:** Test ADC timeout giả, PWM timeout và button latency khi Save Flash hoặc LCD cập nhật.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Platform/system_time.c`
+- `Application/app_controller.c`
+- `Drivers/adc_driver.c`
+- `Drivers/pwm_capture_driver.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-3"></a>
 ### 6.3. GPIO, Pull-up, Debounce và Event FIFO
+
+> **Mục tiêu:** Hiểu đường đi từ điện áp chân PB12..PB15 tới một UI event và giới hạn của polling/debounce.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: GPIO, Pull-up, Debounce và Event FIFO
+
+```mermaid
+flowchart TD
+    S1["GPIO Input Pull-up"]
+    S2["Rung tiếp điểm"]
+    S1 --> S2
+    S3["Polling so với EXTI"]
+    S2 --> S3
+    S4["Phát hiện press edge"]
+    S3 --> S4
+    S5["FIFO vòng"]
+    S4 --> S5
+    S6["Điều kiện chỉ nhận CHARGE"]
+    S5 --> S6
+    S7["Output push-pull cho PA5"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. GPIO Input Pull-up
+
+**Nguyên lý cần hiểu:** Ở chế độ input pull-up, mức nhả thường HIGH; nhấn nối về GND khiến chân LOW.
+
+**Liên hệ project:** UP PB12, DOWN PB13, SELECT PB14, CHARGE PB15 đều active-low.
+
+> **Giới hạn / bẫy phỏng vấn:** Nhầm HIGH là pressed sẽ đảo toàn bộ tương tác UI.
+
+#### Bước 2. Rung tiếp điểm
+
+**Nguyên lý cần hiểu:** Nút cơ khí tạo nhiều dao động mức trong vài mili-giây khi nhấn/thả, nên không nên phát một event cho mỗi cạnh raw.
+
+**Liên hệ project:** ButtonDriver dùng điều kiện mức ổn định 20 ms trước khi tạo press event.
+
+> **Giới hạn / bẫy phỏng vấn:** Debounce quá ngắn gây double press; quá dài có thể bỏ press nhanh.
+
+#### Bước 3. Polling so với EXTI
+
+**Nguyên lý cần hiểu:** Polling kiểm tra trạng thái chân khi main loop chạy; EXTI dùng cạnh GPIO để gọi ISR.
+
+**Liên hệ project:** Dự án quét nút trong ButtonDriver_Process của super-loop thay vì yêu cầu mỗi nút có ngắt riêng.
+
+> **Giới hạn / bẫy phỏng vấn:** Main bị block lâu có thể làm thời gian xác nhận hoặc nhận nút bị lệch.
+
+#### Bước 4. Phát hiện press edge
+
+**Nguyên lý cần hiểu:** Debounced state khác raw state; event được phát khi trạng thái ổn định mới chuyển sang pressed.
+
+**Liên hệ project:** UI nhận sự kiện nhấn đã chuẩn hóa, không phụ thuộc độ dài rung hay bit IDR.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu phát liên tục khi giữ LOW mà không có chính sách repeat, menu có thể nhảy nhiều mục.
+
+#### Bước 5. FIFO vòng
+
+**Nguyên lý cần hiểu:** FIFO có head/tail/capacity, cho phép sự kiện đến và được xử lý tách biệt thời điểm quét GPIO.
+
+**Liên hệ project:** Project có queue tám phần tử; AppController drain event mỗi vòng.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu event sinh nhanh hơn xử lý, queue có thể đầy; cần test hành vi drop/report.
+
+#### Bước 6. Điều kiện chỉ nhận CHARGE
+
+**Nguyên lý cần hiểu:** Một input vật lý không nên điều khiển nạp tụ khi UI không ở capacitor mode.
+
+**Liên hệ project:** Button/Service giới hạn CHARGE theo chế độ hoạt động.
+
+> **Giới hạn / bẫy phỏng vấn:** Cho CHARGE hoạt động bất kỳ lúc nào có thể đưa PA5 HIGH ngoài mong muốn.
+
+#### Bước 7. Output push-pull cho PA5
+
+**Nguyên lý cần hiểu:** GPIO push-pull kéo chân gần VCC hoặc GND để điều khiển dòng qua điện trở RC.
+
+**Liên hệ project:** CapacitorChargeDriver cấu hình PA5 khi vào mode; mức HIGH nạp, LOW xả.
+
+> **Giới hạn / bẫy phỏng vấn:** Không bảo đảm điện áp tụ theo mức logic tức thì vì có RC và điện trở tải.
+
+#### Bước 8. Alternate function output
+
+**Nguyên lý cần hiểu:** Timer PWM dùng alternate-function push-pull thay vì CPU tự toggle GPIO từng cạnh.
+
+**Liên hệ project:** TIM2 CH2 tạo xung PA1; điều khiển ra phụ thuộc PSC/ARR/CCR.
+
+> **Giới hạn / bẫy phỏng vấn:** Đổi mode PA1 thành GPIO output sẽ phá PWM phần cứng.
+
+#### Bước 9. Tổ chức trách nhiệm
+
+**Nguyên lý cần hiểu:** Driver biết chân, mức active và debounce; UI biết ý nghĩa UP/DOWN/SELECT theo state.
+
+**Liên hệ project:** `UiController_HandleEvent()` không cần hiểu GPIOB pin bit.
+
+> **Giới hạn / bẫy phỏng vấn:** Nhúng logic menu vào driver gây phụ thuộc ngược và khó unit test.
+
+#### Bước 10. Kiểm thử nút
+
+**Nguyên lý cần hiểu:** Dùng oscilloscope hoặc mô phỏng bounce, giữ nút, nhấn nhanh, nhiều nút cùng lúc và tắc main loop.
+
+**Liên hệ project:** Ghi event/time ở ranh giới driver/UI để xác định bước bị mất.
+
+> **Giới hạn / bẫy phỏng vấn:** Test chỉ với nhấn tay chậm khó thấy lỗi queue overflow và bounce edge case.
+
+#### Case study 1 — Một lần nhấn SELECT
+
+```text
+PB14 HIGH (nhả)
+  → nhấn: PB14 LOW có rung vài lần
+  → sau khi LOW ổn định ≥20 ms
+  → ButtonDriver tạo một PRESS event
+  → FIFO 8 phần tử
+  → AppController drain
+  → UiController_HandleEvent(SELECT)
+  → UI chuyển state theo màn hình hiện tại
+```
+
+Kiểm thử bằng cách nhấn 5–10 ms và 30 ms không nhằm chứng minh mọi nút vật lý giống nhau; mục tiêu là xác định policy 20 ms đã loại được nhiễu nhưng không bỏ sự kiện người dùng thường xuyên.
+
+#### Case study 2 — Tại sao press event không nên là GPIO raw level
+
+Giả sử người dùng giữ PB14 LOW trong 600 ms, vòng lặp chính chạy 500 lần trong khoảng đó. Nếu UI coi `GPIO_ReadInputDataBit()==0` là một lần nhấn tại mỗi vòng thì menu có thể nhảy hàng trăm mục. Driver phải phát **sự kiện cạnh đã xác nhận**, không phát một event cho mỗi lần quét thấy LOW. Nếu muốn long press/auto repeat, cần thêm quy tắc riêng và kiểm thử, không được tự suy ra firmware đang có.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.3.1. Các mode GPIO chủ yếu trong project
 
@@ -1694,8 +2742,190 @@ Khi người dùng giữ nút lâu, phải biết firmware có hay không có au
 
 ---
 
+
+#### Bài nói khi phỏng vấn: GPIO, Pull-up, Debounce và Event FIFO (khoảng 90 giây)
+
+> Dạ, bốn nút của thiết bị nối PB12–PB15 theo active-low và pull-up. Em không chuyển trực tiếp mức GPIO raw thành hành động menu, mà dùng ButtonDriver quét và xác nhận ổn định 20 ms trước khi đẩy press event vào FIFO tám phần tử. AppController lấy sự kiện và UiController giải thích SELECT/UP/DOWN tùy màn hình hiện tại. CHARGE chỉ có ý nghĩa khi đo tụ, tránh vô tình kích hoạt chân PA5 ở màn khác. Mô hình này làm rõ trách nhiệm: driver biết pin và debounce, UI biết trạng thái và thao tác. Khi một nút bị bỏ lỡ, em kiểm tra thời gian press, queue overflow và tác vụ chặn main trước khi đổi ngưỡng debounce.
+
+#### Câu hỏi ôn tập Chương 6.3 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. GPIO Input Pull-up: nguyên lý và vai trò trong project? | Ở chế độ input pull-up, mức nhả thường HIGH; nhấn nối về GND khiến chân LOW. UP PB12, DOWN PB13, SELECT PB14, CHARGE PB15 đều active-low. |
+| 2. Rủi ro/giới hạn tại bước “GPIO Input Pull-up” là gì? | Nhầm HIGH là pressed sẽ đảo toàn bộ tương tác UI. |
+| 3. Rung tiếp điểm: nguyên lý và vai trò trong project? | Nút cơ khí tạo nhiều dao động mức trong vài mili-giây khi nhấn/thả, nên không nên phát một event cho mỗi cạnh raw. ButtonDriver dùng điều kiện mức ổn định 20 ms trước khi tạo press event. |
+| 4. Rủi ro/giới hạn tại bước “Rung tiếp điểm” là gì? | Debounce quá ngắn gây double press; quá dài có thể bỏ press nhanh. |
+| 5. Polling so với EXTI: nguyên lý và vai trò trong project? | Polling kiểm tra trạng thái chân khi main loop chạy; EXTI dùng cạnh GPIO để gọi ISR. Dự án quét nút trong ButtonDriver_Process của super-loop thay vì yêu cầu mỗi nút có ngắt riêng. |
+| 6. Rủi ro/giới hạn tại bước “Polling so với EXTI” là gì? | Main bị block lâu có thể làm thời gian xác nhận hoặc nhận nút bị lệch. |
+| 7. Phát hiện press edge: nguyên lý và vai trò trong project? | Debounced state khác raw state; event được phát khi trạng thái ổn định mới chuyển sang pressed. UI nhận sự kiện nhấn đã chuẩn hóa, không phụ thuộc độ dài rung hay bit IDR. |
+| 8. Rủi ro/giới hạn tại bước “Phát hiện press edge” là gì? | Nếu phát liên tục khi giữ LOW mà không có chính sách repeat, menu có thể nhảy nhiều mục. |
+| 9. FIFO vòng: nguyên lý và vai trò trong project? | FIFO có head/tail/capacity, cho phép sự kiện đến và được xử lý tách biệt thời điểm quét GPIO. Project có queue tám phần tử; AppController drain event mỗi vòng. |
+| 10. Rủi ro/giới hạn tại bước “FIFO vòng” là gì? | Nếu event sinh nhanh hơn xử lý, queue có thể đầy; cần test hành vi drop/report. |
+| 11. Điều kiện chỉ nhận CHARGE: nguyên lý và vai trò trong project? | Một input vật lý không nên điều khiển nạp tụ khi UI không ở capacitor mode. Button/Service giới hạn CHARGE theo chế độ hoạt động. |
+| 12. Rủi ro/giới hạn tại bước “Điều kiện chỉ nhận CHARGE” là gì? | Cho CHARGE hoạt động bất kỳ lúc nào có thể đưa PA5 HIGH ngoài mong muốn. |
+| 13. Output push-pull cho PA5: nguyên lý và vai trò trong project? | GPIO push-pull kéo chân gần VCC hoặc GND để điều khiển dòng qua điện trở RC. CapacitorChargeDriver cấu hình PA5 khi vào mode; mức HIGH nạp, LOW xả. |
+| 14. Rủi ro/giới hạn tại bước “Output push-pull cho PA5” là gì? | Không bảo đảm điện áp tụ theo mức logic tức thì vì có RC và điện trở tải. |
+| 15. Alternate function output: nguyên lý và vai trò trong project? | Timer PWM dùng alternate-function push-pull thay vì CPU tự toggle GPIO từng cạnh. TIM2 CH2 tạo xung PA1; điều khiển ra phụ thuộc PSC/ARR/CCR. |
+| 16. Rủi ro/giới hạn tại bước “Alternate function output” là gì? | Đổi mode PA1 thành GPIO output sẽ phá PWM phần cứng. |
+| 17. Tổ chức trách nhiệm: nguyên lý và vai trò trong project? | Driver biết chân, mức active và debounce; UI biết ý nghĩa UP/DOWN/SELECT theo state. `UiController_HandleEvent()` không cần hiểu GPIOB pin bit. |
+| 18. Rủi ro/giới hạn tại bước “Tổ chức trách nhiệm” là gì? | Nhúng logic menu vào driver gây phụ thuộc ngược và khó unit test. |
+| 19. Kiểm thử nút: nguyên lý và vai trò trong project? | Dùng oscilloscope hoặc mô phỏng bounce, giữ nút, nhấn nhanh, nhiều nút cùng lúc và tắc main loop. Ghi event/time ở ranh giới driver/UI để xác định bước bị mất. |
+| 20. Rủi ro/giới hạn tại bước “Kiểm thử nút” là gì? | Test chỉ với nhấn tay chậm khó thấy lỗi queue overflow và bounce edge case. |
+| 21. Nút active-low khi thả là mức gì? | HIGH do pull-up kéo lên, khi nhấn xuống GND thì LOW. |
+| 22. Vì sao không auto-repeat chỉ từ GPIO LOW? | Phải phát sự kiện nhấn theo edge đã debounce; auto-repeat là chính sách riêng. |
+| 23. CHARGE ngoài capacitor mode có tác dụng gì? | Không nên kích hoạt quy trình nạp/xả; input bị giới hạn theo capacitor mode. |
+| 24. Có bao nhiêu event trong FIFO? | Tám phần tử theo cấu hình Driver. |
+| 25. Điều gì khiến một nút nhấn bị bỏ lỡ? | Rung tiếp điểm, press ngắn dưới debounce hoặc main bị block/queue đầy. |
+| 26. Nếu nhấn hai nút cùng lúc thì sao? | Cần kiểm thử thứ tự và khả năng FIFO; UI xử lý event nối tiếp theo chính sách. |
+| 27. Debounce bằng timer ngắt hay main? | Ở bản này ButtonDriver_Process quét trong main super-loop. |
+| 28. Nếu GPIO không có pull-up thì sao? | Input có thể floating khi nhả, tạo press event giả. |
+| 29. Vì sao nên kiểm tra overflow queue? | Để biết nguyên nhân mất sự kiện khi tốc độ event lớn. |
+| 30. PA5 rời mode không đưa LOW thì sao? | Có nguy cơ tiếp tục nạp tụ ngoài quá trình đo. |
+
+#### Điểm cần ghi nhớ
+
+- **GPIO Input Pull-up:** UP PB12, DOWN PB13, SELECT PB14, CHARGE PB15 đều active-low.
+- **Phát hiện press edge:** UI nhận sự kiện nhấn đã chuẩn hóa, không phụ thuộc độ dài rung hay bit IDR.
+- **Output push-pull cho PA5:** CapacitorChargeDriver cấu hình PA5 khi vào mode; mức HIGH nạp, LOW xả.
+- **Kiểm thử nút:** Ghi event/time ở ranh giới driver/UI để xác định bước bị mất.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Drivers/button_driver.c`
+- `Application/app_controller.c`
+- `Application/ui_controller.c`
+- `Drivers/capacitor_charge_driver.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-4"></a>
 ### 6.4. ADC 12 bit, lượng tử hóa, EOC và lấy mẫu theo lô
+
+> **Mục tiêu:** Hiểu đường đi từ điện áp PA3/PA4 qua ADC driver đến result batch, including sample time và watchdog.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: ADC 12 bit, lượng tử hóa, EOC và lấy mẫu theo lô
+
+```mermaid
+flowchart TD
+    S1["Mã ADC 12 bit"]
+    S2["Vref và Vcc"]
+    S1 --> S2
+    S3["Sampling capacitor"]
+    S2 --> S3
+    S4["ADC clock riêng"]
+    S3 --> S4
+    S5["Chọn ADC channel"]
+    S4 --> S5
+    S6["EOC interrupt"]
+    S5 --> S6
+    S7["Integer average"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Mã ADC 12 bit
+
+**Nguyên lý cần hiểu:** Bộ chuyển đổi 12-bit lượng tử hóa input thành 4096 mã từ 0..4095; mỗi mã chỉ biểu diễn một khoảng điện áp.
+
+**Liên hệ project:** Source dùng `Vadc=adc/4096×3,3`; 1 LSB danh định khoảng 0,806 mV.
+
+> **Giới hạn / bẫy phỏng vấn:** Không suy ra độ chính xác 0,806 mV vì còn offset, gain, nguồn và nhiễu.
+
+#### Bước 2. Vref và Vcc
+
+**Nguyên lý cần hiểu:** Điện áp tham chiếu quyết định cách ánh xạ điện áp sang mã số, còn nguồn mạch đo quyết định tín hiệu analog.
+
+**Liên hệ project:** Firmware sử dụng giả định Vcc/Vref 3,3 V cho công thức điện trở và ngưỡng tụ.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu nguồn chia áp và reference khác nhau, phép rút gọn ADC count sang R không còn tự đúng.
+
+#### Bước 3. Sampling capacitor
+
+**Nguyên lý cần hiểu:** ADC phải lấy mẫu đủ lâu để tụ giữ mẫu cân bằng với nguồn tín hiệu; trở kháng nguồn cao cần sample time dài.
+
+**Liên hệ project:** ADC configured sample time 239,5 cycles, ADC clock 12 MHz.
+
+> **Giới hạn / bẫy phỏng vấn:** Một sample time ngắn có thể khiến conversion sai tùy độ lớn Rx và RC node.
+
+#### Bước 4. ADC clock riêng
+
+**Nguyên lý cần hiểu:** ADC có prescaler so với PCLK2; tần số conversion không bằng 72 MHz của CPU.
+
+**Liên hệ project:** PCLK2 72 MHz / 6 = 12 MHz cho ADC; tổng conversion gồm acquisition và conversion cycles.
+
+> **Giới hạn / bẫy phỏng vấn:** Tính thời gian batch chỉ từ số 239,5 cycles mà quên conversion cycles sẽ thiếu.
+
+#### Bước 5. Chọn ADC channel
+
+**Nguyên lý cần hiểu:** ADC1 CH3 đọc PA3 (R), CH4 đọc PA4 (C), phải tránh dùng kết quả channel cũ sau chuyển mode.
+
+**Liên hệ project:** AdcDriver_Request cấu hình kênh theo logical input; Service cancel batch khi cần.
+
+> **Giới hạn / bẫy phỏng vấn:** Một batch của kênh trước không được công bố là dữ liệu kênh mới.
+
+#### Bước 6. EOC interrupt
+
+**Nguyên lý cần hiểu:** End of Conversion báo một mẫu sẵn sàng; ISR đọc dữ liệu và có thể khởi động conversion tiếp theo.
+
+**Liên hệ project:** ISR cộng tổng 16 mẫu rồi publish một batch ready; không gọi LCD, median hay float.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu EOC IRQ không đến, request treo; cần timeout 100 ms ở Service.
+
+#### Bước 7. Integer average
+
+**Nguyên lý cần hiểu:** Trung bình 16 mẫu giảm ảnh hưởng noise ngẫu nhiên so với một mẫu đơn, với điều kiện noise đủ độc lập.
+
+**Liên hệ project:** ADC driver tính integer sum/16 rồi đưa qua LPF.
+
+> **Giới hạn / bẫy phỏng vấn:** Average không sửa điện áp đặt sai, ADC gain error hoặc sai Rref.
+
+#### Bước 8. LPF mỗi logical input
+
+**Nguyên lý cần hiểu:** Low-pass IIR làm mượt dãy batch; giữ bộ nhớ độc lập R và C tránh lẫn lịch sử điện áp hai chân.
+
+**Liên hệ project:** Alpha ADC driver 0,2, form y=0,2x+0,8y_prev, với state per input.
+
+> **Giới hạn / bẫy phỏng vấn:** Dùng chung state khi chuyển R→C sẽ tạo transient sai ngay đầu phép đo tụ.
+
+#### Bước 9. Result lifecycle
+
+**Nguyên lý cần hiểu:** Một request phải có complete/ready/get/cancel; consumer không đọc dữ liệu cũ như mẫu mới.
+
+**Liên hệ project:** Service duy trì pending/timestamp, GetResult trả khi batch đã xong; timeout hủy request.
+
+> **Giới hạn / bẫy phỏng vấn:** Đọc ready flag không đồng bộ với result có thể tạo stale/tearing nếu thiết kế sai.
+
+#### Bước 10. Đo và chuẩn đoán
+
+**Nguyên lý cần hiểu:** Scope PA3/PA4, log ADC count, đo actual Vref và đối chiếu raw so với filtered để định vị lỗi.
+
+**Liên hệ project:** Test fixed midscale R, open, near-zero và tín hiệu biến thiên nhanh để phân biệt ADC và filter.
+
+> **Giới hạn / bẫy phỏng vấn:** Độ ổn định LCD không đồng nghĩa độ chính xác điện áp nếu không dùng chuẩn đo.
+
+#### Case study 1 — ADC 2048 count đại diện điện áp nào?
+
+Với divisor mà code đang dùng, `Vadc = 2048 / 4096 × 3,3 = 1,65 V`. Một LSB danh định bằng `3,3/4096 ≈ 0,805664 mV`. Đây là **độ phân giải lượng tử hóa**, không phải sai số tổng cộng của đồng hồ; điện trở chuẩn, nhiễu, Vref, tuyến tính ADC và tiếp điểm đều còn tác động.
+
+#### Case study 2 — LPF sau bước nhảy
+
+Giả sử giá trị LPF cũ là `1000`, batch ADC mới bằng `2000`, α=0,2:
+
+| Batch | Input | Filter y |
+|---|---:|---:|
+| Trước thay đổi | 1000 | 1000 |
+| 1 | 2000 | 1200 |
+| 2 | 2000 | 1360 |
+| 3 | 2000 | 1488 |
+
+Bộ lọc đi dần tới 2000, không đạt ngay. Khi đo tụ theo threshold, lịch sử từ pha xả có thể gây chậm crossing; chính vì vậy Service còn reset filter khi bắt đầu pha timed charge.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.4.1. ADC đo đại lượng nào?
 
@@ -1749,8 +2979,194 @@ Với input bước nhảy, bộ lọc không lên giá trị mới ngay. Bên n
 
 ---
 
+
+#### Bài nói khi phỏng vấn: ADC 12 bit, lượng tử hóa, EOC và lấy mẫu theo lô (khoảng 90 giây)
+
+> Dạ, điện trở và điện dung cùng sử dụng ADC1 12-bit nhưng ở các kênh PA3 và PA4 khác nhau. ADC của STM32F1 có clock 12 MHz, sample time dài để giảm sai số settling do trở kháng nguồn; mỗi request thu 16 mẫu bằng ngắt EOC. ISR chỉ tích lũy tổng rồi báo batch hoàn tất; main đọc average và Driver LPF α=0,2, giữ state filter riêng từng logical input. Measurement Service còn quản lý timeout 100 ms nếu một batch không trả kết quả. Em phân biệt độ phân giải lý tưởng 3,3/4096 V với độ chính xác thực tế và không đồng nhất bộ lọc giảm nhiễu với hiệu chuẩn Vref hay dung sai mạch analog.
+
+#### Câu hỏi ôn tập Chương 6.4 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Mã ADC 12 bit: nguyên lý và vai trò trong project? | Bộ chuyển đổi 12-bit lượng tử hóa input thành 4096 mã từ 0..4095; mỗi mã chỉ biểu diễn một khoảng điện áp. Source dùng `Vadc=adc/4096×3,3`; 1 LSB danh định khoảng 0,806 mV. |
+| 2. Rủi ro/giới hạn tại bước “Mã ADC 12 bit” là gì? | Không suy ra độ chính xác 0,806 mV vì còn offset, gain, nguồn và nhiễu. |
+| 3. Vref và Vcc: nguyên lý và vai trò trong project? | Điện áp tham chiếu quyết định cách ánh xạ điện áp sang mã số, còn nguồn mạch đo quyết định tín hiệu analog. Firmware sử dụng giả định Vcc/Vref 3,3 V cho công thức điện trở và ngưỡng tụ. |
+| 4. Rủi ro/giới hạn tại bước “Vref và Vcc” là gì? | Nếu nguồn chia áp và reference khác nhau, phép rút gọn ADC count sang R không còn tự đúng. |
+| 5. Sampling capacitor: nguyên lý và vai trò trong project? | ADC phải lấy mẫu đủ lâu để tụ giữ mẫu cân bằng với nguồn tín hiệu; trở kháng nguồn cao cần sample time dài. ADC configured sample time 239,5 cycles, ADC clock 12 MHz. |
+| 6. Rủi ro/giới hạn tại bước “Sampling capacitor” là gì? | Một sample time ngắn có thể khiến conversion sai tùy độ lớn Rx và RC node. |
+| 7. ADC clock riêng: nguyên lý và vai trò trong project? | ADC có prescaler so với PCLK2; tần số conversion không bằng 72 MHz của CPU. PCLK2 72 MHz / 6 = 12 MHz cho ADC; tổng conversion gồm acquisition và conversion cycles. |
+| 8. Rủi ro/giới hạn tại bước “ADC clock riêng” là gì? | Tính thời gian batch chỉ từ số 239,5 cycles mà quên conversion cycles sẽ thiếu. |
+| 9. Chọn ADC channel: nguyên lý và vai trò trong project? | ADC1 CH3 đọc PA3 (R), CH4 đọc PA4 (C), phải tránh dùng kết quả channel cũ sau chuyển mode. AdcDriver_Request cấu hình kênh theo logical input; Service cancel batch khi cần. |
+| 10. Rủi ro/giới hạn tại bước “Chọn ADC channel” là gì? | Một batch của kênh trước không được công bố là dữ liệu kênh mới. |
+| 11. EOC interrupt: nguyên lý và vai trò trong project? | End of Conversion báo một mẫu sẵn sàng; ISR đọc dữ liệu và có thể khởi động conversion tiếp theo. ISR cộng tổng 16 mẫu rồi publish một batch ready; không gọi LCD, median hay float. |
+| 12. Rủi ro/giới hạn tại bước “EOC interrupt” là gì? | Nếu EOC IRQ không đến, request treo; cần timeout 100 ms ở Service. |
+| 13. Integer average: nguyên lý và vai trò trong project? | Trung bình 16 mẫu giảm ảnh hưởng noise ngẫu nhiên so với một mẫu đơn, với điều kiện noise đủ độc lập. ADC driver tính integer sum/16 rồi đưa qua LPF. |
+| 14. Rủi ro/giới hạn tại bước “Integer average” là gì? | Average không sửa điện áp đặt sai, ADC gain error hoặc sai Rref. |
+| 15. LPF mỗi logical input: nguyên lý và vai trò trong project? | Low-pass IIR làm mượt dãy batch; giữ bộ nhớ độc lập R và C tránh lẫn lịch sử điện áp hai chân. Alpha ADC driver 0,2, form y=0,2x+0,8y_prev, với state per input. |
+| 16. Rủi ro/giới hạn tại bước “LPF mỗi logical input” là gì? | Dùng chung state khi chuyển R→C sẽ tạo transient sai ngay đầu phép đo tụ. |
+| 17. Result lifecycle: nguyên lý và vai trò trong project? | Một request phải có complete/ready/get/cancel; consumer không đọc dữ liệu cũ như mẫu mới. Service duy trì pending/timestamp, GetResult trả khi batch đã xong; timeout hủy request. |
+| 18. Rủi ro/giới hạn tại bước “Result lifecycle” là gì? | Đọc ready flag không đồng bộ với result có thể tạo stale/tearing nếu thiết kế sai. |
+| 19. Đo và chuẩn đoán: nguyên lý và vai trò trong project? | Scope PA3/PA4, log ADC count, đo actual Vref và đối chiếu raw so với filtered để định vị lỗi. Test fixed midscale R, open, near-zero và tín hiệu biến thiên nhanh để phân biệt ADC và filter. |
+| 20. Rủi ro/giới hạn tại bước “Đo và chuẩn đoán” là gì? | Độ ổn định LCD không đồng nghĩa độ chính xác điện áp nếu không dùng chuẩn đo. |
+| 21. Số mã ADC 12-bit là bao nhiêu? | 4096 mã, từ 0 đến 4095. |
+| 22. Vì sao `4096` và `4095` không dùng tùy tiện? | Công thức code dùng 4096; 4095 là maximum code, không được thay mà không xét mô hình. |
+| 23. Có thể đo quá Vref bằng ADC bình thường không? | Không; cần bảo vệ chân input và bảo đảm điện áp trong miền hợp lệ của ADC. |
+| 24. ADC driver lọc chung hai channel có ổn không? | Không; project giữ LPF riêng từng logical input, tránh lịch sử R/C lẫn nhau. |
+| 25. Nếu EOC IRQ không xảy ra thì sao? | Service hủy request và báo lỗi nếu quá 100 ms không có result. |
+| 26. Tính thời gian sampling 239,5 chu kỳ ở 12 MHz? | Khoảng 19,96 µs chỉ riêng sampling, chưa tính conversion overhead. |
+| 27. Tại sao không làm median trong ISR? | Giảm thời gian ngắt và jitter timer capture. |
+| 28. ADC có thể vẫn sai dù 16 mẫu ổn định không? | Có; offset/gain/Vref/Rref sai là systematic error. |
+| 29. Result ready một lần có thể đọc nhiều lần không? | Cần xem lifecycle GetResult/clear flag; không coi result cũ là mẫu mới. |
+| 30. Khi chuyển R→C cần làm gì? | Cancel batch cũ và bảo đảm channel/filter history phù hợp. |
+
+#### Điểm cần ghi nhớ
+
+- **Mã ADC 12 bit:** Source dùng `Vadc=adc/4096×3,3`; 1 LSB danh định khoảng 0,806 mV.
+- **ADC clock riêng:** PCLK2 72 MHz / 6 = 12 MHz cho ADC; tổng conversion gồm acquisition và conversion cycles.
+- **Integer average:** ADC driver tính integer sum/16 rồi đưa qua LPF.
+- **Đo và chuẩn đoán:** Test fixed midscale R, open, near-zero và tín hiệu biến thiên nhanh để phân biệt ADC và filter.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Drivers/adc_driver.c`
+- `Services/measurement_service.c`
+- `Platform/system_time.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-5"></a>
 ### 6.5. Đo điện trở: mạch chia áp và các bộ lọc số
+
+> **Mục tiêu:** Chứng minh công thức, hiểu đầy đủ chuỗi median/EMA/hysteresis/deadband và vì sao sai số tăng ở đầu dải.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: Đo điện trở: mạch chia áp và các bộ lọc số
+
+```mermaid
+flowchart TD
+    S1["Nguyên lý mạch chia áp"]
+    S2["ADC count sang voltage"]
+    S1 --> S2
+    S3["Thấy mạch hở"]
+    S2 --> S3
+    S4["Startup classification"]
+    S3 --> S4
+    S5["Reinsert hysteresis"]
+    S4 --> S5
+    S6["Median 5 batch"]
+    S5 --> S6
+    S7["Adaptive EMA"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Nguyên lý mạch chia áp
+
+**Nguyên lý cần hiểu:** Hai điện trở Rref phía VCC và Rx phía GND mang cùng dòng điện I=Vcc/(Rref+Rx).
+
+**Liên hệ project:** PA3 đọc nút giữa; Rref=10 kΩ, suy ra Rx=Rref·Vadc/(Vcc−Vadc).
+
+> **Giới hạn / bẫy phỏng vấn:** Đảo vị trí Rref/Rx sẽ phải dùng công thức khác.
+
+#### Bước 2. ADC count sang voltage
+
+**Nguyên lý cần hiểu:** Điện áp tính từ mã ADC thông qua reference danh định; độ nhạy thay đổi theo mức điện áp.
+
+**Liên hệ project:** Firmware dùng `median_adc/4096×3,3` trước khi tính R.
+
+> **Giới hạn / bẫy phỏng vấn:** Tại Vadc gần Vcc, sai lệch một count có thể tạo sai lệch R lớn.
+
+#### Bước 3. Thấy mạch hở
+
+**Nguyên lý cần hiểu:** Với Rx→∞, gần như không có dòng trong divider, PA3 tiến gần Vcc và ADC gần full-scale.
+
+**Liên hệ project:** Open threshold 4075 count, present threshold 4060 count; state không đồng nhất với R=0 Ω.
+
+> **Giới hạn / bẫy phỏng vấn:** Một điện trở rất lớn có thể bị xem là open, không có auto-ranging.
+
+#### Bước 4. Startup classification
+
+**Nguyên lý cần hiểu:** Khi vừa vào mode, chưa có history để kết luận ngay có hoặc không có linh kiện.
+
+**Liên hệ project:** State UNKNOWN cần các batch liên tiếp để chuyển PRESENT/ABSENT; open xác nhận ba batch.
+
+> **Giới hạn / bẫy phỏng vấn:** Hiển thị READY ngay sau một ADC batch có thể gây sai trên socket hở.
+
+#### Bước 5. Reinsert hysteresis
+
+**Nguyên lý cần hiểu:** Hai ngưỡng tách biệt tránh trạng thái nhảy liên tục khi count lân cận full-scale.
+
+**Liên hệ project:** Từ ABSENT cần ít nhất năm batch present và 200 ms trước khi chuyển PRESENT.
+
+> **Giới hạn / bẫy phỏng vấn:** Chỉ kiểm tra năm batch mà bỏ 200 ms không mô tả đủ code.
+
+#### Bước 6. Median 5 batch
+
+**Nguyên lý cần hiểu:** Median lấy giá trị giữa sau khi sắp xếp, loại outlier đơn lẻ tốt hơn mean.
+
+**Liên hệ project:** Service giữ window năm ADC results, insertion sort trong main context, chọn phần tử giữa.
+
+> **Giới hạn / bẫy phỏng vấn:** Median không sửa sai số Rref, điện áp reference hoặc contact resistance.
+
+#### Bước 7. Adaptive EMA
+
+**Nguyên lý cần hiểu:** EMA nhớ giá trị cũ và điều chỉnh hệ số cập nhật theo mức biến thiên tương đối.
+
+**Liên hệ project:** Delta <5% dùng alpha=0,05; delta lớn dùng 0,30 để bám nhanh thay đổi linh kiện.
+
+> **Giới hạn / bẫy phỏng vấn:** Alpha quá nhỏ khiến UI chậm, alpha quá lớn làm nhấp nháy trước noise.
+
+#### Bước 8. Output deadband
+
+**Nguyên lý cần hiểu:** Dù EMA dao động, số trên LCD chỉ đổi khi vượt khoảng giữ đủ lớn.
+
+**Liên hệ project:** Deadband=max(0,5% stable, 1Ω); yêu cầu thay đổi cùng chiều 300 ms.
+
+> **Giới hạn / bẫy phỏng vấn:** Deadband không tương đương median hay hysteresis presence.
+
+#### Bước 9. Display pacing
+
+**Nguyên lý cần hiểu:** LCD cập nhật với chính sách riêng, tránh nhảy số dù Service có nhiều batch trong một giây.
+
+**Liên hệ project:** Resistance UI có khoảng READY qualification và sample-and-hold 1 giây theo docs/runtime.
+
+> **Giới hạn / bẫy phỏng vấn:** Không kết luận firmware đo điện trở chỉ mỗi giây một lần; đo và hiển thị là hai nhịp khác nhau.
+
+#### Bước 10. Sai số và kiểm thử
+
+**Nguyên lý cần hiểu:** Sai số gồm systematic (Rref, Vref), quantization, noise, input leakage và tiếp xúc.
+
+**Liên hệ project:** Repo ghi đo 1kΩ khoảng ~2%, 1MΩ khoảng ~10% trong phạm vi validation; đó không phải cam kết metrology.
+
+> **Giới hạn / bẫy phỏng vấn:** Muốn tăng dải và accuracy cần hardware range/reference và calibration, chỉ tăng filter không đủ.
+
+#### Case study 1 — 10 kΩ và 1 MΩ với Rref=10 kΩ
+
+| Rx | Vadc lý tưởng | ADC count gần đúng | Kết quả thiết kế |
+|---:|---:|---:|---|
+| 10 kΩ | 1,650 V | 2048 | Trên vùng tương đối nhạy của ADC |
+| 100 kΩ | 3,000 V | ~3724 | Tiến gần Vcc |
+| 1 MΩ | ~3,267 V | ~4055 | Gần ngưỡng open; nhạy với sai số count |
+| Mạch hở | Gần 3,3 V | Gần full-scale | Chuyển NO_COMPONENT nếu xác nhận đủ |
+
+Nên giải thích rõ **Rref đặt phía 3,3 V, Rx phía GND**; đảo hai vị trí thì ADC=count/voltage cho xu hướng ngược lại.
+
+#### Case study 2 — Median, EMA và deadband phục vụ ba mục tiêu khác nhau
+
+```text
+ADC batch có spike: [2047, 2048, 4095, 2046, 2049]
+Median = 2048  → loại spike đơn lẻ
+EMA α = 0,05 hoặc 0,30 → làm mượt chuỗi đã đổi ra Ω
+Deadband + 300 ms → quyết định khi nào đổi số 'stable'
+```
+
+**Bẫy phỏng vấn:** Nếu Rref có dung sai +5%, median/EMA **không sửa được** hệ số sai đó; cần đo Rref thật hoặc calibrate.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.5.1. Chứng minh công thức điện trở
 
@@ -1806,8 +3222,196 @@ Giải thích tại sao nguồn 3,3 V và Vref phải được xác minh. Nêu s
 
 ---
 
+
+#### Bài nói khi phỏng vấn: Đo điện trở: mạch chia áp và các bộ lọc số (khoảng 90 giây)
+
+> Dạ, mạch đo điện trở dùng Rref 10 kΩ nối lên 3,3 V, Rx xuống GND; ADC ở nút giữa. Từ công thức chia áp em suy ra `Rx=Rref*Vadc/(Vcc−Vadc)`. Để tránh số trên LCD nhảy, dữ liệu qua ADC average/LPF, median năm batch, EMA thích nghi α=0,05 hoặc 0,30, rồi deadband và xác nhận thay đổi trong 300 ms. Ngoài số đo, Service còn có presence state để phân biệt mạch hở: ngưỡng open 4075 count và present 4060 count kết hợp số batch/thời gian liên tục. Em cũng giải thích hạn chế quan trọng: khi Rx rất lớn, Vadc gần Vcc nên sai số ADC bị khuếch đại; muốn tăng accuracy phải cải thiện Rref, tham chiếu và dải đo chứ không chỉ lọc số.
+
+#### Câu hỏi ôn tập Chương 6.5 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Nguyên lý mạch chia áp: nguyên lý và vai trò trong project? | Hai điện trở Rref phía VCC và Rx phía GND mang cùng dòng điện I=Vcc/(Rref+Rx). PA3 đọc nút giữa; Rref=10 kΩ, suy ra Rx=Rref·Vadc/(Vcc−Vadc). |
+| 2. Rủi ro/giới hạn tại bước “Nguyên lý mạch chia áp” là gì? | Đảo vị trí Rref/Rx sẽ phải dùng công thức khác. |
+| 3. ADC count sang voltage: nguyên lý và vai trò trong project? | Điện áp tính từ mã ADC thông qua reference danh định; độ nhạy thay đổi theo mức điện áp. Firmware dùng `median_adc/4096×3,3` trước khi tính R. |
+| 4. Rủi ro/giới hạn tại bước “ADC count sang voltage” là gì? | Tại Vadc gần Vcc, sai lệch một count có thể tạo sai lệch R lớn. |
+| 5. Thấy mạch hở: nguyên lý và vai trò trong project? | Với Rx→∞, gần như không có dòng trong divider, PA3 tiến gần Vcc và ADC gần full-scale. Open threshold 4075 count, present threshold 4060 count; state không đồng nhất với R=0 Ω. |
+| 6. Rủi ro/giới hạn tại bước “Thấy mạch hở” là gì? | Một điện trở rất lớn có thể bị xem là open, không có auto-ranging. |
+| 7. Startup classification: nguyên lý và vai trò trong project? | Khi vừa vào mode, chưa có history để kết luận ngay có hoặc không có linh kiện. State UNKNOWN cần các batch liên tiếp để chuyển PRESENT/ABSENT; open xác nhận ba batch. |
+| 8. Rủi ro/giới hạn tại bước “Startup classification” là gì? | Hiển thị READY ngay sau một ADC batch có thể gây sai trên socket hở. |
+| 9. Reinsert hysteresis: nguyên lý và vai trò trong project? | Hai ngưỡng tách biệt tránh trạng thái nhảy liên tục khi count lân cận full-scale. Từ ABSENT cần ít nhất năm batch present và 200 ms trước khi chuyển PRESENT. |
+| 10. Rủi ro/giới hạn tại bước “Reinsert hysteresis” là gì? | Chỉ kiểm tra năm batch mà bỏ 200 ms không mô tả đủ code. |
+| 11. Median 5 batch: nguyên lý và vai trò trong project? | Median lấy giá trị giữa sau khi sắp xếp, loại outlier đơn lẻ tốt hơn mean. Service giữ window năm ADC results, insertion sort trong main context, chọn phần tử giữa. |
+| 12. Rủi ro/giới hạn tại bước “Median 5 batch” là gì? | Median không sửa sai số Rref, điện áp reference hoặc contact resistance. |
+| 13. Adaptive EMA: nguyên lý và vai trò trong project? | EMA nhớ giá trị cũ và điều chỉnh hệ số cập nhật theo mức biến thiên tương đối. Delta <5% dùng alpha=0,05; delta lớn dùng 0,30 để bám nhanh thay đổi linh kiện. |
+| 14. Rủi ro/giới hạn tại bước “Adaptive EMA” là gì? | Alpha quá nhỏ khiến UI chậm, alpha quá lớn làm nhấp nháy trước noise. |
+| 15. Output deadband: nguyên lý và vai trò trong project? | Dù EMA dao động, số trên LCD chỉ đổi khi vượt khoảng giữ đủ lớn. Deadband=max(0,5% stable, 1Ω); yêu cầu thay đổi cùng chiều 300 ms. |
+| 16. Rủi ro/giới hạn tại bước “Output deadband” là gì? | Deadband không tương đương median hay hysteresis presence. |
+| 17. Display pacing: nguyên lý và vai trò trong project? | LCD cập nhật với chính sách riêng, tránh nhảy số dù Service có nhiều batch trong một giây. Resistance UI có khoảng READY qualification và sample-and-hold 1 giây theo docs/runtime. |
+| 18. Rủi ro/giới hạn tại bước “Display pacing” là gì? | Không kết luận firmware đo điện trở chỉ mỗi giây một lần; đo và hiển thị là hai nhịp khác nhau. |
+| 19. Sai số và kiểm thử: nguyên lý và vai trò trong project? | Sai số gồm systematic (Rref, Vref), quantization, noise, input leakage và tiếp xúc. Repo ghi đo 1kΩ khoảng ~2%, 1MΩ khoảng ~10% trong phạm vi validation; đó không phải cam kết metrology. |
+| 20. Rủi ro/giới hạn tại bước “Sai số và kiểm thử” là gì? | Muốn tăng dải và accuracy cần hardware range/reference và calibration, chỉ tăng filter không đủ. |
+| 21. 0 Ω có phải No Resistor không? | Không: 0 Ω cho Vadc gần 0, open cho Vadc gần full-scale. |
+| 22. Ngưỡng 4075 và 4060 giải quyết lỗi gì? | Tạo vùng hysteresis chống chatter khi socket gần mạch hở. |
+| 23. Median có sửa dung sai Rref không? | Không; median chủ yếu loại outlier, sai số hệ thống cần hiệu chuẩn. |
+| 24. Điện trở 1 MΩ vì sao khó hơn 10 kΩ? | Vadc quá gần Vcc, mẫu số phép tính R rất nhỏ, lỗi count phóng đại. |
+| 25. Thay linh kiện liên tục có cần delay UI không? | Có cơ chế lọc/qualification, UI update pacing; không cần delay chặn main 300 ms. |
+| 26. Tính Rx nếu ADC=2048? | Với giả định code, Vadc=1,65V và Rx=10 kΩ. |
+| 27. Mạch hở gần ADC count bao nhiêu? | Gần full scale 4095, không phải 0. |
+| 28. Khi thay điện trở thật, median gây trễ thế nào? | Cửa sổ cần đa số batch mới trước khi median chuyển. |
+| 29. Tại sao output deadband là max(rel,abs)? | Tránh deadband quá nhỏ ở R nhỏ và tăng hợp lý theo R lớn. |
+| 30. Có nên dùng điện trở 10k chuẩn 5% để tuyên bố 1% accuracy không? | Không; cần calibrate reference, đo sai số tổng theo dải. |
+
+#### Điểm cần ghi nhớ
+
+- **Nguyên lý mạch chia áp:** PA3 đọc nút giữa; Rref=10 kΩ, suy ra Rx=Rref·Vadc/(Vcc−Vadc).
+- **Startup classification:** State UNKNOWN cần các batch liên tiếp để chuyển PRESENT/ABSENT; open xác nhận ba batch.
+- **Adaptive EMA:** Delta <5% dùng alpha=0,05; delta lớn dùng 0,30 để bám nhanh thay đổi linh kiện.
+- **Sai số và kiểm thử:** Repo ghi đo 1kΩ khoảng ~2%, 1MΩ khoảng ~10% trong phạm vi validation; đó không phải cam kết metrology.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Services/measurement_service.c`
+- `Drivers/adc_driver.c`
+- `Application/ui_view.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-6"></a>
 ### 6.6. Đo điện dung: hàm mũ RC, ngưỡng và sai số
+
+> **Mục tiêu:** Dẫn xuất công thức hai ngưỡng và trace CAP_IDLE → CAP_WAIT → CAP_DISCHARGING → CAP_CHARGING → CAP_DONE.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: Đo điện dung: hàm mũ RC, ngưỡng và sai số
+
+```mermaid
+flowchart TD
+    S1["Mạng RC vật lý"]
+    S2["Đáp ứng hàm mũ"]
+    S1 --> S2
+    S3["Dẫn xuất hai ngưỡng"]
+    S2 --> S3
+    S4["Trạng thái CAP_IDLE"]
+    S3 --> S4
+    S5["CAP_WAIT nạp sơ bộ"]
+    S4 --> S5
+    S6["CAP_DISCHARGING"]
+    S5 --> S6
+    S7["CAP_CHARGING có timing"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Mạng RC vật lý
+
+**Nguyên lý cần hiểu:** PA5 điều khiển dòng qua Rtiming=20 kΩ tới nút PA4; Cx xuống GND; PA4 đo điện áp.
+
+**Liên hệ project:** HIGH nạp, LOW xả qua mạch; không có bộ đo tụ chuyên dụng hay op-amp comparator trong firmware.
+
+> **Giới hạn / bẫy phỏng vấn:** GPIO không được coi như nguồn analog vô hạn dòng; phải bảo đảm linh kiện ở dải thiết kế.
+
+#### Bước 2. Đáp ứng hàm mũ
+
+**Nguyên lý cần hiểu:** V(t)=Vcc−(Vcc−Vstart)e^(−t/RC); tại một mốc ngưỡng, thời điểm phụ thuộc log khoảng cách còn lại tới Vcc.
+
+**Liên hệ project:** Service dựa trên thời gian giữa ADC low ≈1 V và high ≈2 V, không phải đo 0→63,2% Vcc.
+
+> **Giới hạn / bẫy phỏng vấn:** Dùng công thức xả thay thế sẽ gây nhầm chiều đo.
+
+#### Bước 3. Dẫn xuất hai ngưỡng
+
+**Nguyên lý cần hiểu:** Δt=RC ln((Vcc−Vlow)/(Vcc−Vhigh)), vì lấy log tại hai thời điểm rồi trừ.
+
+**Liên hệ project:** C=Δt/[R ln((Vcc−Vlow)/(Vcc−Vhigh))]; firmware hiện dùng hệ số 1,74563473/R.
+
+> **Giới hạn / bẫy phỏng vấn:** Hằng code không hoàn toàn bằng hệ số với ngưỡng tròn 1,000 và 2,000 V; không tự quy nguyên nhân.
+
+#### Bước 4. Trạng thái CAP_IDLE
+
+**Nguyên lý cần hiểu:** Khi chưa chọn đo, ngõ điều khiển tụ không nên tiếp tục ép HIGH ngoài ý muốn.
+
+**Liên hệ project:** Service giữ internal CAP_IDLE và chỉ khởi tạo driver charge khi vào capacitor mode.
+
+> **Giới hạn / bẫy phỏng vấn:** Nhầm CAP_IDLE với UI splash hoặc Measurement Status IDLE sẽ sai luồng.
+
+#### Bước 5. CAP_WAIT nạp sơ bộ
+
+**Nguyên lý cần hiểu:** CHARGE bắt đầu chu trình, drive PA5 HIGH để đưa tụ từ điện áp ban đầu bất kỳ đến high threshold.
+
+**Liên hệ project:** ADC CH4 được đọc theo batch, high threshold 2482 counts kết thúc pha nạp đầu.
+
+> **Giới hạn / bẫy phỏng vấn:** Coi thời gian từ lần nạp đầu là kết quả sẽ phụ thuộc điện áp tồn dư trên tụ.
+
+#### Bước 6. CAP_DISCHARGING
+
+**Nguyên lý cần hiểu:** Sau high, PA5 LOW để xả tụ xuống low threshold 1241 counts trước phép đo thực.
+
+**Liên hệ project:** Service đợi batch ADC cho kết quả <=low, rồi reset filter và chuyển nạp có đo giờ.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu tụ short/đường xả lỗi, state có thể không đạt ngưỡng như dự kiến.
+
+#### Bước 7. CAP_CHARGING có timing
+
+**Nguyên lý cần hiểu:** PA5 HIGH trở lại, snapshot thời gian bắt đầu từ SysTick, chờ ADC vượt high lần nữa.
+
+**Liên hệ project:** Công thức `C=1.74563473*t/20000` với t là giây; status READY sau crossing hợp lệ.
+
+> **Giới hạn / bẫy phỏng vấn:** Độ phân giải 1 ms và latency ADC batch ảnh hưởng mạnh khi C nhỏ.
+
+#### Bước 8. NO_COMPONENT heuristic
+
+**Nguyên lý cần hiểu:** Nếu high threshold bị vượt ngay ở batch đầu của timed charge, hệ thống xem là hở/ngoài dải thấp.
+
+**Liên hệ project:** Firmware có nhánh NO_COMPONENT; nó không chứng minh tụ không tồn tại về mặt vật lý.
+
+> **Giới hạn / bẫy phỏng vấn:** Không mô tả được mọi tụ nhỏ chỉ bằng số học thời gian khi Δt quá ngắn.
+
+#### Bước 9. Timeout đúng đối tượng
+
+**Nguyên lý cần hiểu:** ADC batch result timeout 100 ms giám sát conversion, không giới hạn toàn bộ thời gian chờ điện áp đạt threshold.
+
+**Liên hệ project:** Trong code hiện tại không có timeout tổng riêng cho pha CAP_WAIT/DISCHARGING/CHARGING.
+
+> **Giới hạn / bẫy phỏng vấn:** Tụ rất lớn, mạch bất thường hoặc short có thể khiến FSM chờ lâu dù ADC không bị treo.
+
+#### Bước 10. Hiệu chuẩn và thử nghiệm
+
+**Nguyên lý cần hiểu:** Đo Vc(t) bằng oscilloscope, đối chiếu thời gian thật 1→2 V và ADC tick để xác định sai số.
+
+**Liên hệ project:** Repo validation có tụ 100 nF đến 1000 µF với lỗi công bố khác nhau; test lại theo mẫu chuẩn trước khi nhận định accuracy.
+
+> **Giới hạn / bẫy phỏng vấn:** Mở rộng dải đo cần nhiều Rtiming, timer µs, timeout và bù ký sinh; chưa phải chức năng có trong firmware.
+
+#### Case study 1 — Tính thời gian tương đương 100 nF và 10 µF
+
+Từ chính công thức firmware: `t=C×20000/1,74563473`.
+
+| C thực | Khoảng t lý tưởng theo code | Số tick SysTick ~1 ms |
+|---:|---:|---:|
+| 100 nF | ~1,146 ms | ~1–2 tick |
+| 1 µF | ~11,457 ms | ~11–12 tick |
+| 10 µF | ~114,57 ms | ~115 tick |
+| 100 µF | ~1,146 s | ~1146 tick |
+
+Chỉ sai một tick ở 100 nF đã tương đương phần lớn khoảng đo, trong khi ở 100 µF tác động theo tỷ lệ nhỏ hơn nhiều. Đây là giới hạn thiết kế timebase, không sửa được chỉ bằng hiển thị thêm chữ số.
+
+#### Case study 2 — Đọc đúng hai lần vượt ngưỡng cao
+
+```text
+CHARGE pressed → PA5 HIGH
+ADC > high (lần 1) → PA5 LOW
+ADC < low → PA5 HIGH, start_tick=now, reset ADC LPF
+ADC > high (lần 2) → stop_tick=now, tính C
+```
+
+Lần vượt high thứ nhất **không có nghĩa phép đo đã xong**. Nó chỉ chuẩn bị một trạng thái xuất phát tái lập được hơn cho lần nạp đo thời gian.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.6.1. Phương trình vi phân của mạch nạp tụ
 
@@ -1860,8 +3464,197 @@ Nếu quan sát từ một điện áp ban đầu V0 xuống V thấp qua điệ
 **Câu hỏi tự luyện:** Tại sao sau xả mới bắt đầu timer? Vì sao `ADC >= Vhigh` ở batch đầu không nhất thiết chứng minh tụ không tồn tại? Nếu tăng R lên 200 kΩ, điều gì tốt/xấu với tụ 100 nF và 1000 µF?
 
 ---
+
+#### Bài nói khi phỏng vấn: Đo điện dung: hàm mũ RC, ngưỡng và sai số (khoảng 90 giây)
+
+> Dạ, đo tụ không thể suy từ điện áp tĩnh của tụ; em dùng đáp ứng RC. PA5 điều khiển nạp/xả qua điện trở 20 kΩ, ADC ở PA4 theo dõi hai ngưỡng khoảng 1 V và 2 V. State Machine nạp sơ bộ tới ngưỡng cao, xả xuống ngưỡng thấp, rồi nạp lần nữa và bấm thời gian bằng SysTick. Code quy đổi theo `C=1.74563473*t/20000`. Nếu điện áp vượt ngưỡng cao ngay batch đầu của timed charge, firmware xem là NO_COMPONENT hoặc tụ nằm dưới dải hữu ích. Điểm em luôn nêu khi phỏng vấn là SysTick 1 ms gây sai số tương đối lớn ở tụ nhỏ, và watchdog ADC 100 ms hiện không thay thế timeout cho toàn bộ chu trình RC.
+
+#### Câu hỏi ôn tập Chương 6.6 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Mạng RC vật lý: nguyên lý và vai trò trong project? | PA5 điều khiển dòng qua Rtiming=20 kΩ tới nút PA4; Cx xuống GND; PA4 đo điện áp. HIGH nạp, LOW xả qua mạch; không có bộ đo tụ chuyên dụng hay op-amp comparator trong firmware. |
+| 2. Rủi ro/giới hạn tại bước “Mạng RC vật lý” là gì? | GPIO không được coi như nguồn analog vô hạn dòng; phải bảo đảm linh kiện ở dải thiết kế. |
+| 3. Đáp ứng hàm mũ: nguyên lý và vai trò trong project? | V(t)=Vcc−(Vcc−Vstart)e^(−t/RC); tại một mốc ngưỡng, thời điểm phụ thuộc log khoảng cách còn lại tới Vcc. Service dựa trên thời gian giữa ADC low ≈1 V và high ≈2 V, không phải đo 0→63,2% Vcc. |
+| 4. Rủi ro/giới hạn tại bước “Đáp ứng hàm mũ” là gì? | Dùng công thức xả thay thế sẽ gây nhầm chiều đo. |
+| 5. Dẫn xuất hai ngưỡng: nguyên lý và vai trò trong project? | Δt=RC ln((Vcc−Vlow)/(Vcc−Vhigh)), vì lấy log tại hai thời điểm rồi trừ. C=Δt/[R ln((Vcc−Vlow)/(Vcc−Vhigh))]; firmware hiện dùng hệ số 1,74563473/R. |
+| 6. Rủi ro/giới hạn tại bước “Dẫn xuất hai ngưỡng” là gì? | Hằng code không hoàn toàn bằng hệ số với ngưỡng tròn 1,000 và 2,000 V; không tự quy nguyên nhân. |
+| 7. Trạng thái CAP_IDLE: nguyên lý và vai trò trong project? | Khi chưa chọn đo, ngõ điều khiển tụ không nên tiếp tục ép HIGH ngoài ý muốn. Service giữ internal CAP_IDLE và chỉ khởi tạo driver charge khi vào capacitor mode. |
+| 8. Rủi ro/giới hạn tại bước “Trạng thái CAP_IDLE” là gì? | Nhầm CAP_IDLE với UI splash hoặc Measurement Status IDLE sẽ sai luồng. |
+| 9. CAP_WAIT nạp sơ bộ: nguyên lý và vai trò trong project? | CHARGE bắt đầu chu trình, drive PA5 HIGH để đưa tụ từ điện áp ban đầu bất kỳ đến high threshold. ADC CH4 được đọc theo batch, high threshold 2482 counts kết thúc pha nạp đầu. |
+| 10. Rủi ro/giới hạn tại bước “CAP_WAIT nạp sơ bộ” là gì? | Coi thời gian từ lần nạp đầu là kết quả sẽ phụ thuộc điện áp tồn dư trên tụ. |
+| 11. CAP_DISCHARGING: nguyên lý và vai trò trong project? | Sau high, PA5 LOW để xả tụ xuống low threshold 1241 counts trước phép đo thực. Service đợi batch ADC cho kết quả <=low, rồi reset filter và chuyển nạp có đo giờ. |
+| 12. Rủi ro/giới hạn tại bước “CAP_DISCHARGING” là gì? | Nếu tụ short/đường xả lỗi, state có thể không đạt ngưỡng như dự kiến. |
+| 13. CAP_CHARGING có timing: nguyên lý và vai trò trong project? | PA5 HIGH trở lại, snapshot thời gian bắt đầu từ SysTick, chờ ADC vượt high lần nữa. Công thức `C=1.74563473*t/20000` với t là giây; status READY sau crossing hợp lệ. |
+| 14. Rủi ro/giới hạn tại bước “CAP_CHARGING có timing” là gì? | Độ phân giải 1 ms và latency ADC batch ảnh hưởng mạnh khi C nhỏ. |
+| 15. NO_COMPONENT heuristic: nguyên lý và vai trò trong project? | Nếu high threshold bị vượt ngay ở batch đầu của timed charge, hệ thống xem là hở/ngoài dải thấp. Firmware có nhánh NO_COMPONENT; nó không chứng minh tụ không tồn tại về mặt vật lý. |
+| 16. Rủi ro/giới hạn tại bước “NO_COMPONENT heuristic” là gì? | Không mô tả được mọi tụ nhỏ chỉ bằng số học thời gian khi Δt quá ngắn. |
+| 17. Timeout đúng đối tượng: nguyên lý và vai trò trong project? | ADC batch result timeout 100 ms giám sát conversion, không giới hạn toàn bộ thời gian chờ điện áp đạt threshold. Trong code hiện tại không có timeout tổng riêng cho pha CAP_WAIT/DISCHARGING/CHARGING. |
+| 18. Rủi ro/giới hạn tại bước “Timeout đúng đối tượng” là gì? | Tụ rất lớn, mạch bất thường hoặc short có thể khiến FSM chờ lâu dù ADC không bị treo. |
+| 19. Hiệu chuẩn và thử nghiệm: nguyên lý và vai trò trong project? | Đo Vc(t) bằng oscilloscope, đối chiếu thời gian thật 1→2 V và ADC tick để xác định sai số. Repo validation có tụ 100 nF đến 1000 µF với lỗi công bố khác nhau; test lại theo mẫu chuẩn trước khi nhận định accuracy. |
+| 20. Rủi ro/giới hạn tại bước “Hiệu chuẩn và thử nghiệm” là gì? | Mở rộng dải đo cần nhiều Rtiming, timer µs, timeout và bù ký sinh; chưa phải chức năng có trong firmware. |
+| 21. Điện dung lấy từ thời gian nạp hay xả? | Đo thời gian nạp từ low threshold đến high threshold; xả chỉ chuẩn bị. |
+| 22. Vì sao firmware cần nạp sơ bộ? | Để đưa tụ từ trạng thái bất định qua một chu trình chuẩn bị, sau đó xả về low. |
+| 23. Tụ 100 nF được bao nhiêu tick? | Khoảng 1,15 tick 1 ms theo công thức code. |
+| 24. ADC batch watchdog có bảo vệ khỏi tụ short không? | Không; watchdog giám sát ADC conversion, không giám sát thời gian chờ threshold RC. |
+| 25. Có thể gọi NO_COMPONENT là không có tụ tuyệt đối không? | Không; tụ quá nhỏ cũng có thể được phân loại NO_COMPONENT vì vượt high ngay batch đầu. |
+| 26. Đường nạp thực đo từ 0→63,2% không? | Không; code đo khoảng low ≈1V đến high ≈2V. |
+| 27. Nếu tụ đã mang điện trước lúc CHARGE? | Pha nạp sơ bộ/xả nhằm thiết lập điểm xuất phát tương đối nhất quán. |
+| 28. Tại sao reset ADC filter ở timed charge? | Tránh lịch sử pha xả làm chậm ngưỡng high do LPF. |
+| 29. C=10µF theo code có khoảng t bao nhiêu? | Khoảng 114,6 ms. |
+| 30. Cần ưu tiên cải tiến gì để đo 100nF chính xác? | Timebase µs/timer + dải R và calibration/threshold timing. |
+
+#### Điểm cần ghi nhớ
+
+- **Mạng RC vật lý:** HIGH nạp, LOW xả qua mạch; không có bộ đo tụ chuyên dụng hay op-amp comparator trong firmware.
+- **Trạng thái CAP_IDLE:** Service giữ internal CAP_IDLE và chỉ khởi tạo driver charge khi vào capacitor mode.
+- **CAP_CHARGING có timing:** Công thức `C=1.74563473*t/20000` với t là giây; status READY sau crossing hợp lệ.
+- **Hiệu chuẩn và thử nghiệm:** Repo validation có tụ 100 nF đến 1000 µF với lỗi công bố khác nhau; test lại theo mẫu chuẩn trước khi nhận định accuracy.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Services/measurement_service.c`
+- `Drivers/capacitor_charge_driver.c`
+- `Drivers/adc_driver.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-7"></a>
 ### 6.7. PWM Generation: PSC/ARR/CCR và độ phân giải
+
+> **Mục tiêu:** Tự tính timer registers từ frequency/duty và giải thích chính xác logic tìm cấu hình, kể cả cạnh 100%.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: PWM Generation: PSC/ARR/CCR và độ phân giải
+
+```mermaid
+flowchart TD
+    S1["PWM phần cứng"]
+    S2["APB1 timer clock"]
+    S1 --> S2
+    S3["PSC và ARR"]
+    S2 --> S3
+    S4["CCR và duty"]
+    S3 --> S4
+    S5["Search prescaler"]
+    S4 --> S5
+    S6["Điều kiện dừng"]
+    S5 --> S6
+    S7["Ví dụ 1 kHz 50%"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. PWM phần cứng
+
+**Nguyên lý cần hiểu:** Timer đếm CNT theo clock đã chia, so sánh CCR để tự tạo xung trên chân alternate function.
+
+**Liên hệ project:** TIM2 CH2 xuất PA1 bằng PWM Mode 1; CPU chỉ thay đổi cấu hình khi người dùng chỉnh.
+
+> **Giới hạn / bẫy phỏng vấn:** Software delay/toggle GPIO không tương đương độ ổn định phần cứng ở tần số cao.
+
+#### Bước 2. APB1 timer clock
+
+**Nguyên lý cần hiểu:** TIM2 thuộc APB1 nhưng prescaler bus khác 1 khiến timer clock được x2.
+
+**Liên hệ project:** Project sử dụng 72 MHz trong công thức TIM2 dù APB1=36 MHz.
+
+> **Giới hạn / bẫy phỏng vấn:** Nhầm 36 MHz làm output sai 2×.
+
+#### Bước 3. PSC và ARR
+
+**Nguyên lý cần hiểu:** Counter clock = fTIM/(PSC+1), chu kỳ có ARR+1 tick, vậy fPWM=fTIM/[(PSC+1)(ARR+1)].
+
+**Liên hệ project:** Service kiểm tra 16-bit PSC/ARR và thử các cấu hình ứng viên theo target.
+
+> **Giới hạn / bẫy phỏng vấn:** Quên +1 là lỗi off-by-one hay gặp khi tính 1 Hz/100 kHz.
+
+#### Bước 4. CCR và duty
+
+**Nguyên lý cần hiểu:** PWM Mode 1/polarity thông thường HIGH khi CNT<CCR, LOW khi CNT≥CCR.
+
+**Liên hệ project:** Service tính CCR≈floor((ARR+1)*duty/100), sau đó clamp compare về ARR.
+
+> **Giới hạn / bẫy phỏng vấn:** Với duty=100%, CCR≤ARR có thể để lại một tick LOW; không khẳng định 100% là hằng HIGH.
+
+#### Bước 5. Search prescaler
+
+**Nguyên lý cần hiểu:** Thử PSC tăng từ thấp lên, với mỗi PSC tính tick count gần nhất cho f target và bỏ candidate ngoài 16-bit.
+
+**Liên hệ project:** `SignalGeneratorService_FindOptimal` dùng làm tròn tick, tính actual_freq bằng integer division và error.
+
+> **Giới hạn / bẫy phỏng vấn:** Đây là heuristic đạt sai số <1%, không phải tối ưu toàn cục mọi PSC/ARR.
+
+#### Bước 6. Điều kiện dừng
+
+**Nguyên lý cần hiểu:** Khi candidate có error*100<target, service xem valid và có thể dừng tìm kiếm.
+
+**Liên hệ project:** Không cập nhật Timer nếu config.valid false; driver chỉ nhận bộ register đã được chọn.
+
+> **Giới hạn / bẫy phỏng vấn:** Nói mọi frequency đều đạt sai số 0 chính xác là vượt bằng chứng của code.
+
+#### Bước 7. Ví dụ 1 kHz 50%
+
+**Nguyên lý cần hiểu:** f=72 MHz; chọn PSC=1, ARR=35999 sẽ được 1000 Hz, CCR=18000 cho 50%.
+
+**Liên hệ project:** Đây là bộ giá trị minh họa hợp lệ, không khẳng định chính là bộ thanh ghi driver chọn ở mọi lần tìm.
+
+> **Giới hạn / bẫy phỏng vấn:** Phải nêu rõ có nhiều cặp PSC/ARR tạo cùng một frequency.
+
+#### Bước 8. Ví dụ 50 kHz 30%
+
+**Nguyên lý cần hiểu:** Đặt PSC=0, ARR=1439 được 1440 tick/chu kỳ; CCR=432 cho duty 30%.
+
+**Liên hệ project:** Kết quả từ công thức được đưa tới output driver áp lên TIM2 CH2.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu nguồn HSE/PLL thực không đúng 72 MHz, tần số quan sát không khớp dù register toán học đúng.
+
+#### Bước 9. Độ phân giải duty
+
+**Nguyên lý cần hiểu:** Bước duty theo một compare tick là 1/(ARR+1); ở tần số cao ít tick hơn, duty thô hơn.
+
+**Liên hệ project:** Khi f=100kHz và PSC=0, ARR+1=720 thì một tick khoảng 0,139% duty.
+
+> **Giới hạn / bẫy phỏng vấn:** Yêu cầu duty 1% không chứng minh output đúng tuyệt đối dưới tải/đầu nối.
+
+#### Bước 10. Kiểm thử PWM
+
+**Nguyên lý cần hiểu:** Dùng oscilloscope/logic analyzer đo f, Ton/Toff theo các cặp 1Hz/1kHz/100kHz và duty 1/50/100%.
+
+**Liên hệ project:** Kiểm tra actual CCR, sự thay đổi khi Save config và tín hiệu loopback về input capture.
+
+> **Giới hạn / bẫy phỏng vấn:** Đừng đánh giá 100% bằng duty hiển thị khi chưa quan sát LOW tick trên chân PA1.
+
+#### Case study 1 — Chọn bộ timer registers cho 50 kHz, 30% duty
+
+```text
+fTIM = 72,000,000 Hz
+fPWM = 50,000 Hz
+N = fTIM/fPWM = 1440 timer ticks
+PSC=0, ARR=1439
+CCR ≈ 1440 × 0,30 = 432
+→ f = 72,000,000 / (1 × 1440) = 50,000 Hz
+→ duty = 432 / 1440 = 30%
+```
+
+**Đây là một cấu hình hợp lệ minh họa**, không phải lời khẳng định mọi lần chạy thuật toán search luôn chọn đúng PSC=0 ở mọi target. Service có quy tắc dừng khi gặp nghiệm sai số dưới 1%.
+
+#### Case study 2 — Duty 100% không hoàn toàn 100% trong code
+
+```text
+N = ARR + 1
+requested duty=100%
+compare_raw = N
+compare_clamped = ARR = N-1
+```
+
+Với PWM Mode 1 và logic `CNT<CCR`, còn lại một count mà `CNT==ARR` làm LOW; duty thực khoảng `(N-1)/N` nếu hardware chạy theo mô tả. Tại tần số 100 kHz và N=720, khoảng 99,861%. Đây là **giới hạn implementation**, không nên tô đẹp thành HIGH liên tục.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.7.1. Chu kỳ PWM từ timer
 
@@ -1938,8 +3731,188 @@ Dùng oscilloscope hoặc logic analyzer đo PA1 tại tần số 1 Hz, 100 Hz, 
 
 ---
 
+
+#### Bài nói khi phỏng vấn: PWM Generation: PSC/ARR/CCR và độ phân giải (khoảng 90 giây)
+
+> Dạ, TIM2 Channel 2 tạo PWM trực tiếp trên PA1, dùng timer phần cứng thay vì CPU toggle GPIO. Tần số được quyết định bởi `fTIM/((PSC+1)*(ARR+1))`, còn duty liên quan `CCR2/(ARR+1)`. Signal Generator Service thử các prescaler và tick count phù hợp 16-bit, chọn một cấu hình có sai số dưới 1%, sau đó Driver áp PSC/ARR/CCR lên TIM2. Ví dụ với 50 kHz, PSC=0 và ARR=1439 tạo 1440 tick/chu kỳ, CCR=432 cho 30%. Em phân biệt đây là nghiệm ví dụ với thuật toán lựa chọn thực tế, đồng thời chỉ rõ giới hạn code: duty cài 100% có thể vẫn còn một tick LOW do CCR bị clamp về ARR.
+
+#### Câu hỏi ôn tập Chương 6.7 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. PWM phần cứng: nguyên lý và vai trò trong project? | Timer đếm CNT theo clock đã chia, so sánh CCR để tự tạo xung trên chân alternate function. TIM2 CH2 xuất PA1 bằng PWM Mode 1; CPU chỉ thay đổi cấu hình khi người dùng chỉnh. |
+| 2. Rủi ro/giới hạn tại bước “PWM phần cứng” là gì? | Software delay/toggle GPIO không tương đương độ ổn định phần cứng ở tần số cao. |
+| 3. APB1 timer clock: nguyên lý và vai trò trong project? | TIM2 thuộc APB1 nhưng prescaler bus khác 1 khiến timer clock được x2. Project sử dụng 72 MHz trong công thức TIM2 dù APB1=36 MHz. |
+| 4. Rủi ro/giới hạn tại bước “APB1 timer clock” là gì? | Nhầm 36 MHz làm output sai 2×. |
+| 5. PSC và ARR: nguyên lý và vai trò trong project? | Counter clock = fTIM/(PSC+1), chu kỳ có ARR+1 tick, vậy fPWM=fTIM/[(PSC+1)(ARR+1)]. Service kiểm tra 16-bit PSC/ARR và thử các cấu hình ứng viên theo target. |
+| 6. Rủi ro/giới hạn tại bước “PSC và ARR” là gì? | Quên +1 là lỗi off-by-one hay gặp khi tính 1 Hz/100 kHz. |
+| 7. CCR và duty: nguyên lý và vai trò trong project? | PWM Mode 1/polarity thông thường HIGH khi CNT<CCR, LOW khi CNT≥CCR. Service tính CCR≈floor((ARR+1)*duty/100), sau đó clamp compare về ARR. |
+| 8. Rủi ro/giới hạn tại bước “CCR và duty” là gì? | Với duty=100%, CCR≤ARR có thể để lại một tick LOW; không khẳng định 100% là hằng HIGH. |
+| 9. Search prescaler: nguyên lý và vai trò trong project? | Thử PSC tăng từ thấp lên, với mỗi PSC tính tick count gần nhất cho f target và bỏ candidate ngoài 16-bit. `SignalGeneratorService_FindOptimal` dùng làm tròn tick, tính actual_freq bằng integer division và error. |
+| 10. Rủi ro/giới hạn tại bước “Search prescaler” là gì? | Đây là heuristic đạt sai số <1%, không phải tối ưu toàn cục mọi PSC/ARR. |
+| 11. Điều kiện dừng: nguyên lý và vai trò trong project? | Khi candidate có error*100<target, service xem valid và có thể dừng tìm kiếm. Không cập nhật Timer nếu config.valid false; driver chỉ nhận bộ register đã được chọn. |
+| 12. Rủi ro/giới hạn tại bước “Điều kiện dừng” là gì? | Nói mọi frequency đều đạt sai số 0 chính xác là vượt bằng chứng của code. |
+| 13. Ví dụ 1 kHz 50%: nguyên lý và vai trò trong project? | f=72 MHz; chọn PSC=1, ARR=35999 sẽ được 1000 Hz, CCR=18000 cho 50%. Đây là bộ giá trị minh họa hợp lệ, không khẳng định chính là bộ thanh ghi driver chọn ở mọi lần tìm. |
+| 14. Rủi ro/giới hạn tại bước “Ví dụ 1 kHz 50%” là gì? | Phải nêu rõ có nhiều cặp PSC/ARR tạo cùng một frequency. |
+| 15. Ví dụ 50 kHz 30%: nguyên lý và vai trò trong project? | Đặt PSC=0, ARR=1439 được 1440 tick/chu kỳ; CCR=432 cho duty 30%. Kết quả từ công thức được đưa tới output driver áp lên TIM2 CH2. |
+| 16. Rủi ro/giới hạn tại bước “Ví dụ 50 kHz 30%” là gì? | Nếu nguồn HSE/PLL thực không đúng 72 MHz, tần số quan sát không khớp dù register toán học đúng. |
+| 17. Độ phân giải duty: nguyên lý và vai trò trong project? | Bước duty theo một compare tick là 1/(ARR+1); ở tần số cao ít tick hơn, duty thô hơn. Khi f=100kHz và PSC=0, ARR+1=720 thì một tick khoảng 0,139% duty. |
+| 18. Rủi ro/giới hạn tại bước “Độ phân giải duty” là gì? | Yêu cầu duty 1% không chứng minh output đúng tuyệt đối dưới tải/đầu nối. |
+| 19. Kiểm thử PWM: nguyên lý và vai trò trong project? | Dùng oscilloscope/logic analyzer đo f, Ton/Toff theo các cặp 1Hz/1kHz/100kHz và duty 1/50/100%. Kiểm tra actual CCR, sự thay đổi khi Save config và tín hiệu loopback về input capture. |
+| 20. Rủi ro/giới hạn tại bước “Kiểm thử PWM” là gì? | Đừng đánh giá 100% bằng duty hiển thị khi chưa quan sát LOW tick trên chân PA1. |
+| 21. Tại sao PSC/ARR thường là giá trị trừ một? | Vì counter chạy từ 0 đến ARR và prescaler chia theo PSC+1. |
+| 22. APB1 là 36 MHz thì sao TIM2 vẫn 72 MHz? | Timer clock APB1 được nhân đôi khi prescaler APB1 khác 1. |
+| 23. Thế nào là sai số f nhỏ hơn 1% trong code? | `abs(actual-target)*100<target`, tính theo tần số integer trong search. |
+| 24. Dùng CCR=ARR có ra 100% không? | Có thể còn một tick LOW vì code clamp CCR về ARR. |
+| 25. Tại sao duty resolution giảm khi f tăng? | Số tick mỗi chu kỳ giảm nên bước CCR tương ứng tỷ lệ duty lớn hơn. |
+| 26. PWM 1Hz có dùng PSC=0 với ARR 16bit được không? | Không; 72 triệu ticks vượt 65536, cần prescaler. |
+| 27. Nếu ARR+1=720 thì một tick duty là bao nhiêu? | Khoảng 0,139% mỗi count. |
+| 28. Search có đảm bảo tối ưu tuyệt đối không? | Không, dừng ở nghiệm đủ chính xác dưới 1%. |
+| 29. Tại sao dùng integer actual frequency có thể ảnh hưởng search? | Integer division làm tròn xuống kết quả tính sai số ở mức 1Hz. |
+| 30. PSC và ARR cùng thay đổi có thể gây xung đột gì? | Cần driver áp cấu hình timer theo thứ tự an toàn, test output transition. |
+
+#### Điểm cần ghi nhớ
+
+- **PWM phần cứng:** TIM2 CH2 xuất PA1 bằng PWM Mode 1; CPU chỉ thay đổi cấu hình khi người dùng chỉnh.
+- **CCR và duty:** Service tính CCR≈floor((ARR+1)*duty/100), sau đó clamp compare về ARR.
+- **Ví dụ 1 kHz 50%:** Đây là bộ giá trị minh họa hợp lệ, không khẳng định chính là bộ thanh ghi driver chọn ở mọi lần tìm.
+- **Kiểm thử PWM:** Kiểm tra actual CCR, sự thay đổi khi Save config và tín hiệu loopback về input capture.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Services/signal_generator_service.c`
+- `Drivers/pwm_output_driver.c`
+- `Services/config_service.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-8"></a>
 ### 6.8. PWM Input Capture: period, high time và timer range
+
+> **Mục tiêu:** Hiểu PWM Input Mode, capture coherent snapshot, chọn TIM1/3/4 và lỗi do expected frequency sai.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: PWM Input Capture: period, high time và timer range
+
+```mermaid
+flowchart TD
+    S1["Tần số và duty định nghĩa"]
+    S2["PWM Input Mode"]
+    S1 --> S2
+    S3["Input signal pins"]
+    S2 --> S3
+    S4["Dải thấp và overflow"]
+    S3 --> S4
+    S5["Dải giữa"]
+    S4 --> S5
+    S6["Dải cao"]
+    S5 --> S6
+    S7["Switch range an toàn"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Tần số và duty định nghĩa
+
+**Nguyên lý cần hiểu:** Chu kỳ T là thời gian giữa hai cạnh cùng loại; Ton là mức HIGH; f=1/T, duty=Ton/T.
+
+**Liên hệ project:** Service tính `f=timer_clock/period_ticks` và `duty=high_ticks/period_ticks×100`.
+
+> **Giới hạn / bẫy phỏng vấn:** Dùng số cạnh nhận được trong vài ms mà không xác định cửa sổ không phải công thức Input Capture đang dùng.
+
+#### Bước 2. PWM Input Mode
+
+**Nguyên lý cần hiểu:** CH1 capture period ở rising, CH2 capture high ở falling với slave reset trigger TI1FP1.
+
+**Liên hệ project:** TIM1/3/4 chạy cùng logic PWM-input và tạo hai số tick từ timer hardware.
+
+> **Giới hạn / bẫy phỏng vấn:** Đổi polarity sai khiến high_ticks thực là low time hoặc cặp edge không tương ứng.
+
+#### Bước 3. Input signal pins
+
+**Nguyên lý cần hiểu:** Mỗi timer được nối với chân riêng, phải cấp tín hiệu thật tới đúng chân đang active.
+
+**Liên hệ project:** High TIM1 PA8, Mid TIM3 PA6, Low TIM4 PB6; chỉ một capture timer enabled mỗi lúc.
+
+> **Giới hạn / bẫy phỏng vấn:** Nối loopback PA1 vào sai chân rồi kết luận driver không đo được là lỗi setup test.
+
+#### Bước 4. Dải thấp và overflow
+
+**Nguyên lý cần hiểu:** Tần số thấp có T dài, phải giảm counter clock để 16-bit counter không overflow trước chu kỳ.
+
+**Liên hệ project:** TIM4 PSC=1098, effective clock ≈65514 Hz cho expected <200 Hz.
+
+> **Giới hạn / bẫy phỏng vấn:** Timer clock quá nhanh ở 1 Hz sẽ overflow nhiều lần nếu không dùng extension.
+
+#### Bước 5. Dải giữa
+
+**Nguyên lý cần hiểu:** Giữ tick resolution đủ cho duty ở kHz nhưng không overflow ở cận dưới 200 Hz.
+
+**Liên hệ project:** TIM3 PSC=7, counter clock 9 MHz cho 200.. <4000 Hz.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu tín hiệu thực thấp hơn expected nhiều, period có thể vượt 65535 ticks.
+
+#### Bước 6. Dải cao
+
+**Nguyên lý cần hiểu:** Tần số cao chu kỳ ngắn, ưu tiên clock 72 MHz để có nhiều tick/chu kỳ.
+
+**Liên hệ project:** TIM1 PSC=0 được chọn cho expected≥4000 Hz.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu tín hiệu ngoài rất thấp nhưng vẫn chọn TIM1 sẽ overflow, không auto-range.
+
+#### Bước 7. Switch range an toàn
+
+**Nguyên lý cần hiểu:** Khi đổi timer, cần disable cả ba, reset counter, clear capture/update flags và ready flag rồi enable đúng một timer.
+
+**Liên hệ project:** Driver thực hiện quy trình clear stale state theo docs/measurement.
+
+> **Giới hạn / bẫy phỏng vấn:** Nếu không clear, result của dải cũ có thể bị đọc như result mới.
+
+#### Bước 8. Snapshot ISR và main
+
+**Nguyên lý cần hiểu:** CH1/CH2/flag có thể được cập nhật trong IRQ giữa lúc main đọc; cần snapshot nguyên cặp.
+
+**Liên hệ project:** Driver dùng đường publish/get với critical section ngắn để Service lấy period/high coherent.
+
+> **Giới hạn / bẫy phỏng vấn:** Chỉ dùng volatile cho từng biến không tự giữ cặp ticks cùng một chu kỳ.
+
+#### Bước 9. Validate và timeout
+
+**Nguyên lý cần hiểu:** period phải >0, high_ticks≤period; kết quả mới phải đến trước thời hạn.
+
+**Liên hệ project:** Service báo NO_SIGNAL sau >1100 ms không có capture mới.
+
+> **Giới hạn / bẫy phỏng vấn:** Tín hiệu DC thuần 0%/100% không có đủ cạnh để suy ra period bằng PWM Input Mode chuẩn.
+
+#### Bước 10. Tần số kỳ vọng khác đo được
+
+**Nguyên lý cần hiểu:** Chọn timer căn cứ expected frequency hiện từ cấu hình Signal Generator, không phải quét tìm dải từ external signal.
+
+**Liên hệ project:** Kiểm thử với f ngoài khác expected để thấy alias/overflow hoặc độ phân giải kém.
+
+> **Giới hạn / bẫy phỏng vấn:** Mọi tuyên bố auto-ranging PWM external đều không được implementation hỗ trợ.
+
+#### Case study 1 — Tính frequency/duty từ capture
+
+Giả sử mode MID, clock timer hiệu dụng `9 MHz`, capture period `9000 ticks` và high `2250 ticks`:
+
+```text
+f = 9,000,000/9000 = 1000 Hz
+Duty = 2250/9000 × 100 = 25%
+T = 1 ms, Thigh = 0,25 ms
+```
+
+Các số tick chỉ minh họa. Bộ capture thật cần đúng chân PA6 và một PWM có tần số nằm trong vùng MID để không overflow/độ phân giải thiếu.
+
+#### Case study 2 — Expected 5 kHz nhưng tín hiệu ngoài 5 Hz
+
+`expected≥4000` khiến TIM1 counter chạy ở 72 MHz. Tín hiệu 5 Hz có chu kỳ 0,2 giây, tương đương 14,4 triệu tick — vượt 16-bit nếu không có logic extension. Vì vậy chọn dải theo expected frequency không tương đương nhận diện đúng mọi tín hiệu ngoài. Cải tiến có thể phát hiện overflow/timeouts rồi chọn lại prescaler, nhưng code hiện tại chưa phải auto-range.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.8.1. Input Capture là gì?
 
@@ -2008,8 +3981,194 @@ Một auto-range chính xác cần: bắt đầu dải trung bình; nếu không
 
 ---
 
+
+#### Bài nói khi phỏng vấn: PWM Input Capture: period, high time và timer range (khoảng 90 giây)
+
+> Dạ, để đo PWM em dùng Timer PWM Input Mode thay vì đếm cạnh trong super-loop. CH1 ghi period từ rising edge và CH2 ghi high time từ falling edge; Service lấy `f=clock/period_ticks` và `duty=high_ticks/period_ticks`. Vì timer 16-bit phải cân bằng resolution và overflow, driver dùng TIM4/PB6 dưới 200 Hz, TIM3/PA6 từ 200 tới dưới 4 kHz và TIM1/PA8 từ 4 kHz trở lên. Một timer active tại một thời điểm; khi đổi dải cần clear counters/flags. Dữ liệu ISR được đọc bằng snapshot nhất quán và timeout 1100 ms đưa kết quả về NO_SIGNAL. Em nêu rõ timer được chọn theo expected frequency từ cấu hình, chưa tự dò mọi external PWM.
+
+#### Câu hỏi ôn tập Chương 6.8 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Tần số và duty định nghĩa: nguyên lý và vai trò trong project? | Chu kỳ T là thời gian giữa hai cạnh cùng loại; Ton là mức HIGH; f=1/T, duty=Ton/T. Service tính `f=timer_clock/period_ticks` và `duty=high_ticks/period_ticks×100`. |
+| 2. Rủi ro/giới hạn tại bước “Tần số và duty định nghĩa” là gì? | Dùng số cạnh nhận được trong vài ms mà không xác định cửa sổ không phải công thức Input Capture đang dùng. |
+| 3. PWM Input Mode: nguyên lý và vai trò trong project? | CH1 capture period ở rising, CH2 capture high ở falling với slave reset trigger TI1FP1. TIM1/3/4 chạy cùng logic PWM-input và tạo hai số tick từ timer hardware. |
+| 4. Rủi ro/giới hạn tại bước “PWM Input Mode” là gì? | Đổi polarity sai khiến high_ticks thực là low time hoặc cặp edge không tương ứng. |
+| 5. Input signal pins: nguyên lý và vai trò trong project? | Mỗi timer được nối với chân riêng, phải cấp tín hiệu thật tới đúng chân đang active. High TIM1 PA8, Mid TIM3 PA6, Low TIM4 PB6; chỉ một capture timer enabled mỗi lúc. |
+| 6. Rủi ro/giới hạn tại bước “Input signal pins” là gì? | Nối loopback PA1 vào sai chân rồi kết luận driver không đo được là lỗi setup test. |
+| 7. Dải thấp và overflow: nguyên lý và vai trò trong project? | Tần số thấp có T dài, phải giảm counter clock để 16-bit counter không overflow trước chu kỳ. TIM4 PSC=1098, effective clock ≈65514 Hz cho expected <200 Hz. |
+| 8. Rủi ro/giới hạn tại bước “Dải thấp và overflow” là gì? | Timer clock quá nhanh ở 1 Hz sẽ overflow nhiều lần nếu không dùng extension. |
+| 9. Dải giữa: nguyên lý và vai trò trong project? | Giữ tick resolution đủ cho duty ở kHz nhưng không overflow ở cận dưới 200 Hz. TIM3 PSC=7, counter clock 9 MHz cho 200.. <4000 Hz. |
+| 10. Rủi ro/giới hạn tại bước “Dải giữa” là gì? | Nếu tín hiệu thực thấp hơn expected nhiều, period có thể vượt 65535 ticks. |
+| 11. Dải cao: nguyên lý và vai trò trong project? | Tần số cao chu kỳ ngắn, ưu tiên clock 72 MHz để có nhiều tick/chu kỳ. TIM1 PSC=0 được chọn cho expected≥4000 Hz. |
+| 12. Rủi ro/giới hạn tại bước “Dải cao” là gì? | Nếu tín hiệu ngoài rất thấp nhưng vẫn chọn TIM1 sẽ overflow, không auto-range. |
+| 13. Switch range an toàn: nguyên lý và vai trò trong project? | Khi đổi timer, cần disable cả ba, reset counter, clear capture/update flags và ready flag rồi enable đúng một timer. Driver thực hiện quy trình clear stale state theo docs/measurement. |
+| 14. Rủi ro/giới hạn tại bước “Switch range an toàn” là gì? | Nếu không clear, result của dải cũ có thể bị đọc như result mới. |
+| 15. Snapshot ISR và main: nguyên lý và vai trò trong project? | CH1/CH2/flag có thể được cập nhật trong IRQ giữa lúc main đọc; cần snapshot nguyên cặp. Driver dùng đường publish/get với critical section ngắn để Service lấy period/high coherent. |
+| 16. Rủi ro/giới hạn tại bước “Snapshot ISR và main” là gì? | Chỉ dùng volatile cho từng biến không tự giữ cặp ticks cùng một chu kỳ. |
+| 17. Validate và timeout: nguyên lý và vai trò trong project? | period phải >0, high_ticks≤period; kết quả mới phải đến trước thời hạn. Service báo NO_SIGNAL sau >1100 ms không có capture mới. |
+| 18. Rủi ro/giới hạn tại bước “Validate và timeout” là gì? | Tín hiệu DC thuần 0%/100% không có đủ cạnh để suy ra period bằng PWM Input Mode chuẩn. |
+| 19. Tần số kỳ vọng khác đo được: nguyên lý và vai trò trong project? | Chọn timer căn cứ expected frequency hiện từ cấu hình Signal Generator, không phải quét tìm dải từ external signal. Kiểm thử với f ngoài khác expected để thấy alias/overflow hoặc độ phân giải kém. |
+| 20. Rủi ro/giới hạn tại bước “Tần số kỳ vọng khác đo được” là gì? | Mọi tuyên bố auto-ranging PWM external đều không được implementation hỗ trợ. |
+| 21. PWM Input Mode đọc cạnh nào cho period/high? | CH1 bắt chu kỳ rising-to-rising, CH2 lấy high time falling edge theo PWM Input Mode. |
+| 22. Có thể giữ 72 MHz cho tín hiệu 1 Hz không? | Không với counter 16-bit nếu không thêm overflow extension; dùng prescaler cho low range. |
+| 23. Ba timer capture có cùng một input pin không? | Không: TIM4 PB6, TIM3 PA6, TIM1 PA8. |
+| 24. Tại sao phải clear ready khi đổi range? | Tránh lấy cặp capture cũ sau khi chuyển timer. |
+| 25. Tín hiệu DC 100% có đo period kiểu này được không? | Không đủ cạnh để đo period theo phương pháp hiện dùng; có thể timeout NO_SIGNAL. |
+| 26. Với fTIM=9MHz và period=9000, f đo bao nhiêu? | 1000 Hz. |
+| 27. Với high=2250/period=9000 thì duty bao nhiêu? | 25%. |
+| 28. Nếu signal wire vào PB6 nhưng active TIM1? | Không capture đúng nguồn ở PA8; cần nối input đúng chân dải. |
+| 29. Không có cạnh sau 1100ms nhưng prior value READY? | Service chuyển NO_SIGNAL theo timeout. |
+| 30. Tại sao duty 0%/100% khó với capture cạnh? | Thiếu rising/falling edge cần để xác định period/high time. |
+
+#### Điểm cần ghi nhớ
+
+- **Tần số và duty định nghĩa:** Service tính `f=timer_clock/period_ticks` và `duty=high_ticks/period_ticks×100`.
+- **Dải thấp và overflow:** TIM4 PSC=1098, effective clock ≈65514 Hz cho expected <200 Hz.
+- **Switch range an toàn:** Driver thực hiện quy trình clear stale state theo docs/measurement.
+- **Tần số kỳ vọng khác đo được:** Kiểm thử với f ngoài khác expected để thấy alias/overflow hoặc độ phân giải kém.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Drivers/pwm_capture_driver.c`
+- `Services/measurement_service.c`
+- `Drivers/pwm_output_driver.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-9"></a>
 ### 6.9. I2C2, PCF8574, LCD1602 và shadow buffer
+
+> **Mục tiêu:** Hiểu cách LCD 4-bit chạy qua I2C GPIO expander và cơ chế tránh hiển thị ký tự cũ.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: I2C2, PCF8574, LCD1602 và shadow buffer
+
+```mermaid
+flowchart TD
+    S1["I2C open-drain"]
+    S2["Start, address, ACK, stop"]
+    S1 --> S2
+    S3["PCF8574 không phải LCD"]
+    S2 --> S3
+    S4["LCD 4-bit transfer"]
+    S3 --> S4
+    S5["LCD initialization"]
+    S4 --> S5
+    S6["Địa chỉ backpack"]
+    S5 --> S6
+    S7["UI controller vs view"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. I2C open-drain
+
+**Nguyên lý cần hiểu:** SCL/SDA là tín hiệu bus kéo xuống, đường lên HIGH dựa pull-up; nhiều thiết bị có thể chia sẻ bus theo địa chỉ.
+
+**Liên hệ project:** PB10=SCL, PB11=SDA của I2C2 100 kHz standard mode.
+
+> **Giới hạn / bẫy phỏng vấn:** Nhầm output push-pull với AF open-drain có thể làm bus hoạt động sai/nguy hiểm khi nhiều thiết bị.
+
+#### Bước 2. Start, address, ACK, stop
+
+**Nguyên lý cần hiểu:** Master tạo START, gửi địa chỉ 7-bit + R/W, chờ ACK và gửi byte, kết thúc STOP.
+
+**Liên hệ project:** LCD driver giao tiếp với backpack PCF8574/PCF8574A qua SPL I2C2.
+
+> **Giới hạn / bẫy phỏng vấn:** Không có ACK hoặc bus busy cần timeout, không chờ vô hạn trong vòng polling.
+
+#### Bước 3. PCF8574 không phải LCD
+
+**Nguyên lý cần hiểu:** PCF8574 là GPIO expander nhận byte I2C và đưa mức ra các chân nối LCD HD44780.
+
+**Liên hệ project:** Firmware ánh xạ control bits RS/E/backlight và nibble dữ liệu của LCD qua expander.
+
+> **Giới hạn / bẫy phỏng vấn:** Tưởng LCD1602 nhận trực tiếp command I2C chuẩn sẽ gây khó hiểu khi đọc driver.
+
+#### Bước 4. LCD 4-bit transfer
+
+**Nguyên lý cần hiểu:** LCD HD44780 nhận byte dưới dạng hai nibble; mỗi nibble cần trình tự tín hiệu enable phù hợp.
+
+**Liên hệ project:** Driver phát chuỗi byte PCF8574 để tạo xung E và data nibble cho LCD.
+
+> **Giới hạn / bẫy phỏng vấn:** Sai thứ tự nibble hoặc timing E làm ký tự lỗi ngay cả khi I2C ACK.
+
+#### Bước 5. LCD initialization
+
+**Nguyên lý cần hiểu:** Sau power-up, LCD yêu cầu trình tự init và delay theo timing thiết bị trước khi nhận command bình thường.
+
+**Liên hệ project:** Driver có các short blocking delay ở LCD init/clear; UI splash không dùng cùng kiểu delay dài.
+
+> **Giới hạn / bẫy phỏng vấn:** Tuyên bố tất cả hàm LCD non-blocking là không chính xác.
+
+#### Bước 6. Địa chỉ backpack
+
+**Nguyên lý cần hiểu:** PCF8574 và PCF8574A có dải địa chỉ tùy chân A0..A2, nên scan có ích.
+
+**Liên hệ project:** Logger docs cho ví dụ phát hiện 0x27; đây là ví dụ log, không đảm bảo mọi module đều ở 0x27.
+
+> **Giới hạn / bẫy phỏng vấn:** Hard-code một địa chỉ tùy ý sẽ thất bại với backpack khác.
+
+#### Bước 7. UI controller vs view
+
+**Nguyên lý cần hiểu:** Controller quản lý menu, edit, state/time; View biến state và giá trị thành nội dung màn.
+
+**Liên hệ project:** `ui_controller.c` không nên phải viết trực tiếp ký tự từng LCD cell.
+
+> **Giới hạn / bẫy phỏng vấn:** Trộn rendering vào FSM tạo code khó test và làm tăng phụ thuộc phần cứng.
+
+#### Bước 8. Shadow buffer
+
+**Nguyên lý cần hiểu:** Shadow buffer lưu hình ảnh trước đó của 2×16 cell; chỉ update row thay đổi để giảm I2C transaction.
+
+**Liên hệ project:** `ui_view.c` ghi đúng 16 ký tự khi row đổi để xóa tail của chuỗi dài trước.
+
+> **Giới hạn / bẫy phỏng vấn:** Shadow buffer không phải framebuffer pixel và không thay đổi tốc độ thực của I2C bus.
+
+#### Bước 9. Formatter và các đơn vị
+
+**Nguyên lý cần hiểu:** Hiển thị R/C/f/duty cần đổi đơn vị, làm tròn và tránh tràn 16 ký tự.
+
+**Liên hệ project:** UiFormatter chuyển giá trị số thành text; UiView quyết định khi render và layout row.
+
+> **Giới hạn / bẫy phỏng vấn:** Đổi Ω↔kΩ sai có thể khiến người dùng hiểu giá trị lớn gấp nghìn lần.
+
+#### Bước 10. Debug LCD không hiển thị
+
+**Nguyên lý cần hiểu:** Tách lỗi nguồn/backpack, ACK I2C, nibble mapping, init timing và UI shadow update.
+
+**Liên hệ project:** Dùng logic analyzer PB10/PB11 và UART log để biết lỗi tại bus hay driver LCD.
+
+> **Giới hạn / bẫy phỏng vấn:** LCD im lặng không chứng minh ADC hoặc Service chưa đo được.
+
+#### Case study 1 — Vì sao xóa ký tự cũ cần ghi đủ 16 ô?
+
+```text
+Row cũ: "Frequency 1000Hz"  (16 ký tự)
+Row mới: "No Signal"       (9 ký tự)
+```
+
+Nếu chỉ ghi 9 ký tự đầu, phần `1000Hz` ở cuối row cũ có thể còn trên LCD. View xây dựng ảnh dòng đủ 16 cell (thêm khoảng trắng) rồi so với shadow; khi khác, viết lại cả dòng. Đây là xử lý ở **UI View**, không phải yêu cầu thay đổi `MeasurementService`.
+
+#### Case study 2 — Debug một LCD không ACK
+
+```text
+Kiểm tra nguồn + GND + pull-up
+ → Oscilloscope: PB10/PB11 có SCL/SDA?
+ → Bus 100 kHz / START / địa chỉ 7-bit?
+ → Có ACK PCF8574 không?
+ → Nếu ACK: xem nibble/RS/E/init timing
+ → Nếu dữ liệu hiển thị sai: xem formatter/16-char shadow
+```
+
+Một LCD trống nhưng UART báo số đo hợp lệ gợi ý lỗi ở hiển thị hoặc I2C hơn là ở ADC; nên khoanh vùng theo layer.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.9.1. I2C electrical layer
 
@@ -2063,8 +4222,203 @@ LCD Driver dùng timeout khoảng **10 ms** cho các thao tác I2C được mô 
 
 ---
 
+
+#### Bài nói khi phỏng vấn: I2C2, PCF8574, LCD1602 và shadow buffer (khoảng 90 giây)
+
+> Dạ, màn LCD1602 được nối qua PCF8574 trên I2C2 PB10/PB11 ở standard mode 100 kHz. PCF8574 là GPIO expander chứ không phải LCD có protocol I2C riêng; Driver phải biến byte hiển thị thành hai nibble với các tín hiệu RS/E phù hợp. Về phần mềm, UiController quyết định state; UiFormatter chuyển số thành text; UiView xây ảnh hai dòng 16 ký tự và dùng shadow buffer để tránh ghi lại dòng không đổi. Khi dòng mới ngắn hơn, View vẫn ghi đủ 16 ô để không sót ký tự cũ. Em cũng phân biệt: UI Splash không block bằng delay dài nhưng driver LCD vẫn có những khoảng polling/delay ngắn theo timing thiết bị.
+
+#### Câu hỏi ôn tập Chương 6.9 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. I2C open-drain: nguyên lý và vai trò trong project? | SCL/SDA là tín hiệu bus kéo xuống, đường lên HIGH dựa pull-up; nhiều thiết bị có thể chia sẻ bus theo địa chỉ. PB10=SCL, PB11=SDA của I2C2 100 kHz standard mode. |
+| 2. Rủi ro/giới hạn tại bước “I2C open-drain” là gì? | Nhầm output push-pull với AF open-drain có thể làm bus hoạt động sai/nguy hiểm khi nhiều thiết bị. |
+| 3. Start, address, ACK, stop: nguyên lý và vai trò trong project? | Master tạo START, gửi địa chỉ 7-bit + R/W, chờ ACK và gửi byte, kết thúc STOP. LCD driver giao tiếp với backpack PCF8574/PCF8574A qua SPL I2C2. |
+| 4. Rủi ro/giới hạn tại bước “Start, address, ACK, stop” là gì? | Không có ACK hoặc bus busy cần timeout, không chờ vô hạn trong vòng polling. |
+| 5. PCF8574 không phải LCD: nguyên lý và vai trò trong project? | PCF8574 là GPIO expander nhận byte I2C và đưa mức ra các chân nối LCD HD44780. Firmware ánh xạ control bits RS/E/backlight và nibble dữ liệu của LCD qua expander. |
+| 6. Rủi ro/giới hạn tại bước “PCF8574 không phải LCD” là gì? | Tưởng LCD1602 nhận trực tiếp command I2C chuẩn sẽ gây khó hiểu khi đọc driver. |
+| 7. LCD 4-bit transfer: nguyên lý và vai trò trong project? | LCD HD44780 nhận byte dưới dạng hai nibble; mỗi nibble cần trình tự tín hiệu enable phù hợp. Driver phát chuỗi byte PCF8574 để tạo xung E và data nibble cho LCD. |
+| 8. Rủi ro/giới hạn tại bước “LCD 4-bit transfer” là gì? | Sai thứ tự nibble hoặc timing E làm ký tự lỗi ngay cả khi I2C ACK. |
+| 9. LCD initialization: nguyên lý và vai trò trong project? | Sau power-up, LCD yêu cầu trình tự init và delay theo timing thiết bị trước khi nhận command bình thường. Driver có các short blocking delay ở LCD init/clear; UI splash không dùng cùng kiểu delay dài. |
+| 10. Rủi ro/giới hạn tại bước “LCD initialization” là gì? | Tuyên bố tất cả hàm LCD non-blocking là không chính xác. |
+| 11. Địa chỉ backpack: nguyên lý và vai trò trong project? | PCF8574 và PCF8574A có dải địa chỉ tùy chân A0..A2, nên scan có ích. Logger docs cho ví dụ phát hiện 0x27; đây là ví dụ log, không đảm bảo mọi module đều ở 0x27. |
+| 12. Rủi ro/giới hạn tại bước “Địa chỉ backpack” là gì? | Hard-code một địa chỉ tùy ý sẽ thất bại với backpack khác. |
+| 13. UI controller vs view: nguyên lý và vai trò trong project? | Controller quản lý menu, edit, state/time; View biến state và giá trị thành nội dung màn. `ui_controller.c` không nên phải viết trực tiếp ký tự từng LCD cell. |
+| 14. Rủi ro/giới hạn tại bước “UI controller vs view” là gì? | Trộn rendering vào FSM tạo code khó test và làm tăng phụ thuộc phần cứng. |
+| 15. Shadow buffer: nguyên lý và vai trò trong project? | Shadow buffer lưu hình ảnh trước đó của 2×16 cell; chỉ update row thay đổi để giảm I2C transaction. `ui_view.c` ghi đúng 16 ký tự khi row đổi để xóa tail của chuỗi dài trước. |
+| 16. Rủi ro/giới hạn tại bước “Shadow buffer” là gì? | Shadow buffer không phải framebuffer pixel và không thay đổi tốc độ thực của I2C bus. |
+| 17. Formatter và các đơn vị: nguyên lý và vai trò trong project? | Hiển thị R/C/f/duty cần đổi đơn vị, làm tròn và tránh tràn 16 ký tự. UiFormatter chuyển giá trị số thành text; UiView quyết định khi render và layout row. |
+| 18. Rủi ro/giới hạn tại bước “Formatter và các đơn vị” là gì? | Đổi Ω↔kΩ sai có thể khiến người dùng hiểu giá trị lớn gấp nghìn lần. |
+| 19. Debug LCD không hiển thị: nguyên lý và vai trò trong project? | Tách lỗi nguồn/backpack, ACK I2C, nibble mapping, init timing và UI shadow update. Dùng logic analyzer PB10/PB11 và UART log để biết lỗi tại bus hay driver LCD. |
+| 20. Rủi ro/giới hạn tại bước “Debug LCD không hiển thị” là gì? | LCD im lặng không chứng minh ADC hoặc Service chưa đo được. |
+| 21. PCF8574 có phải giao thức LCD không? | Không; đó là IC mở rộng GPIO nhận I2C để tạo nibble/control của LCD HD44780. |
+| 22. I2C2 dùng chân nào? | SCL PB10, SDA PB11. |
+| 23. LCD dùng bao nhiêu nibble để gửi một byte? | Hai nibble 4-bit, mỗi nibble cần điều khiển E/RS phù hợp. |
+| 24. Shadow buffer giúp gì khi chuỗi ngắn đi? | Ghi cả 16 cell có padding để xóa ký tự dư từ row dài trước. |
+| 25. LCD không sáng nhưng UART vẫn log thì kiểm tra gì trước? | Nguồn/bus I2C/backpack và LCD timing trước, không mặc định lỗi ADC. |
+| 26. LCD1602 có 16x2 pixel không? | Không; là màn hình ký tự 2 hàng, 16 ô mỗi hàng. |
+| 27. Địa chỉ 0x27 có phải bắt buộc? | Không; phụ thuộc PCF8574/PCF8574A và chân address. |
+| 28. Tại sao bus cần pull-up? | I2C open-drain chỉ kéo xuống LOW, lên HIGH nhờ pull-up. |
+| 29. Nếu I2C ACK nhưng LCD ký tự lỗi? | Kiểm tra ánh xạ nibble RS/E, init timing và control bytes. |
+| 30. Có nên gọi I2C LCD từ ADC ISR? | Không; transaction/delay có thể kéo dài interrupt latency. |
+
+#### Điểm cần ghi nhớ
+
+- **I2C open-drain:** PB10=SCL, PB11=SDA của I2C2 100 kHz standard mode.
+- **LCD 4-bit transfer:** Driver phát chuỗi byte PCF8574 để tạo xung E và data nibble cho LCD.
+- **UI controller vs view:** `ui_controller.c` không nên phải viết trực tiếp ký tự từng LCD cell.
+- **Debug LCD không hiển thị:** Dùng logic analyzer PB10/PB11 và UART log để biết lỗi tại bus hay driver LCD.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Drivers/lcd1602_driver.c`
+- `Application/ui_view.c`
+- `Application/ui_formatter.c`
+- `Application/ui_controller.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-10"></a>
 ### 6.10. Internal Flash, CRC-32 và tính bền vững dữ liệu
+
+> **Mục tiêu:** Hiểu bản ghi 24 byte, chính xác bytes được CRC, migration V0 và rủi ro mất điện giữa save.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: Internal Flash, CRC-32 và tính bền vững dữ liệu
+
+```mermaid
+flowchart TD
+    S1["Đặc điểm NOR Flash"]
+    S2["Cấu trúc record V1"]
+    S1 --> S2
+    S3["Default và range"]
+    S2 --> S3
+    S4["CRC-32 reflected"]
+    S3 --> S4
+    S5["Validate V1"]
+    S4 --> S5
+    S6["Legacy V0 migration"]
+    S5 --> S6
+    S7["Default fallback"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Đặc điểm NOR Flash
+
+**Nguyên lý cần hiểu:** Program thường chuyển bit 1→0, erase đưa page về 0xFF; phải erase trước khi viết lại vùng có dữ liệu.
+
+**Liên hệ project:** Project dành page cuối 1 KiB tại 0x0800FC00 để lưu record cấu hình.
+
+> **Giới hạn / bẫy phỏng vấn:** Ghi vào page code hoặc quên reserve trong linker sẽ phá firmware hoặc config.
+
+#### Bước 2. Cấu trúc record V1
+
+**Nguyên lý cần hiểu:** Header magic, version, record_size, setting fields, reserved, crc cho phép phát hiện format cũ/hỏng.
+
+**Liên hệ project:** `Config_t` 24 byte; frequency uint32, duty uint16, freq_step uint16, duty_step uint8, reserved[3], crc32 uint32.
+
+> **Giới hạn / bẫy phỏng vấn:** Không nhầm record 24 byte với toàn page Flash 1024 byte.
+
+#### Bước 3. Default và range
+
+**Nguyên lý cần hiểu:** Giá trị config phải nằm trong miền hợp lệ trước khi dùng phát PWM.
+
+**Liên hệ project:** Default 50000 Hz/50%/1000 Hz/1%; frequency 1..100000, duty 1..100, freq step 1..10000, duty step 1..10.
+
+> **Giới hạn / bẫy phỏng vấn:** CRC hợp lệ vẫn có thể chứa giá trị semantic ngoài dải nếu không kiểm tra range.
+
+#### Bước 4. CRC-32 reflected
+
+**Nguyên lý cần hiểu:** Algorithm lặp XOR byte và shift right với poly 0xEDB88320, init all ones và complement cuối.
+
+**Liên hệ project:** `Flash_Calculate_CRC32` tính trên `offsetof(Config_t,crc32)` tức 20 byte đầu, loại trường CRC.
+
+> **Giới hạn / bẫy phỏng vấn:** Nói CRC dùng để ký số hoặc bảo vệ khỏi sửa file có chủ đích là sai.
+
+#### Bước 5. Validate V1
+
+**Nguyên lý cần hiểu:** Check magic/version/size trước, sau đó CRC và range để biết record có thể dùng hay không.
+
+**Liên hệ project:** Driver trả các trạng thái BAD_MAGIC/BAD_VERSION/BAD_SIZE/BAD_CRC/BAD_RANGE cụ thể.
+
+> **Giới hạn / bẫy phỏng vấn:** Một file có CRC đúng nhưng version không khớp vẫn không được xem là V1 hợp lệ.
+
+#### Bước 6. Legacy V0 migration
+
+**Nguyên lý cần hiểu:** Khi V1 không hợp lệ, code thử đọc V0 theo layout cũ và validate giá trị.
+
+**Liên hệ project:** Nếu V0 hợp lệ, tạo V1 trong RAM và đặt `flash_needs_rewrite`, không ghi ngay vào Flash lúc boot.
+
+> **Giới hạn / bẫy phỏng vấn:** Không đồng nhất migration trong RAM với transactional migration bền vững ngay tức thì.
+
+#### Bước 7. Default fallback
+
+**Nguyên lý cần hiểu:** Nếu cả V1 và V0 không hợp lệ, nạp cấu hình safe default để firmware tiếp tục.
+
+**Liên hệ project:** Flash driver tạo default record ở RAM và đánh dấu cần save lại khi có yêu cầu.
+
+> **Giới hạn / bẫy phỏng vấn:** Default chỉ hỗ trợ vận hành, không phục hồi chính xác giá trị đã mất.
+
+#### Bước 8. Tránh ghi không cần
+
+**Nguyên lý cần hiểu:** Erase/program tốn thời gian và endurance; nếu record mới như cũ thì không cần ghi.
+
+**Liên hệ project:** Driver so sánh thay đổi và `flash_needs_rewrite` trước khi vào transaction.
+
+> **Giới hạn / bẫy phỏng vấn:** Nhấn SELECT không đồng nghĩa Flash được erase mỗi lần nếu setting không đổi.
+
+#### Bước 9. Transaction erase/program/verify
+
+**Nguyên lý cần hiểu:** Save chuẩn bị CRC, lưu PRIMASK, disable IRQ ngắn quanh Flash operation, erase page, program half-word, restore IRQ rồi read-back.
+
+**Liên hệ project:** Driver kiểm tra dữ liệu đọc lại bằng validation + memcmp trước khi commit bản currentConfig trong RAM.
+
+> **Giới hạn / bẫy phỏng vấn:** Power cut giữa erase/program có thể làm mất record vì chỉ một slot, chưa có A/B.
+
+#### Bước 10. Thiết kế production
+
+**Nguyên lý cần hiểu:** Dual slot A/B, sequence/generation, commit marker, wear consideration và brown-out testing nâng mức bền vững.
+
+**Liên hệ project:** Đây là hướng cải tiến từ limitation của docs/validation, không được nói đã có trong code.
+
+> **Giới hạn / bẫy phỏng vấn:** CRC và read-back không tự đảm bảo old config sống sót khi nguồn mất đúng lúc erase.
+
+#### Case study 1 — CRC-32 trên record V1 có những byte nào?
+
+```text
+Offset  Size  Field
+ 0       4   magic
+ 4       2   version
+ 6       2   record_size
+ 8       4   frequency_value
+12       2   duty_value
+14       2   freq_step
+16       1   duty_step
+17       3   reserved[3]
+20       4   crc32
+```
+
+`offsetof(Config_t,crc32)=20`, nên hàm CRC tính **20 byte đầu**, không tính chính bốn byte CRC. Tổng `sizeof(Config_t)=24` theo layout hiện được mô tả; khi thay đổi compiler/packing phải xác minh offset và backward compatibility.
+
+#### Case study 2 — Power cut sau Erase, trước Program
+
+```text
+Save() → Flash_Unlock()
+       → Erase page 0x0800FC00
+       → mất điện trước khi ghi đủ record
+       → reboot
+       → V1 validation FAIL
+       → thử V0 nếu phù hợp; nếu không dùng default
+```
+
+Đây là **phục hồi bằng default khi record hỏng**, không phải Rollback về cấu hình cũ. Muốn lưu an toàn hơn phải dùng hai slot hoặc journal và chính sách commit riêng.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.10.1. Bản chất NOR Flash
 
@@ -2154,8 +4508,188 @@ Ghi cấu hình sau mỗi một lần UP/DOWN hoặc mỗi vòng loop sẽ tiêu
 
 ---
 
+
+#### Bài nói khi phỏng vấn: Internal Flash, CRC-32 và tính bền vững dữ liệu (khoảng 90 giây)
+
+> Dạ, PWM frequency, duty và các bước điều chỉnh được lưu trong Internal Flash page tại 0x0800FC00. Driver sử dụng `Config_t` phiên bản V1 dài 24 byte: magic, version, record_size, payload, reserved và CRC-32 của 20 byte trước CRC field. Khi boot, firmware kiểm tra metadata, CRC và range; nếu V1 hỏng thì thử migrate V0 hoặc dùng default. Khi save, service snapshot giá trị, driver chỉ ghi khi thay đổi, thực hiện erase/program half-word, rồi đọc lại và so sánh trước khi commit trạng thái trong RAM. Em giải thích rõ đây là phát hiện lỗi và verify sau ghi, chưa phải A/B power-fail-safe: mất điện giữa erase/program có thể làm mất cấu hình cũ.
+
+#### Câu hỏi ôn tập Chương 6.10 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Đặc điểm NOR Flash: nguyên lý và vai trò trong project? | Program thường chuyển bit 1→0, erase đưa page về 0xFF; phải erase trước khi viết lại vùng có dữ liệu. Project dành page cuối 1 KiB tại 0x0800FC00 để lưu record cấu hình. |
+| 2. Rủi ro/giới hạn tại bước “Đặc điểm NOR Flash” là gì? | Ghi vào page code hoặc quên reserve trong linker sẽ phá firmware hoặc config. |
+| 3. Cấu trúc record V1: nguyên lý và vai trò trong project? | Header magic, version, record_size, setting fields, reserved, crc cho phép phát hiện format cũ/hỏng. `Config_t` 24 byte; frequency uint32, duty uint16, freq_step uint16, duty_step uint8, reserved[3], crc32 uint32. |
+| 4. Rủi ro/giới hạn tại bước “Cấu trúc record V1” là gì? | Không nhầm record 24 byte với toàn page Flash 1024 byte. |
+| 5. Default và range: nguyên lý và vai trò trong project? | Giá trị config phải nằm trong miền hợp lệ trước khi dùng phát PWM. Default 50000 Hz/50%/1000 Hz/1%; frequency 1..100000, duty 1..100, freq step 1..10000, duty step 1..10. |
+| 6. Rủi ro/giới hạn tại bước “Default và range” là gì? | CRC hợp lệ vẫn có thể chứa giá trị semantic ngoài dải nếu không kiểm tra range. |
+| 7. CRC-32 reflected: nguyên lý và vai trò trong project? | Algorithm lặp XOR byte và shift right với poly 0xEDB88320, init all ones và complement cuối. `Flash_Calculate_CRC32` tính trên `offsetof(Config_t,crc32)` tức 20 byte đầu, loại trường CRC. |
+| 8. Rủi ro/giới hạn tại bước “CRC-32 reflected” là gì? | Nói CRC dùng để ký số hoặc bảo vệ khỏi sửa file có chủ đích là sai. |
+| 9. Validate V1: nguyên lý và vai trò trong project? | Check magic/version/size trước, sau đó CRC và range để biết record có thể dùng hay không. Driver trả các trạng thái BAD_MAGIC/BAD_VERSION/BAD_SIZE/BAD_CRC/BAD_RANGE cụ thể. |
+| 10. Rủi ro/giới hạn tại bước “Validate V1” là gì? | Một file có CRC đúng nhưng version không khớp vẫn không được xem là V1 hợp lệ. |
+| 11. Legacy V0 migration: nguyên lý và vai trò trong project? | Khi V1 không hợp lệ, code thử đọc V0 theo layout cũ và validate giá trị. Nếu V0 hợp lệ, tạo V1 trong RAM và đặt `flash_needs_rewrite`, không ghi ngay vào Flash lúc boot. |
+| 12. Rủi ro/giới hạn tại bước “Legacy V0 migration” là gì? | Không đồng nhất migration trong RAM với transactional migration bền vững ngay tức thì. |
+| 13. Default fallback: nguyên lý và vai trò trong project? | Nếu cả V1 và V0 không hợp lệ, nạp cấu hình safe default để firmware tiếp tục. Flash driver tạo default record ở RAM và đánh dấu cần save lại khi có yêu cầu. |
+| 14. Rủi ro/giới hạn tại bước “Default fallback” là gì? | Default chỉ hỗ trợ vận hành, không phục hồi chính xác giá trị đã mất. |
+| 15. Tránh ghi không cần: nguyên lý và vai trò trong project? | Erase/program tốn thời gian và endurance; nếu record mới như cũ thì không cần ghi. Driver so sánh thay đổi và `flash_needs_rewrite` trước khi vào transaction. |
+| 16. Rủi ro/giới hạn tại bước “Tránh ghi không cần” là gì? | Nhấn SELECT không đồng nghĩa Flash được erase mỗi lần nếu setting không đổi. |
+| 17. Transaction erase/program/verify: nguyên lý và vai trò trong project? | Save chuẩn bị CRC, lưu PRIMASK, disable IRQ ngắn quanh Flash operation, erase page, program half-word, restore IRQ rồi read-back. Driver kiểm tra dữ liệu đọc lại bằng validation + memcmp trước khi commit bản currentConfig trong RAM. |
+| 18. Rủi ro/giới hạn tại bước “Transaction erase/program/verify” là gì? | Power cut giữa erase/program có thể làm mất record vì chỉ một slot, chưa có A/B. |
+| 19. Thiết kế production: nguyên lý và vai trò trong project? | Dual slot A/B, sequence/generation, commit marker, wear consideration và brown-out testing nâng mức bền vững. Đây là hướng cải tiến từ limitation của docs/validation, không được nói đã có trong code. |
+| 20. Rủi ro/giới hạn tại bước “Thiết kế production” là gì? | CRC và read-back không tự đảm bảo old config sống sót khi nguồn mất đúng lúc erase. |
+| 21. Một trang Flash có bao nhiêu byte và record bao nhiêu? | Flash page 1 KiB; record V1 24 byte. |
+| 22. CRC32 tính trên bao nhiêu byte? | 20 byte đầu theo offsetof tới trường crc32, loại CRC field. |
+| 23. Tại sao Check CRC xong còn Check Range? | Một record CRC đúng vẫn có thể chứa duty/frequency không hợp lệ. |
+| 24. Migration V0 có ghi Flash ngay lúc boot không? | Không; chuyển trong RAM, đánh dấu rewrite cho save tiếp theo. |
+| 25. Tại sao một trang chưa bảo đảm power fail recovery? | Mất điện có thể xóa bản cũ trước khi bản mới được ghi đủ; cần A/B/journal. |
+| 26. CRC known vector là gì? | CRC-32/ISO-HDLC của ASCII 123456789 là 0xCBF43926. |
+| 27. CRC có bao gồm chính field crc32 không? | Không; offsetof xác định 20 byte đầu. |
+| 28. Trong Save, khi nào currentConfig RAM được công nhận? | Sau khi read-back/validate/memcmp thành công. |
+| 29. Tại sao không save V0→V1 ngay lúc boot? | Firmware đánh dấu rewrite để lần Save tiếp theo ghi, giảm thao tác Flash trong bootstrap. |
+| 30. Nếu mất nguồn sau erase trước program, làm sao? | Dữ liệu cũ có thể mất; fallback/default, không phải A/B restore. |
+
+#### Điểm cần ghi nhớ
+
+- **Đặc điểm NOR Flash:** Project dành page cuối 1 KiB tại 0x0800FC00 để lưu record cấu hình.
+- **CRC-32 reflected:** `Flash_Calculate_CRC32` tính trên `offsetof(Config_t,crc32)` tức 20 byte đầu, loại trường CRC.
+- **Default fallback:** Flash driver tạo default record ở RAM và đánh dấu cần save lại khi có yêu cầu.
+- **Thiết kế production:** Đây là hướng cải tiến từ limitation của docs/validation, không được nói đã có trong code.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Drivers/flash_storage_driver.c`
+- `Services/config_service.c`
+- `Application/ui_controller.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-11"></a>
 ### 6.11. USART1, Debug Logger và Error Manager
+
+> **Mục tiêu:** Phân biệt logging transport với quản lý lỗi, boot flush, gộp lỗi, và giới hạn UART RX hiện tại.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: USART1, Debug Logger và Error Manager
+
+```mermaid
+flowchart TD
+    S1["UART async"]
+    S2["Đường TX và RX"]
+    S1 --> S2
+    S3["Logger format"]
+    S2 --> S3
+    S4["Log levels"]
+    S3 --> S4
+    S5["Error record"]
+    S4 --> S5
+    S6["Coalescing lỗi"]
+    S5 --> S6
+    S7["Boot-time logs"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. UART async
+
+**Nguyên lý cần hiểu:** UART serial dùng TX/RX chung baud/format 8-N-1, không cần dây clock chia sẻ.
+
+**Liên hệ project:** USART1 TX PA9, RX PA10, 9600 baud cho diagnostic logs.
+
+> **Giới hạn / bẫy phỏng vấn:** Cấu hình terminal 115200 baud theo project OTA khác sẽ đọc ký tự rác.
+
+#### Bước 2. Đường TX và RX
+
+**Nguyên lý cần hiểu:** TX gửi log tới terminal; RX nhận dữ liệu tới buffer nếu handler hỗ trợ.
+
+**Liên hệ project:** UART RX gom ký tự đến `!` nhưng chưa có command parser ở tầng application.
+
+> **Giới hạn / bẫy phỏng vấn:** Không nói project có CLI điều khiển phép đo bằng UART khi chưa thấy API tương ứng.
+
+#### Bước 3. Logger format
+
+**Nguyên lý cần hiểu:** Có timestamp từ SysTick, level và module để định vị thứ tự sự kiện.
+
+**Liên hệ project:** Định dạng `[timestamp_ms][level][module] message`, compile-time default INFO.
+
+> **Giới hạn / bẫy phỏng vấn:** Không có timestamp độ phân giải µs chỉ nhờ format ms.
+
+#### Bước 4. Log levels
+
+**Nguyên lý cần hiểu:** ERROR/WARN/INFO/TRACE giúp giảm nhiễu và chi phí runtime ở mức build phù hợp.
+
+**Liên hệ project:** Debug Logger lọc theo compile-time level; không phải logger nào cũng luôn phát TRACE.
+
+> **Giới hạn / bẫy phỏng vấn:** Tăng TRACE ở 9600 baud có thể làm main loop chậm thấy rõ.
+
+#### Bước 5. Error record
+
+**Nguyên lý cần hiểu:** Error code/source/severity/timestamp/repeat_count tách việc phát hiện lỗi khỏi việc in văn bản.
+
+**Liên hệ project:** Error Manager giữ lịch sử tám bản ghi trong RAM.
+
+> **Giới hạn / bẫy phỏng vấn:** History RAM không thể được mô tả là nonvolatile diagnostic log qua mất điện.
+
+#### Bước 6. Coalescing lỗi
+
+**Nguyên lý cần hiểu:** Lỗi giống nhau, liền kề và trong cửa sổ 1000 ms được gộp để tránh chiếm hết history.
+
+**Liên hệ project:** `repeat_count` tăng thay vì tạo bản ghi mới cho mỗi lỗi ADC/LCD lặp nhanh.
+
+> **Giới hạn / bẫy phỏng vấn:** Gộp lỗi có thể che bớt tần suất chi tiết nếu không đọc repeat_count.
+
+#### Bước 7. Boot-time logs
+
+**Nguyên lý cần hiểu:** Error Manager có thể khởi tạo trước Flash load và UART, nên không cần gửi ngay lỗi trong giai đoạn sớm.
+
+**Liên hệ project:** Sau khi UartPort và DebugLogger sẵn sàng, ErrorManager_Flush chuyển lỗi đang chờ sang logger.
+
+> **Giới hạn / bẫy phỏng vấn:** Gọi UART trước khi clock/pins init có thể mất log hoặc chờ vô ích.
+
+#### Bước 8. Source và severity
+
+**Nguyên lý cần hiểu:** Một lỗi BAD_CRC Flash được phân biệt với timeout ADC hoặc LCD I2C; severity không đồng nghĩa hệ thống phải reset.
+
+**Liên hệ project:** Flash chuyển status tới ErrorManager_Report với source FLASH và severity theo nhánh.
+
+> **Giới hạn / bẫy phỏng vấn:** Hiển thị ERROR cho mọi warning sẽ làm trải nghiệm xấu dù có safe default.
+
+#### Bước 9. TX timeout
+
+**Nguyên lý cần hiểu:** Chờ cờ TX có timeout để không treo vô hạn; AppController quan sát bộ đếm timeout của UartPort.
+
+**Liên hệ project:** Ứng dụng chuyển timeout mới thành record để chẩn đoán tình trạng logger.
+
+> **Giới hạn / bẫy phỏng vấn:** Logger blocking vẫn tiêu thụ thời gian ngay cả khi có timeout, không phải zero-cost.
+
+#### Bước 10. Debug scenario
+
+**Nguyên lý cần hiểu:** Trace boot, chọn mode, ADC request/result, save, I2C address và error history để khoanh vùng.
+
+**Liên hệ project:** Đối chiếu UART log với oscilloscope hoặc SWD breakpoint, phân biệt triệu chứng và nguyên nhân.
+
+> **Giới hạn / bẫy phỏng vấn:** Log INFO 'Init OK' không tự chứng minh độ chính xác phép đo khi phần cứng chịu noise.
+
+#### Case study 1 — Đọc một boot log
+
+```text
+[0000000000][INFO][APP] Boot
+[0000000000][WARN][FLASH] 0x0105 BAD_CRC
+[0000000000][INFO][APP] Config F=50000Hz D=50% Fstep=1000 Dstep=1 (BAD_CRC)
+[0000000001][INFO][LCD] Scanning I2C2 addresses
+[0000000015][INFO][LCD] Found at 0x27
+```
+
+Đây là **log ví dụ trong docs/runtime**, không phải log do tôi vừa đo trên board. Dòng BAD_CRC cho thấy bản ghi không hợp lệ; chương trình dùng fallback/default theo code, không chứng minh lỗi kết nối LCD hay ADC.
+
+#### Case study 2 — Tại sao 9600 baud cần lưu ý?
+
+Với 8-N-1, mỗi byte truyền khoảng 10 bit. Một dòng log ASCII 80 byte chiếm xấp xỉ `80×10/9600≈83,3 ms` trên đường truyền nếu gửi nối tiếp. Con số này **không khẳng định CPU luôn bận 83 ms** (phụ thuộc API TX), nhưng nhắc rằng logger có thể tạo độ trễ nếu chờ polling từng byte và queue bị tải lớn.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.11.1. UART frame và baud
 
@@ -2203,8 +4737,200 @@ Không nên dùng Error Manager mỗi khi không cắm điện trở hoặc khô
 
 ---
 
+
+#### Bài nói khi phỏng vấn: USART1, Debug Logger và Error Manager (khoảng 90 giây)
+
+> Dạ, USART1 trên PA9/PA10 được dùng cho debug ở 9600 baud 8-N-1. Logger định dạng timestamp, level và module; còn Error Manager là nơi ghi nhận source, error code, severity và repeat_count trong history RAM tám bản ghi. Khi cùng một lỗi lặp liền kề trong vòng 1000 ms, Manager gộp thay vì tạo record liên tục. Thứ tự khởi tạo cho phép lưu lỗi cấu hình Flash trước khi UART sẵn sàng, rồi flush sau. Khi phân tích log, em không nhầm warning BAD_CRC với lỗi phần cứng ADC và không nói UART có CLI đầy đủ: phần RX hiện gom dữ liệu tới ký tự `!`, chưa có application command protocol.
+
+#### Câu hỏi ôn tập Chương 6.11 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. UART async: nguyên lý và vai trò trong project? | UART serial dùng TX/RX chung baud/format 8-N-1, không cần dây clock chia sẻ. USART1 TX PA9, RX PA10, 9600 baud cho diagnostic logs. |
+| 2. Rủi ro/giới hạn tại bước “UART async” là gì? | Cấu hình terminal 115200 baud theo project OTA khác sẽ đọc ký tự rác. |
+| 3. Đường TX và RX: nguyên lý và vai trò trong project? | TX gửi log tới terminal; RX nhận dữ liệu tới buffer nếu handler hỗ trợ. UART RX gom ký tự đến `!` nhưng chưa có command parser ở tầng application. |
+| 4. Rủi ro/giới hạn tại bước “Đường TX và RX” là gì? | Không nói project có CLI điều khiển phép đo bằng UART khi chưa thấy API tương ứng. |
+| 5. Logger format: nguyên lý và vai trò trong project? | Có timestamp từ SysTick, level và module để định vị thứ tự sự kiện. Định dạng `[timestamp_ms][level][module] message`, compile-time default INFO. |
+| 6. Rủi ro/giới hạn tại bước “Logger format” là gì? | Không có timestamp độ phân giải µs chỉ nhờ format ms. |
+| 7. Log levels: nguyên lý và vai trò trong project? | ERROR/WARN/INFO/TRACE giúp giảm nhiễu và chi phí runtime ở mức build phù hợp. Debug Logger lọc theo compile-time level; không phải logger nào cũng luôn phát TRACE. |
+| 8. Rủi ro/giới hạn tại bước “Log levels” là gì? | Tăng TRACE ở 9600 baud có thể làm main loop chậm thấy rõ. |
+| 9. Error record: nguyên lý và vai trò trong project? | Error code/source/severity/timestamp/repeat_count tách việc phát hiện lỗi khỏi việc in văn bản. Error Manager giữ lịch sử tám bản ghi trong RAM. |
+| 10. Rủi ro/giới hạn tại bước “Error record” là gì? | History RAM không thể được mô tả là nonvolatile diagnostic log qua mất điện. |
+| 11. Coalescing lỗi: nguyên lý và vai trò trong project? | Lỗi giống nhau, liền kề và trong cửa sổ 1000 ms được gộp để tránh chiếm hết history. `repeat_count` tăng thay vì tạo bản ghi mới cho mỗi lỗi ADC/LCD lặp nhanh. |
+| 12. Rủi ro/giới hạn tại bước “Coalescing lỗi” là gì? | Gộp lỗi có thể che bớt tần suất chi tiết nếu không đọc repeat_count. |
+| 13. Boot-time logs: nguyên lý và vai trò trong project? | Error Manager có thể khởi tạo trước Flash load và UART, nên không cần gửi ngay lỗi trong giai đoạn sớm. Sau khi UartPort và DebugLogger sẵn sàng, ErrorManager_Flush chuyển lỗi đang chờ sang logger. |
+| 14. Rủi ro/giới hạn tại bước “Boot-time logs” là gì? | Gọi UART trước khi clock/pins init có thể mất log hoặc chờ vô ích. |
+| 15. Source và severity: nguyên lý và vai trò trong project? | Một lỗi BAD_CRC Flash được phân biệt với timeout ADC hoặc LCD I2C; severity không đồng nghĩa hệ thống phải reset. Flash chuyển status tới ErrorManager_Report với source FLASH và severity theo nhánh. |
+| 16. Rủi ro/giới hạn tại bước “Source và severity” là gì? | Hiển thị ERROR cho mọi warning sẽ làm trải nghiệm xấu dù có safe default. |
+| 17. TX timeout: nguyên lý và vai trò trong project? | Chờ cờ TX có timeout để không treo vô hạn; AppController quan sát bộ đếm timeout của UartPort. Ứng dụng chuyển timeout mới thành record để chẩn đoán tình trạng logger. |
+| 18. Rủi ro/giới hạn tại bước “TX timeout” là gì? | Logger blocking vẫn tiêu thụ thời gian ngay cả khi có timeout, không phải zero-cost. |
+| 19. Debug scenario: nguyên lý và vai trò trong project? | Trace boot, chọn mode, ADC request/result, save, I2C address và error history để khoanh vùng. Đối chiếu UART log với oscilloscope hoặc SWD breakpoint, phân biệt triệu chứng và nguyên nhân. |
+| 20. Rủi ro/giới hạn tại bước “Debug scenario” là gì? | Log INFO 'Init OK' không tự chứng minh độ chính xác phép đo khi phần cứng chịu noise. |
+| 21. UART baud project là 9600 hay 115200? | 9600 baud, 8-N-1 theo docs/runtime, không phải 115200. |
+| 22. Error Manager lưu lỗi qua power loss không? | Không; history tám bản ghi nằm trong SRAM. |
+| 23. Một lỗi lặp có tạo record mới liên tục không? | Lỗi giống nhau liền kề trong 1000 ms được gộp tăng repeat_count. |
+| 24. UART RX có CLI điều khiển chưa? | Chưa; RX hiện thu đến `!`, chưa có command parser tầng ứng dụng. |
+| 25. Log format có thể đo jitter microsecond không? | Không; timestamp logger theo mili-giây. |
+| 26. Log 80byte ở 9600 8-N-1 mất bao lâu trên wire? | Xấp xỉ 83ms; thời gian CPU phụ thuộc TX implementation. |
+| 27. Lỗi khác source nhưng same code có coalesce không? | Cần so source/code/severity theo logic, không gộp mọi lỗi chỉ vì timestamp gần. |
+| 28. Vì sao severity khác status code? | Severity thể hiện mức độ tác động, code định danh nguyên nhân cụ thể. |
+| 29. Nếu UART hỏng có thể tin không mất log không? | Không; UART timeout có thể làm log thất lạc, Error Manager vẫn giữ RAM history giới hạn. |
+| 30. Thông điệp RX kết thúc bằng ký tự gì? | Dấu ! theo docs/validation; chưa có application CLI hoàn chỉnh. |
+
+#### Điểm cần ghi nhớ
+
+- **UART async:** USART1 TX PA9, RX PA10, 9600 baud cho diagnostic logs.
+- **Log levels:** Debug Logger lọc theo compile-time level; không phải logger nào cũng luôn phát TRACE.
+- **Boot-time logs:** Sau khi UartPort và DebugLogger sẵn sàng, ErrorManager_Flush chuyển lỗi đang chờ sang logger.
+- **Debug scenario:** Đối chiếu UART log với oscilloscope hoặc SWD breakpoint, phân biệt triệu chứng và nguyên nhân.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Platform/uart_port.c`
+- `Infrastructure/debug_logger.c`
+- `Infrastructure/error_manager.c`
+- `Application/app_controller.c`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="chuong-6-12"></a>
 ### 6.12. Bare-metal concurrency, kiểm thử và gỡ lỗi
+
+> **Mục tiêu:** Biết cách bảo đảm dữ liệu shared và lập test matrix từ unit đến hardware-in-loop, đọc đúng độ tin cậy của số liệu repo.
+> **Nguồn kỹ thuật:** Các thông số được gắn với code/docs khi áp dụng; phần nguyên lý cơ bản và phép tính minh họa là kiến thức nền, không giả làm trích dẫn nguyên văn từ source.
+
+#### Sơ đồ tổng quan: Bare-metal concurrency, kiểm thử và gỡ lỗi
+
+```mermaid
+flowchart TD
+    S1["Super-loop scheduling"]
+    S2["Phân biệt concurrency/parallel"]
+    S1 --> S2
+    S3["Data ownership"]
+    S2 --> S3
+    S4["Atomic snapshot"]
+    S3 --> S4
+    S5["Finite State Machine tests"]
+    S4 --> S5
+    S6["Unit và host tests"]
+    S5 --> S6
+    S7["Integration tests"]
+    S6 --> S7
+```
+
+#### Phân tích từng bước từ nguyên lý đến implementation
+
+#### Bước 1. Super-loop scheduling
+
+**Nguyên lý cần hiểu:** Mỗi lần main loop chỉ làm một lượng công việc có giới hạn, còn IRQ phát sinh tùy ngoại vi.
+
+**Liên hệ project:** AppController drain event và UiController_Update thường xuyên; không có RTOS scheduler.
+
+> **Giới hạn / bẫy phỏng vấn:** Một hàm block lâu làm việc khác đói CPU dù các ISR vẫn chạy.
+
+#### Bước 2. Phân biệt concurrency/parallel
+
+**Nguyên lý cần hiểu:** ISR preempt main tạo concurrency trên một CPU; không đồng nghĩa hai thread thực thi song song trên hai core.
+
+**Liên hệ project:** ADC EOC IRQ có thể cập nhật ready flag trong lúc main đang xử lý menu.
+
+> **Giới hạn / bẫy phỏng vấn:** Không cần RTOS mới có race condition.
+
+#### Bước 3. Data ownership
+
+**Nguyên lý cần hiểu:** Mỗi trạng thái/resource cần module sở hữu; tránh hai nơi cùng init/cancel ADC/timer.
+
+**Liên hệ project:** MeasurementService quản lý mode và driver lifetime; UI quyết định mode mục tiêu.
+
+> **Giới hạn / bẫy phỏng vấn:** Bỏ cleanup khi đổi screen dễ làm PA5 ở HIGH hoặc capture stale.
+
+#### Bước 4. Atomic snapshot
+
+**Nguyên lý cần hiểu:** Một biến 32-bit aligned có thể đọc atomic trên Cortex-M3, nhưng cặp field vẫn không là transaction.
+
+**Liên hệ project:** PWM capture period/high/time phải được copy đồng bộ bằng critical section.
+
+> **Giới hạn / bẫy phỏng vấn:** `volatile` không bảo đảm cặp dữ liệu đều thuộc một cycle.
+
+#### Bước 5. Finite State Machine tests
+
+**Nguyên lý cần hiểu:** Mỗi FSM cần state, event, guard, action và expected next state; kịch bản lỗi phải explicit.
+
+**Liên hệ project:** Test CAP_* transitions, resistor UNKNOWN/PRESENT/ABSENT và SAVE_FEEDBACK success/fail.
+
+> **Giới hạn / bẫy phỏng vấn:** Chỉ thử happy path không phát hiện dead-state khi không đạt threshold.
+
+#### Bước 6. Unit và host tests
+
+**Nguyên lý cần hiểu:** Module thuần tính toán như formatting, CRC, PSC/ARR search có thể test với fake driver trên host.
+
+**Liên hệ project:** Chọn input ranh giới 1/100kHz, 1/100% duty, CRC known vector và output format 16-char.
+
+> **Giới hạn / bẫy phỏng vấn:** Host pass không chứng minh timing điện áp/ADC chính xác trên board.
+
+#### Bước 7. Integration tests
+
+**Nguyên lý cần hiểu:** Kiểm tra tương tác UI-Service-Driver: button event đổi mode, ADC result tới LCD, save/reboot load config.
+
+**Liên hệ project:** Dùng test sheet theo firmware commit, board, nguồn và reference instrument.
+
+> **Giới hạn / bẫy phỏng vấn:** Mỗi module đúng riêng vẫn có thể xung đột RCC/IRQ/init ordering khi tích hợp.
+
+#### Bước 8. Hardware measurement
+
+**Nguyên lý cần hiểu:** Oscilloscope/logic analyzer đo PWM, RC, I2C và GPIO; đồng hồ chuẩn/điện trở/tụ tham chiếu đo sai số.
+
+**Liên hệ project:** Repo có validation frequency 100Hz..100kHz và R/C theo nhiều linh kiện.
+
+> **Giới hạn / bẫy phỏng vấn:** Dữ liệu author-reported là bằng chứng trong phạm vi test, không phải chuẩn hiệu chuẩn độc lập.
+
+#### Bước 9. Fault injection
+
+**Nguyên lý cần hiểu:** Cố ý làm thiếu ADC EOC, tháo LCD, ngắt input PWM, corrupt CRC Flash và thử mất nguồn đúng lúc save.
+
+**Liên hệ project:** Quan sát status ERROR/NO_SIGNAL/NO_COMPONENT, fallback config và UART log.
+
+> **Giới hạn / bẫy phỏng vấn:** Mất điện giữa save chưa được A/B bảo vệ, không được khẳng định old config luôn giữ.
+
+#### Bước 10. Ưu tiên cải tiến
+
+**Nguyên lý cần hiểu:** Xếp theo failure impact và effort: RC state timeout, flash redundancy, input auto-ranging, calibration, structured telemetry.
+
+**Liên hệ project:** Mỗi đề xuất cần nêu thử nghiệm trước/sau và giới hạn thực tế của board.
+
+> **Giới hạn / bẫy phỏng vấn:** Không gọi các đề xuất ấy là feature đã có, kể cả khi mô hình FSM cho phép thêm được.
+
+#### Case study 1 — Trace một lỗi điện trở bị kẹt ở MEASURING
+
+```text
+LCD status MEASURING
+ → UI có gọi MeasurementService_Process không?
+ → active_mode = RESISTOR?
+ → adc_request_pending và request_started_ms?
+ → ADC EOC IRQ có đủ 16 mẫu?
+ → GetResult có trả ready đúng input?
+ → resistor_presence UNKNOWN hay PRESENT/ABSENT?
+ → last status/ERROR và UART log?
+```
+
+Đừng bắt đầu bằng đổi threshold ngay. Trước hết phải xác định là không có ADC result, stuck presence hysteresis hay chỉ do UI pacing chưa redraw.
+
+#### Case study 2 — Thang bằng chứng kiểm thử
+
+| Mức | Kiểm được | Chưa chứng minh |
+|---|---|---|
+| Static/code review | API, state, điều kiện kiểm tra | Board hoạt động đúng |
+| Host unit tests | CRC, formatter, timer calculations | Timing điện áp thật |
+| Firmware build | Link và biên dịch với toolchain | Analog accuracy |
+| HIL/board tests | GPIO/ADC/TIM/I2C/UART thực | Mọi nhiệt độ/nguồn/thiết bị |
+| Calibration | Sai số theo chuẩn cụ thể | Độ tin cậy tuyệt đối vô hạn |
+
+Tài liệu validation hiện công bố kết quả thử nghiệm của repo; chưa có phép đo độc lập trong lần viết tài liệu này.
+
+
+#### Phân tích kỹ thuật bổ sung và tình huống thực tế
+
+
 
 #### 6.12.1. Super-loop có concurrency không?
 
@@ -2271,6 +4997,63 @@ Tương tự ADC: timer cũ vẫn có cờ CC/update pending khi đổi dải; n
 - So sánh số đo với instrument tham chiếu, ghi cả range và error (%), không chỉ “có hiện số”.
 
 ---
+
+#### Bài nói khi phỏng vấn: Bare-metal concurrency, kiểm thử và gỡ lỗi (khoảng 90 giây)
+
+> Dạ, vì firmware bare-metal dùng super-loop cộng interrupt nên em quản lý concurrency bằng phân chia dữ liệu sở hữu giữa ISR và main. ISR chỉ publish batch ADC hoặc capture timer, còn main làm phép tính và cập nhật UI; với cặp period/high phải đọc coherent snapshot chứ không chỉ thêm volatile. Em tổ chức kiểm thử theo tầng: unit test công thức/formatter/CRC, integration giữa UI-Service-Driver, sau đó đo thực bằng oscilloscope, logic analyzer và linh kiện chuẩn. Em cũng dùng fault scenarios như mất PWM input, ADC timeout, corrupt Flash CRC hoặc LCD không ACK. Khi trình bày kết quả, em phân biệt validation do repository công bố với phép đo độc lập; với production em ưu tiên timeout RC, flash redundancy, calibration và auto-ranging theo rủi ro thực tế.
+
+#### Câu hỏi ôn tập Chương 6.12 (30 câu kèm ý chính)
+
+| Câu hỏi | Ý chính cần trả lời |
+|---|---|
+| 1. Super-loop scheduling: nguyên lý và vai trò trong project? | Mỗi lần main loop chỉ làm một lượng công việc có giới hạn, còn IRQ phát sinh tùy ngoại vi. AppController drain event và UiController_Update thường xuyên; không có RTOS scheduler. |
+| 2. Rủi ro/giới hạn tại bước “Super-loop scheduling” là gì? | Một hàm block lâu làm việc khác đói CPU dù các ISR vẫn chạy. |
+| 3. Phân biệt concurrency/parallel: nguyên lý và vai trò trong project? | ISR preempt main tạo concurrency trên một CPU; không đồng nghĩa hai thread thực thi song song trên hai core. ADC EOC IRQ có thể cập nhật ready flag trong lúc main đang xử lý menu. |
+| 4. Rủi ro/giới hạn tại bước “Phân biệt concurrency/parallel” là gì? | Không cần RTOS mới có race condition. |
+| 5. Data ownership: nguyên lý và vai trò trong project? | Mỗi trạng thái/resource cần module sở hữu; tránh hai nơi cùng init/cancel ADC/timer. MeasurementService quản lý mode và driver lifetime; UI quyết định mode mục tiêu. |
+| 6. Rủi ro/giới hạn tại bước “Data ownership” là gì? | Bỏ cleanup khi đổi screen dễ làm PA5 ở HIGH hoặc capture stale. |
+| 7. Atomic snapshot: nguyên lý và vai trò trong project? | Một biến 32-bit aligned có thể đọc atomic trên Cortex-M3, nhưng cặp field vẫn không là transaction. PWM capture period/high/time phải được copy đồng bộ bằng critical section. |
+| 8. Rủi ro/giới hạn tại bước “Atomic snapshot” là gì? | `volatile` không bảo đảm cặp dữ liệu đều thuộc một cycle. |
+| 9. Finite State Machine tests: nguyên lý và vai trò trong project? | Mỗi FSM cần state, event, guard, action và expected next state; kịch bản lỗi phải explicit. Test CAP_* transitions, resistor UNKNOWN/PRESENT/ABSENT và SAVE_FEEDBACK success/fail. |
+| 10. Rủi ro/giới hạn tại bước “Finite State Machine tests” là gì? | Chỉ thử happy path không phát hiện dead-state khi không đạt threshold. |
+| 11. Unit và host tests: nguyên lý và vai trò trong project? | Module thuần tính toán như formatting, CRC, PSC/ARR search có thể test với fake driver trên host. Chọn input ranh giới 1/100kHz, 1/100% duty, CRC known vector và output format 16-char. |
+| 12. Rủi ro/giới hạn tại bước “Unit và host tests” là gì? | Host pass không chứng minh timing điện áp/ADC chính xác trên board. |
+| 13. Integration tests: nguyên lý và vai trò trong project? | Kiểm tra tương tác UI-Service-Driver: button event đổi mode, ADC result tới LCD, save/reboot load config. Dùng test sheet theo firmware commit, board, nguồn và reference instrument. |
+| 14. Rủi ro/giới hạn tại bước “Integration tests” là gì? | Mỗi module đúng riêng vẫn có thể xung đột RCC/IRQ/init ordering khi tích hợp. |
+| 15. Hardware measurement: nguyên lý và vai trò trong project? | Oscilloscope/logic analyzer đo PWM, RC, I2C và GPIO; đồng hồ chuẩn/điện trở/tụ tham chiếu đo sai số. Repo có validation frequency 100Hz..100kHz và R/C theo nhiều linh kiện. |
+| 16. Rủi ro/giới hạn tại bước “Hardware measurement” là gì? | Dữ liệu author-reported là bằng chứng trong phạm vi test, không phải chuẩn hiệu chuẩn độc lập. |
+| 17. Fault injection: nguyên lý và vai trò trong project? | Cố ý làm thiếu ADC EOC, tháo LCD, ngắt input PWM, corrupt CRC Flash và thử mất nguồn đúng lúc save. Quan sát status ERROR/NO_SIGNAL/NO_COMPONENT, fallback config và UART log. |
+| 18. Rủi ro/giới hạn tại bước “Fault injection” là gì? | Mất điện giữa save chưa được A/B bảo vệ, không được khẳng định old config luôn giữ. |
+| 19. Ưu tiên cải tiến: nguyên lý và vai trò trong project? | Xếp theo failure impact và effort: RC state timeout, flash redundancy, input auto-ranging, calibration, structured telemetry. Mỗi đề xuất cần nêu thử nghiệm trước/sau và giới hạn thực tế của board. |
+| 20. Rủi ro/giới hạn tại bước “Ưu tiên cải tiến” là gì? | Không gọi các đề xuất ấy là feature đã có, kể cả khi mô hình FSM cho phép thêm được. |
+| 21. Bare-metal có race condition không? | Có: ISR chen main và có thể thay đổi shared state. |
+| 22. Unit test có đủ thay hardware validation không? | Không; cần kiểm thử board/analog timing và tích hợp. |
+| 23. Nếu PWM mất xung thì status nào? | Quá 1100 ms không capture thì NO_SIGNAL. |
+| 24. Có thể khẳng định số liệu validation là hiệu chuẩn không? | Không, là số liệu thử nghiệm repo công bố, chưa là calibration certification. |
+| 25. Khó khăn quan trọng nhất khi chuyển sang production là gì? | Timeout/robustness, calibration, flash redundancy, auto-ranging và telemetry cần được đánh giá theo yêu cầu sản phẩm. |
+| 26. Nếu UART log báo OK nhưng đo R sai thì debug gì? | Kiểm tra Vref/Rref, ADC raw count, filter, wiring và reference instrument. |
+| 27. Nếu mất điện trong config Save có bảo đảm config cũ không? | Không, vì single page không có bản sao transaction. |
+| 28. Nếu code unit-test PASS thì có thể claim accuracy chưa? | Chưa; phải đo với phần cứng/linh kiện chuẩn và điều kiện được nêu. |
+| 29. Điều nào là known limitation của đo PWM ngoài? | Dải được chọn bằng expected frequency, không auto-discovery. |
+| 30. Cần ghi gì vào báo cáo HIL? | Commit firmware, board, nguồn, reference, input, measured, tolerance, status và logs. |
+
+#### Điểm cần ghi nhớ
+
+- **Super-loop scheduling:** AppController drain event và UiController_Update thường xuyên; không có RTOS scheduler.
+- **Atomic snapshot:** PWM capture period/high/time phải được copy đồng bộ bằng critical section.
+- **Integration tests:** Dùng test sheet theo firmware commit, board, nguồn và reference instrument.
+- **Ưu tiên cải tiến:** Mỗi đề xuất cần nêu thử nghiệm trước/sau và giới hạn thực tế của board.
+
+#### Các file mã nguồn và tài liệu nên đọc
+
+- `Application/app_controller.c`
+- `Drivers/adc_driver.c`
+- `Drivers/pwm_capture_driver.c`
+- `Infrastructure/error_manager.c`
+- `docs/validation.md`
+
+**Cách học:** Tự vẽ lại sơ đồ, giải thích từng điều kiện trong code, làm lại phép tính bằng tay và trả lời các câu trên mà không nhìn phần gợi ý.
+
 <a id="phan-7"></a>
 ## Phần 7. Câu hỏi phỏng vấn trọng tâm
 
@@ -2540,6 +5323,94 @@ Tương tự ADC: timer cũ vẫn có cờ CC/update pending khi đổi dải; n
 | Q47–Q55 Testing/trade-off | `docs/validation.md`, `docs/runtime.md`, `Infrastructure/error_manager.c` |
 
 ---
+<a id="phu-luc-b"></a>
+## Phụ lục B. Thông số, chân MCU và bản đồ mã nguồn
+
+### B.1. Các thông số phải nhớ khi phỏng vấn
+
+| Hạng mục | Giá trị của project | Nguồn |
+|---|---|---|
+| MCU / CPU | STM32F103C8T6 / ARM Cortex-M3 | `docs/hardware.md` |
+| CPU clock / APB1 / APB2 | 72 MHz / 36 MHz / 72 MHz | `docs/hardware.md` |
+| Timer clock APB1 | 72 MHz (APB1 prescaler khác 1) | `docs/hardware.md` |
+| ADC clock | 12 MHz (`PCLK2 / 6`) | `docs/hardware.md` |
+| SysTick | 1 ms | `docs/hardware.md` |
+| ADC batch | 16 mẫu, ISR cộng số nguyên | `Drivers/adc_driver.c` |
+| ADC driver LPF | `alpha=0,2` | `docs/measurement.md` |
+| Điện trở tham chiếu | 10 kΩ | `docs/measurement.md` |
+| Điện trở RC | 20 kΩ | `docs/measurement.md` |
+| Điện áp giả định | 3,3 V | `docs/measurement.md` |
+| Ngưỡng tụ | ADC 1241 / 2482 (~1 V / 2 V) | `Services/measurement_service.c` |
+| Ngưỡng điện trở hở / có | ADC 4075 / 4060 | `Services/measurement_service.c` |
+| Debounce | 20 ms; FIFO 8 sự kiện | `docs/runtime.md` |
+| Timeout ADC batch | 100 ms | `Services/measurement_service.c` |
+| Timeout không có PWM | 1100 ms | `Services/measurement_service.c` |
+| PWM output | TIM2 CH2 PA1; 1 Hz–100 kHz; 1–100% | `docs/measurement.md` |
+| PWM low/mid/high | TIM4 PB6 / TIM3 PA6 / TIM1 PA8 | `docs/measurement.md` |
+| LCD | LCD1602, I2C2 100 kHz, PCF8574/PCF8574A | `docs/hardware.md` |
+| UART | USART1 9600 8-N-1 | `docs/runtime.md` |
+| Flash record | 24 byte, V1, CRC-32 | `docs/runtime.md` |
+| Trang Flash cấu hình | `0x0800FC00`–`0x0800FFFF` | `docs/runtime.md` |
+| Splash / save feedback | 2000 ms / 800 ms | `docs/runtime.md` |
+
+### B.2. Bản đồ chân (pin map)
+
+| Tín hiệu | Peripheral | Chân MCU | Chú ý |
+|---|---|---|---|
+| Điện trở | ADC1 CH3 | PA3 | Analog input, không cấp áp vượt mức cho phép |
+| Điện dung | ADC1 CH4 | PA4 | Đọc điện áp tụ |
+| Điều khiển nạp/xả | GPIOA | PA5 | Điều khiển qua Rtiming |
+| PWM phát | TIM2 CH2 | PA1 | Alternate-function push-pull |
+| PWM đo dải cao | TIM1 CH1/CH2 | PA8 | TIM1 PWM Input |
+| PWM đo dải giữa | TIM3 CH1/CH2 | PA6 | TIM3 PWM Input |
+| PWM đo dải thấp | TIM4 CH1/CH2 | PB6 | TIM4 PWM Input |
+| LCD SCL/SDA | I2C2 | PB10/PB11 | AF open-drain |
+| Nút UP/DOWN | GPIOB | PB12/PB13 | Pull-up, active-low |
+| Nút SELECT/CHARGE | GPIOB | PB14/PB15 | Pull-up, active-low |
+| UART TX/RX | USART1 | PA9/PA10 | Debug 9600 baud |
+
+> **An toàn khi thử nghiệm:** Không đấu điện áp lưới, nguồn áp cao hoặc tín hiệu ngoài vượt mức cho phép trực tiếp vào ADC/GPIO STM32. Mạch đo của repo không đồng nghĩa máy đo đa năng có bảo vệ đầu vào đạt chuẩn thương mại. Khi loopback PA1 sang PA8/PA6/PB6 cần **nối GND chung**, chọn đúng chân và kiểm tra mức logic.
+
+### B.3. Bản đồ file và nhiệm vụ
+
+```text
+mini-multimeter/
+├── Application/
+│   ├── main.c                     entry point
+│   ├── app_controller.c/.h         bootstrap và super-loop
+│   ├── ui_controller.c/.h          UI FSM và menu/action
+│   ├── ui_view.c/.h                LCD composition + shadow
+│   └── ui_formatter.c/.h           format giá trị đo
+├── Services/
+│   ├── measurement_service.c/.h    R/C/frequency/duty workflows
+│   ├── signal_generator_service.c/.h tính PSC/ARR/CCR PWM
+│   └── config_service.c/.h         cấu hình và yêu cầu save
+├── Drivers/
+│   ├── adc_driver.c/.h             ADC batch + EOC ISR
+│   ├── button_driver.c/.h          debounce + FIFO
+│   ├── capacitor_charge_driver.c/.h GPIO nạp/xả
+│   ├── pwm_capture_driver.c/.h     TIM1/TIM3/TIM4 input capture
+│   ├── pwm_output_driver.c/.h      TIM2 CH2 output
+│   ├── lcd1602_driver.c/.h         PCF8574 + I2C2 + LCD1602
+│   └── flash_storage_driver.c/.h   record + CRC + erase/program/verify
+├── Infrastructure/
+│   ├── error_manager.c/.h          lịch sử lỗi RAM
+│   └── debug_logger.c/.h           log dạng text
+├── Platform/
+│   ├── platform_init.c/.h          platform bootstrap
+│   ├── system_time.c/.h            1 ms tick
+│   └── uart_port.c/.h              USART1 transport
+├── MDK/                              Keil µVision, startup, CMSIS/RTE
+├── docs/                             tài liệu hardware/measurement/runtime...
+├── ARCHITECTURE.md
+└── README.md
+```
+
+**Thứ tự đọc source:** `main.c` → `app_controller.c` → `ui_controller.c` → `measurement_service.c` → `adc_driver.c` → `pwm_capture_driver.c` → `signal_generator_service.c` → `flash_storage_driver.c` → `ui_view.c` → `error_manager.c` → `platform_init.c`. Đọc ngược từ màn hình cần hiểu đến service/driver tương ứng để kết nối các layer.
+
+---
+
+
 <a id="phu-luc-c"></a>
 ## Phụ lục C. Bài tập tính toán, test case và lộ trình học
 
