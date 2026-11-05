@@ -20,7 +20,7 @@
    - [5.6. Power-loss Recovery, trạng thái `FAILED` và các chuyển trạng thái không hợp lệ](#chuong-5-6)
 6. [Ôn tập kiến thức kỹ thuật](#phan-6)
    - [6.1. Các ràng buộc STM32 trực tiếp trong project](#chuong-6-1)
-   - [6.2. Startup, Linker và Application Handoff trong project](#chuong-6-2)
+   - [6.2. Startup, Linker và chuyển quyền điều khiển sang Application trong project](#chuong-6-2)
    - [6.3. Cài firmware vào STM32 Internal Flash](#chuong-6-3)
    - [6.4. W25Q và tầng lưu trữ OTA](#chuong-6-4)
    - [6.5. Giao thức truyền OTA qua UART](#chuong-6-5)
@@ -115,11 +115,11 @@
 
 **Trong project:** Bootloader và Application nằm ở hai vùng chương trình khác nhau; **Application Vector Table bắt đầu tại `0x08006000`**. Bootloader chỉ bàn giao khi trạng thái OTA cho phép và vector của Application hợp lệ.
 
-**Luồng mã nguồn cần hiểu:** `ApplicationJump_Validate()` kiểm tra MSP, Reset Handler và giới hạn vùng Application. `ApplicationJump_Execute()` dọn SysTick/NVIC, chuẩn bị RCC, đặt `SCB->VTOR`, rồi dùng `application_handoff.s` để đặt MSP và chuyển tới Reset Handler. Đây là **handoff bằng phần mềm**, không phải reset MCU.
+**Luồng mã nguồn cần hiểu:** `ApplicationJump_Validate()` kiểm tra MSP, Reset Handler và giới hạn vùng Application. `ApplicationJump_Execute()` dọn SysTick/NVIC, chuẩn bị RCC, đặt `SCB->VTOR`, rồi dùng `application_handoff.s` để đặt MSP và chuyển tới Reset Handler. Đây là **chuyển quyền điều khiển bằng phần mềm**, không phải reset MCU.
 
 **Lỗi cần phân tích:** Nếu MSP/vector không hợp lệ hoặc còn ngắt từ Bootloader, Application có thể không khởi động đúng; kiểm tra `VTOR`, MSP, Reset Handler, và trạng thái ngắt trong debugger.
 
-**Câu hỏi phỏng vấn gắn với project:** Tại sao phải kiểm tra vector trước Jump? Vì sao handoff dùng assembly? Vì sao không Jump khi đang `UPDATE_INSTALLING`?
+**Câu hỏi phỏng vấn gắn với project:** Tại sao phải kiểm tra vector trước Jump? Vì sao bước chuyển quyền điều khiển dùng assembly? Vì sao không Jump khi đang `UPDATE_INSTALLING`?
 
 **Học sâu:** [6.1 – Các ràng buộc STM32 trong project](#chuong-6-1) · [6.2 – Startup, Vector Table và Linker](#chuong-6-2) · [6.3 – Internal Flash](#chuong-6-3) · [6.4 – External Flash W25Q](#chuong-6-4).
 
@@ -1302,7 +1302,7 @@ Nếu hợp lệ, Bootloader chuyển sang `UPDATE_TRIAL_BOOT` và bàn giao cho
 |---|---|
 | `node-stm32f103/bootloader/src/image_installer.c` | `ProgramBufferedApplicationPage()`, `ResumePageCheckpointedCopy()`, `VerifyInstalledApplication()`. |
 | `node-stm32f103/bootloader/src/boot_manager.c` | Điều phối Install và cập nhật trạng thái. |
-| `node-stm32f103/bootloader/src/application_jump.c` | Validate vector, handoff sau khi Install/Verify. |
+| `node-stm32f103/bootloader/src/application_jump.c` | Validate vector, chuyển quyền điều khiển sau khi Install/Verify. |
 | `node-stm32f103/bootloader/storage/metadata_storage.c` | Commit Checkpoint vào Metadata A/B. |
 | `shared/include/memory_map.h` | Giới hạn vùng Bootloader/Application/Metadata. |
 
@@ -1932,14 +1932,14 @@ Những ràng buộc này bảo vệ tính nhất quán của State Machine: **m
 
 **Cần đọc:** `shared/include/memory_map.h`, `shared/include/boot_metadata.h`, `node-stm32f103/bootloader/src/application_jump.c`, `node-stm32f103/bootloader/startup/application_handoff.s`, `node-stm32f103/bootloader/src/boot_decision.c`.
 
-**Đọc tiếp:** [6.2 – Startup, linker và Application Handoff](#chuong-6-2), [6.3 – Cài firmware vào Internal Flash](#chuong-6-3), [6.9 – Metadata/Checkpoint](#chuong-6-9).
+**Đọc tiếp:** [6.2 – Startup, linker và chuyển quyền điều khiển sang Application](#chuong-6-2), [6.3 – Cài firmware vào Internal Flash](#chuong-6-3), [6.9 – Metadata/Checkpoint](#chuong-6-9).
 
 ---
 
 <a id="chuong-6-2"></a>
-### 6.2. Startup, Linker và Application Handoff trong project
+### 6.2. Startup, Linker và chuyển quyền điều khiển sang Application trong project
 
-#### Sơ đồ tổng quan: Reset, Startup và Application Handoff
+#### Sơ đồ tổng quan: Reset, Startup và chuyển quyền điều khiển sang Application
 
 ```mermaid
 flowchart TD
@@ -1960,7 +1960,7 @@ flowchart TD
 
 #### Bước 1. Theo dấu đường khởi động của hai image
 
-Trong project, Bootloader được link tại `0x08000000`, Application tại `0x08006000`; chúng có **startup và linker riêng**. Sau reset vào Bootloader, `main()` đọc Metadata để chọn Boot Action. Nếu được phép chạy Application, Bootloader chuyển qua hàm kiểm tra vector và handoff; nếu còn cập nhật dở, nó xử lý state tương ứng trước.
+Trong project, Bootloader được link tại `0x08000000`, Application tại `0x08006000`; chúng có **startup và linker riêng**. Sau reset vào Bootloader, `main()` đọc Metadata để chọn Boot Action. Nếu được phép chạy Application, Bootloader chuyển qua hàm kiểm tra vector và chuyển quyền điều khiển; nếu còn cập nhật dở, nó xử lý state tương ứng trước.
 
 **Đối chiếu:** `bootloader.ld`, `application.ld`, `startup_stm32f10x_md.s` và `BootDecision_Evaluate()`. Không cần ôn lại trình tự nạp thanh ghi của Cortex-M3; điều cần kiểm tra là **hai image được link đúng địa chỉ** và không chồng lên Metadata.
 
@@ -1971,7 +1971,7 @@ Trong project, Bootloader được link tại `0x08000000`, Application tại `0
 | Địa chỉ vector Application | `0x08006000`, căn theo ràng buộc **0x200 byte** |
 | Initial MSP | Trong phạm vi SRAM `0x20000000–0x20005000`, căn hàng hợp lệ |
 | Reset Handler | Thuộc phân vùng Application và có **Thumb bit** phù hợp |
-| VTOR khi handoff | `SCB->VTOR = 0x08006000` |
+| VTOR khi chuyển quyền điều khiển | `SCB->VTOR = 0x08006000` |
 
 **Phân biệt:** Kiểm tra vector chỉ quyết định Application **có thể được chuyển quyền thực thi hay không**. Xác minh nguồn phát hành firmware được thực hiện riêng bằng SHA-256/ECDSA khi xử lý gói SDOT.
 
@@ -1979,7 +1979,7 @@ Trong project, Bootloader được link tại `0x08000000`, Application tại `0
 
 #### Bước 3. Kiểm tra Startup riêng của Bootloader và Application
 
-Trong repository, hai image dùng startup assembly `startup_stm32f10x_md.s`, được **link độc lập**. Startup Application khởi tạo `.data`, `.bss`, gọi `SystemInit()` rồi vào `main()`; việc handoff phải đến đúng **Application Reset Handler**, không nhảy trực tiếp vào `main()`.
+Trong repository, hai image dùng startup assembly `startup_stm32f10x_md.s`, được **link độc lập**. Startup Application khởi tạo `.data`, `.bss`, gọi `SystemInit()` rồi vào `main()`; việc chuyển quyền điều khiển phải đến đúng **Application Reset Handler**, không nhảy trực tiếp vào `main()`.
 
 **Trường hợp cần debug:** Khi Application không chạy sau Jump, so sánh các ký hiệu linker `_sidata`, `_sdata`, `_edata`, `_sbss`, `_ebss` và entry symbol giữa ELF và startup của image đang cài. Điều cần giữ ở đây là **quan hệ giữa linker file và startup thực tế**, không phải học lại cách khởi tạo biến C.
 
@@ -2059,9 +2059,9 @@ flowchart TD
 - **Cấu trúc image có thể boot (`ApplicationJump_Validate`):** vector alignment, MSP, Thumb reset address, phạm vi code. Đây là điều kiện cần để CPU không nhảy mù vào địa chỉ sai.
 - **Tính tin cậy của firmware cập nhật:** Bootloader xác thực gói **SDOT bằng ECDSA P-256/SHA-256**, kiểm tra chính sách sản phẩm/phiên bản và kiểm tra image ở các bước OTA. **Đừng nói vector hợp lệ đồng nghĩa firmware đã được ký số hợp lệ.**
 
-**Ví dụ:** Sau khi OTA cài v2 vào Internal Flash, `UPDATE_TRIAL_BOOT` yêu cầu chạy thử v2. Boot Decision chỉ định thử boot, `ApplicationJump` kiểm tra vector v2, thực hiện handoff, rồi Application v2 bắt đầu tại **Reset Handler của nó**. Chỉ sau **Confirm**, v2 mới được chấp nhận chính thức; chi tiết trạng thái xem **5.5**.
+**Ví dụ:** Sau khi OTA cài v2 vào Internal Flash, `UPDATE_TRIAL_BOOT` yêu cầu chạy thử v2. Boot Decision chỉ định thử boot, `ApplicationJump` kiểm tra vector v2, thực hiện chuyển quyền điều khiển, rồi Application v2 bắt đầu tại **Reset Handler của nó**. Chỉ sau **Confirm**, v2 mới được chấp nhận chính thức; chi tiết trạng thái xem **5.5**.
 
-#### Bước 6. Quy trình Jump thực tế: tại sao cần C cleanup và Assembly handoff?
+#### Bước 6. Quy trình Jump thực tế: tại sao cần C cleanup và chuyển quyền điều khiển bằng assembly?
 
 Theo `docs/boot-jump.md` và code `application_jump.c` + `application_handoff.s`, việc chuyển quyền gồm **hai tầng**:
 
@@ -2075,7 +2075,7 @@ Theo `docs/boot-jump.md` và code `application_jump.c` + `application_handoff.s`
 6. Gán **`SCB->VTOR = 0x08006000`**, thực hiện **`__DSB()`** và **`__ISB()`**.
 7. Gọi helper assembly `ApplicationJump_SetStackAndBranch(initial_msp, reset_handler)`.
 
-**B. Assembly handoff (`bootloader/startup/application_handoff.s`):**
+**B. Chuyển quyền điều khiển bằng assembly (`bootloader/startup/application_handoff.s`):**
 
 ```asm
 /* Trích ý chính từ helper assembly; r0 = initial MSP, r1 = reset handler */
@@ -2109,7 +2109,7 @@ Sau lệnh `BX` đến Reset Handler của Application:
 4. Vì **VTOR đã trỏ đến vector table Application**, handler của ngắt Application mới được dùng.
 5. Trong **Trial Boot**, Application cần thực hiện logic Confirm phù hợp; nếu lỗi liên tục không Confirm, Bootloader sẽ đánh giá và Rollback khi các lần boot sau xảy ra.
 
-**Bằng chứng runtime được mô tả trong repo:** Application kiểm tra **`SCB->VTOR == 0x08006000`**, cấu hình **SysTick 1 ms** và phát nhịp LED **PC13 active-low 100 ms mỗi giây**. Việc heartbeat hoạt động sau handoff cho thấy mã startup đã chạy và ngắt SysTick đang lấy handler qua vector Application.
+**Bằng chứng runtime được mô tả trong repo:** Application kiểm tra **`SCB->VTOR == 0x08006000`**, cấu hình **SysTick 1 ms** và phát nhịp LED **PC13 active-low 100 ms mỗi giây**. Việc heartbeat hoạt động sau khi chuyển quyền điều khiển cho thấy mã startup đã chạy và ngắt SysTick đang lấy handler qua vector Application.
 
 **Phân biệt quy trình:**
 
@@ -2177,10 +2177,10 @@ p/x $pc             # PC hiện tại
 |---|---|---|
 | Application chạy khi flash riêng nhưng lỗi khi Bootloader jump | VTOR chưa chuyển, SysTick/NVIC pending, clock khác giả định, MSP sai. | Kiểm tra thứ tự cleanup/branch trong `application_jump.c` và `application_handoff.s`. |
 | Ngay sau `BX` vào HardFault | Reset Handler trỏ sai vùng, bit Thumb = 0, stack không hợp lệ hoặc Application image hỏng. | Đọc hai word đầu vector, kiểm tra `ApplicationJump_Validate()` và linker. |
-| SysTick/IRQ vào handler của Bootloader | VTOR vẫn ở boot vector hoặc còn pending IRQ từ Bootloader. | Đọc `SCB->VTOR`, NVIC, SysTick và bước handoff. |
+| SysTick/IRQ vào handler của Bootloader | VTOR vẫn ở boot vector hoặc còn pending IRQ từ Bootloader. | Đọc `SCB->VTOR`, NVIC, SysTick và bước chuyển quyền điều khiển. |
 | Biến `static`/global khởi tạo sai | `.data` chưa copy, `.bss` chưa clear hoặc linker symbols sai. | Đọc `Reset_Handler`, `_sidata/_sdata/_edata/_sbss/_ebss`. |
 | Flash mới ghi chạm Metadata | Application linker/installer không tôn trọng end-exclusive `0x0800F800`. | Kiểm tra `.ld`, `ASSERT`, `memory_map.h`, phạm vi erase/program. |
-| Application boot nhưng UART/SPI sai tốc độ | Clock/RCC của hai image khác nhau hoặc handoff chưa deinit. | Kiểm tra `RCC_DeInit()`, `SystemInit()`, baudrate/clock prescaler. |
+| Application boot nhưng UART/SPI sai tốc độ | Clock/RCC của hai image khác nhau hoặc quá trình chuyển quyền điều khiển chưa khôi phục RCC. | Kiểm tra `RCC_DeInit()`, `SystemInit()`, baudrate/clock prescaler. |
 | Jump được nhưng firmware không hợp lệ về bảo mật | Chỉ kiểm vector, không xác thực nguồn cập nhật. | Tách kiểm tra jump khỏi Verify SDOT ECDSA/SHA-256 và Boot Decision. |
 
 #### Bài nói khi phỏng vấn: Boot Process, Vector Table & Linker Script (khoảng 90 giây)
@@ -2191,7 +2191,7 @@ p/x $pc             # PC hiện tại
 >
 > Sau khi đọc Metadata và đưa ra Boot Decision, nếu cần chạy Application, Bootloader kiểm tra vector table của Application: MSP nằm trong SRAM, Reset Handler có Thumb bit và trỏ vào vùng Application. Sau đó Bootloader dừng SysTick, dọn NVIC, khôi phục RCC, chuyển VTOR sang `0x08006000`.
 >
-> Cuối cùng, assembly handoff đặt lại MSP và các thanh ghi điều khiển rồi branch thẳng tới Reset Handler của Application. Đây là software jump, không phải hardware reset. Application sẽ chạy startup của chính nó trước khi vào `main()`. Cách tách image, linker và cleanup như vậy giúp handoff ổn định, nhất là sau quá trình OTA và Trial Boot.
+> Cuối cùng, đoạn assembly chuyển quyền điều khiển đặt lại MSP và các thanh ghi điều khiển rồi branch thẳng tới Reset Handler của Application. Đây là software jump, không phải hardware reset. Application sẽ chạy startup của chính nó trước khi vào `main()`. Cách tách image, linker và cleanup như vậy giúp việc chuyển quyền điều khiển ổn định, nhất là sau quá trình OTA và Trial Boot.
 
 #### Câu hỏi ôn tập: Boot Process, Vector Table & Linker Script
 
@@ -2211,7 +2211,7 @@ p/x $pc             # PC hiện tại
 | 12. Vì sao phải dọn SysTick/NVIC trước jump? | Tránh pending IRQ của Bootloader chạy trong ngữ cảnh Application. |
 | 13. Vì sao phải đặt `SCB->VTOR = 0x08006000`? | ISR của Application phải dùng vector table Application. |
 | 14. Vì sao `RCC_DeInit()` quan trọng? | Hạn chế kế thừa clock của Bootloader, tạo trạng thái sạch hơn cho SystemInit của Application. |
-| 15. Vì sao cuối handoff được viết bằng assembly? | Đổi MSP rồi branch không được để compiler truy cập stack cũ bằng MSP mới. |
+| 15. Vì sao cuối quá trình chuyển quyền điều khiển được viết bằng assembly? | Đổi MSP rồi branch không được để compiler truy cập stack cũ bằng MSP mới. |
 | 16. Vì sao `PRIMASK` được clear trước branch? | Khôi phục trạng thái ngắt gần với reset sau khi đã dọn pending interrupt. |
 | 17. Kiểm tra MSP/Reset Handler có chứng minh firmware an toàn không? | Không; đó chỉ là validation cấu trúc, chữ ký SDOT được kiểm bởi đường OTA riêng. |
 | 18. `0x0800F800` là địa chỉ gì? | **End-exclusive** của Application và start của Metadata A; firmware không được ghi qua đó. |
@@ -2224,23 +2224,23 @@ p/x $pc             # PC hiện tại
 2. **Application có vector table và startup riêng tại `0x08006000`**, dù Bootloader và Application dùng chung SRAM/ngoại vi vật lý.
 3. **Linker script quyết định image đặt ở đâu**; `ENTRY()` không thay hai vector word mà CPU dùng khi reset.
 4. **`.data` = Flash initializer → RAM; `.bss` = zero-initialized RAM** trước `main()`.
-5. **MSP ≠ PC ≠ VTOR:** ba phần đóng vai trò khác nhau trong handoff.
+5. **MSP ≠ PC ≠ VTOR:** ba phần đóng vai trò khác nhau khi chuyển quyền điều khiển.
 6. **Validate vector chỉ kiểm tra khả năng jump**, không chứng minh firmware được ký hợp lệ.
-7. **Cleanup + assembly handoff** cần thiết vì software jump không reset toàn bộ CPU/peripheral như power-on/reset.
+7. **Cleanup + chuyển quyền điều khiển bằng assembly** cần thiết vì software jump không reset toàn bộ CPU/peripheral như power-on/reset.
 8. **End-exclusive `0x0800F800`** tách Application khỏi Metadata, và linker có `ASSERT` để hỗ trợ bảo vệ layout.
 
 #### Các file mã nguồn và tài liệu nên đọc
 
 | File / tài liệu | Vai trò |
 |---|---|
-| [`docs/boot-jump.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-jump.md) | Điều kiện vector, cleanup, PRIMASK, assembly handoff và bài kiểm tra VTOR. |
+| [`docs/boot-jump.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-jump.md) | Điều kiện vector, cleanup, PRIMASK, chuyển quyền điều khiển bằng assembly và bài kiểm tra VTOR. |
 | [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md) | Ranh giới Flash/SRAM/Metadata, end-exclusive. |
 | [`shared/include/memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h) | Hằng số địa chỉ được dùng trong firmware. |
 | [`node-stm32f103/bootloader/linker/bootloader.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/linker/bootloader.ld) | ORIGIN/LENGTH, section và assertion của Bootloader. |
 | [`node-stm32f103/application/linker/application.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/linker/application.ld) | `.isr_vector`, `.data`, `.bss` và assertion của Application. |
 | [`node-stm32f103/application/startup/startup_stm32f10x_md.s`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/startup/startup_stm32f10x_md.s) | Copy `.data`, zero `.bss`, `SystemInit()` và `main()`. |
 | [`node-stm32f103/bootloader/startup/startup_stm32f10x_md.s`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/startup/startup_stm32f10x_md.s) | Vector và startup của Bootloader. |
-| [`node-stm32f103/bootloader/src/application_jump.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/application_jump.c) | Kiểm tra vector, dọn trạng thái trước handoff. |
+| [`node-stm32f103/bootloader/src/application_jump.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/application_jump.c) | Kiểm tra vector, dọn trạng thái trước khi chuyển quyền điều khiển. |
 | [`node-stm32f103/bootloader/startup/application_handoff.s`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/startup/application_handoff.s) | Đổi MSP/CONTROL/PRIMASK và BX không dùng C stack frame. |
 | [`node-stm32f103/bootloader/src/boot_decision.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/boot_decision.c) | Quyết định nhánh boot hoặc phục hồi theo Metadata. |
 
@@ -2540,7 +2540,7 @@ Metadata nằm trong **Internal Flash** nhưng có nhiệm vụ khác với firm
 | `FLASH_ProgramHalfWord()` thất bại | Căn chỉnh, dữ liệu và trạng thái Flash | `IMAGE_INSTALLER_FLASH_PROGRAM_FAILED` |
 | Verify một trang sai | Flash vừa ghi không khớp buffer nguồn | `IMAGE_INSTALLER_PAGE_VERIFY_FAILED` |
 | CRC toàn image sai | Nội dung ghi cuối cùng khác image nguồn đã chuẩn bị | `IMAGE_INSTALLER_VERIFY_CRC_FAILED` |
-| CRC đúng nhưng không Jump | MSP/Reset Handler hoặc điều kiện vector/handoff không hợp lệ | `IMAGE_INSTALLER_VERIFY_VECTOR_FAILED` và Chương 6.2 |
+| CRC đúng nhưng không Jump | MSP/Reset Handler hoặc điều kiện vector hoặc chuyển quyền điều khiển không hợp lệ | `IMAGE_INSTALLER_VERIFY_VECTOR_FAILED` và Chương 6.2 |
 | Reset giữa trang 3 | Trang 3 đang dở, Checkpoint vẫn ở đầu trang 3 | Re-erase/re-program từ `copy_offset` |
 | Offset không căn chỉnh ở trang trung gian | Metadata tiến độ không hợp lệ | `InstallProgress_Validate()` |
 | Install đủ byte nhưng Application chưa được chấp nhận | Đang ở Trial Boot, chưa Confirm | `UPDATE_TRIAL_BOOT` |
@@ -2777,8 +2777,8 @@ Luồng xóa của driver: validate → `WriteEnable()` và kiểm WEL → gửi
 
 | Phân vùng W25Q | Địa chỉ bắt đầu | Địa chỉ kết thúc | Dung lượng | Dữ liệu/ứng dụng |
 |---|---:|---:|---:|---|
-| External Metadata A | `0x000000` | `0x000FFF` | 4 KiB | Handoff cũ + Download Checkpoint A. |
-| External Metadata B | `0x001000` | `0x001FFF` | 4 KiB | Handoff cũ + Download Checkpoint B. |
+| External Metadata A | `0x000000` | `0x000FFF` | 4 KiB | Bản ghi bàn giao kiểu cũ + Download Checkpoint A. |
+| External Metadata B | `0x001000` | `0x001FFF` | 4 KiB | Bản ghi bàn giao kiểu cũ + Download Checkpoint B. |
 | Incoming (gói SDOT) | `0x002000` | `0x021FFF` | 128 KiB | Gói Full/Delta SDOT được nhận từ ESP32. |
 | Reconstructed Image | `0x022000` | `0x041FFF` | 128 KiB | Firmware **hoàn chỉnh** chuẩn bị trước Install. |
 | Backup Image | `0x042000` | `0x061FFF` | 128 KiB | Bản sao Application đã xác minh + backup header. |
@@ -2800,12 +2800,12 @@ Tách **header** sang sector riêng giúp nếu mất nguồn giữa commit head
 
 | Nhóm | Vị trí | Mục đích |
 |---|---|---|
-| **External Flash Metadata A/B** | W25Q `0x000000`, `0x001000`, mỗi vùng 4 KiB | Checkpoint nhận UART và bản ghi *legacy handoff*. |
+| **External Flash Metadata A/B** | W25Q `0x000000`, `0x001000`, mỗi vùng 4 KiB | Checkpoint nhận UART và bản ghi *bàn giao kiểu cũ*. |
 | **Internal Flash Metadata A/B** | STM32 `0x0800F800`, `0x0800FC00`, mỗi vùng 1 KiB | Trạng thái **Boot Decision** quan trọng sau reset, như `UPDATE_ARTIFACT_READY`, `UPDATE_INSTALLING`, `UPDATE_TRIAL_BOOT`. |
 
 Trong **đường cập nhật SDOT ký số mặc định**, lệnh `INSTALL` ghi `UPDATE_ARTIFACT_READY` vào **Internal** Boot Metadata; không được nói rằng chỉ ghi External Metadata là Bootloader tự nhận được yêu cầu cài.
 
-**Trường hợp record cùng sector:** mỗi sector External Metadata dành offset `0x000` cho legacy handoff 36 byte và offset `0x100` cho download Checkpoint 40 byte. Vì **Erase là 4 KiB**, lúc commit một loại record, storage layer đọc và giữ lại record còn hợp lệ của loại kia trước khi xóa sector đích. Khi đọc thông tin này hãy nhớ A/B trong External Flash **khác** A/B trong Internal Flash.
+**Trường hợp record cùng sector:** mỗi sector External Metadata dành offset `0x000` cho bản ghi bàn giao kiểu cũ 36 byte và offset `0x100` cho download Checkpoint 40 byte. Vì **Erase là 4 KiB**, lúc commit một loại record, storage layer đọc và giữ lại record còn hợp lệ của loại kia trước khi xóa sector đích. Khi đọc thông tin này hãy nhớ A/B trong External Flash **khác** A/B trong Internal Flash.
 
 #### Bước 7. Tầng lưu trữ bảo vệ phân vùng: `ExternalFlashStorage_*`
 
@@ -2947,7 +2947,7 @@ flowchart TD
 | 20 | Backup lưu những gì? | Header riêng và bản copy vùng Application đã xác minh. |
 | 21 | Vì sao header Backup nằm sector riêng? | Có thể Erase/commit lại header mà không xóa dữ liệu Backup. |
 | 22 | Checkpoint nhận OTA lưu ở đâu? | **External Flash Metadata A/B W25Q**, offset `0x100` trong mỗi sector Metadata. |
-| 23 | Internal Flash Metadata A/B khác External Flash Metadata A/B ra sao? | Internal quyết định Boot State Machine; External phục vụ download Checkpoint và legacy handoff. |
+| 23 | Internal Flash Metadata A/B khác External Flash Metadata A/B ra sao? | Internal quyết định Boot State Machine; External phục vụ download Checkpoint và bản ghi bàn giao kiểu cũ. |
 | 24 | Vì sao ACK 10 KiB vẫn Resume từ 8 KiB? | ACK phiên truyền ≠ Checkpoint bền vững; receiver lưu mốc mỗi sector 4 KiB. |
 | 25 | Mất nguồn giữa Page Program cần làm gì? | Không tin dữ liệu dở; phục hồi từ Checkpoint và re-erase/rewrite vùng chưa hoàn tất khi phù hợp. |
 | 26 | Check Verify của W25Q có thay ECDSA không? | **Không**; Read-back/CRC là kiểm tra lỗi, ECDSA là xác thực chữ ký SDOT. |
@@ -2980,8 +2980,8 @@ flowchart TD
 | [`node-stm32f103/common/drivers/spi_flash.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/drivers/spi_flash.c) | `SpiFlash_Init/Read/Write/EraseSector/Verify/IsErased`; WEL/WIP, preflight và timeout. |
 | [`node-stm32f103/common/storage/external_flash_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/external_flash_storage.c) | Partition wrapper, `ResolveRange()`, Erase Range và ngăn truy cập chéo partition. |
 | [`node-stm32f103/application/src/ota_receiver.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/src/ota_receiver.c) | `EnsureIncomingSectorsErased()`, `PersistReceiveBoundaryIfNeeded()` và Resume. |
-| [`node-stm32f103/common/storage/download_checkpoint_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/download_checkpoint_storage.c) | Commit Checkpoint A/B, CRC và giữ legacy handoff khi xóa sector. |
-| [`node-stm32f103/common/storage/update_handoff_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/update_handoff_storage.c) | Bản ghi legacy handoff, bảo toàn Checkpoint đang chia sẻ sector. |
+| [`node-stm32f103/common/storage/download_checkpoint_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/download_checkpoint_storage.c) | Commit Checkpoint A/B, CRC và giữ bản ghi bàn giao kiểu cũ khi xóa sector. |
+| [`node-stm32f103/common/storage/update_handoff_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/update_handoff_storage.c) | Bản ghi bàn giao kiểu cũ, bảo toàn Checkpoint đang chia sẻ sector. |
 | [`node-stm32f103/common/storage/backup_image_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/backup_image_storage.c) | Backup header/data riêng sector; Validate và Verify khi commit. |
 | [`docs/boot-state-machine.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-state-machine.md) | Liên hệ Incoming → Reconstructed → Backup → Install → Rollback. |
 | [Winbond W25Q32JV Datasheet – trang sản phẩm](https://www.winbond.com/hq/product/code-storage-flash-memory/serial-nor-flash/?__locale=en&partNo=W25Q32JV) | Nguồn tham khảo kiến thức phần cứng, timings, status register và opcode (ngoài repository). |
@@ -3208,7 +3208,7 @@ Protocol có **các lệnh điều khiển** và **lệnh dữ liệu**. Khi gi�
 | `0x12` | `FINISH` | Gateway → STM32 | Yêu cầu kiểm tra toàn bộ gói SDOT đã nhận. |
 | `0x13` | `ABORT` | Gateway → STM32 | Hủy phiên nhận OTA theo trạng thái cho phép. |
 | `0x14` | `RESUME` | Gateway → STM32 | Tiếp tục phiên phù hợp sau gián đoạn. |
-| `0x20` | `INSTALL` | Gateway → STM32 | Lưu handoff bền vững rồi reset vào Bootloader. |
+| `0x20` | `INSTALL` | Gateway → STM32 | Lưu thông tin bàn giao bền vững rồi reset để chạy Bootloader. |
 | `0x21` | `STATUS` | Hai chiều | Hỏi/công bố trạng thái chi tiết. |
 | `0x22` | `CONFIRM` | Gateway → STM32 (tùy chọn) | Xác nhận trial image qua Application đang chạy; có cả nhánh tự xác nhận cục bộ. |
 | `0x70` | `ACK` | STM32 → Gateway | Lệnh được xử lý/chấp nhận. |
@@ -3556,7 +3556,7 @@ Theo `gateway-esp32/README.md`, bộ chọn transfer plan có các kết quả: 
 8. **FINISH thiếu dữ liệu:** số byte nhận nhỏ hơn expected size → không được ARTIFACT_READY.
 9. **FINISH CRC sai:** đủ size nhưng CRC gói SDOT không khớp → không được INSTALL.
 10. **INSTALL quá sớm:** chỉ mới RECEIVING → từ chối `INVALID_STATE`.
-11. **Reset khi Install handoff:** kiểm tra Metadata A/B còn có bản hợp lệ và Boot Decision không nhầm firmware chưa xác thực thành firmware đã Confirm.
+11. **Reset khi bàn giao yêu cầu INSTALL:** kiểm tra Metadata A/B còn có bản hợp lệ và Boot Decision không nhầm firmware chưa xác thực thành firmware đã Confirm.
 12. **Không đánh đồng security:** gói bị sửa và CRC được tính lại vẫn phải bị Bootloader từ chối nếu chữ ký SDOT không hợp lệ.
 
 **Quan sát tối thiểu nên ghi log trong test:** `update_id`, command, `sequence`, `offset`, `payload_length`, `status`, `next_expected_offset`, runtime state, Checkpoint offset, kết quả `FINISH`, trạng thái Bootloader sau `INSTALL`. Tránh log nguyên private key, credentials hoặc dump firmware nhạy cảm trong môi trường production.
@@ -4927,7 +4927,7 @@ node-stm32f103/bootloader/src/secure_container.c
 
 ```mermaid
 flowchart TD
-    RX["STM32 Application<br/>Nhận UART DATA"] --> EXT["External W25Q Metadata A/B<br/>Download checkpoint + handoff legacy"]
+    RX["STM32 Application<br/>Nhận UART DATA"] --> EXT["External W25Q Metadata A/B<br/>Download checkpoint + bản ghi bàn giao kiểu cũ"]
     RX -->|"INSTALL: commit trạng thái + reset"| INT["Internal Flash Metadata A/B<br/>BootMetadata_t + CRC32 + generation"]
     INT --> BOOT["STM32 Bootloader<br/>BootDecision_Evaluate"]
     BOOT -->|"ARTIFACT_READY"| VERIFY["Xác thực SDOT + tái tạo ảnh mới"]
@@ -4972,16 +4972,16 @@ Hai trang là hai **đơn vị Erase riêng biệt**. Nếu cùng nằm trong m�
 
 | Sector | Địa chỉ gốc | Dung lượng | Các loại record được tài liệu nêu |
 |---|---|---:|---|
-| External Metadata A | `0x000000` | 4 KiB | Install handoff cũ + download Checkpoint |
+| External Metadata A | `0x000000` | 4 KiB | Bản ghi bàn giao yêu cầu INSTALL kiểu cũ + download Checkpoint |
 | External Metadata B | `0x001000` | 4 KiB | Bản dự phòng các record tương ứng |
 
-Theo tài liệu State Machine, mỗi sector External Metadata có **handoff record 36 byte tại offset `0x000`** và **download Checkpoint record 40 byte tại offset `0x100`**. Lớp storage giữ record còn lại khi cần Erase sector 4 KiB. Trong **signed-SDOT `INSTALL` hiện tại**, yêu cầu cài đặt được persist vào **Internal Metadata**; external handoff là đường cũ/tùy chọn, không được nói rằng mọi lần Install bắt buộc dùng external handoff.
+Theo tài liệu State Machine, mỗi sector External Metadata có **bản ghi bàn giao 36 byte tại offset `0x000`** và **download Checkpoint record 40 byte tại offset `0x100`**. Lớp storage giữ record còn lại khi cần Erase sector 4 KiB. Trong **signed-SDOT `INSTALL` hiện tại**, yêu cầu cài đặt được persist vào **Internal Metadata**; cơ chế bàn giao qua External Flash là đường cũ/tùy chọn, không được nói rằng mọi lần Install bắt buộc dùng bản ghi bàn giao trên External Flash.
 
 ```text
 Internal Flash (STM32)               External W25Q (SPI NOR)
 0x0800F800 Metadata A 1 KiB           0x000000 External Metadata A 4 KiB
 0x0800FC00 Metadata B 1 KiB           0x001000 External Metadata B 4 KiB
-    State + policy + generation           Download checkpoint + legacy handoff
+    State + policy + generation           Download checkpoint + bản ghi bàn giao kiểu cũ
 ```
 
 **Câu hỏi phỏng vấn:** *"Tại sao Metadata nội dùng page 1 KiB mà external dùng sector 4 KiB?"* — Vì hai chip có **đơn vị erase khác nhau**; bố trí dự phòng phải phù hợp đặc tính Flash vật lý.
@@ -5223,7 +5223,7 @@ Sau reset:
 | 1 | Metadata khác Checkpoint thế nào? | Trạng thái/điều khiển vs tiến độ durable đã Verify. |
 | 2 | Vì sao cần Metadata A/B? | Bảo toàn một bản nếu mất nguồn trong lúc cập nhật bản kia. |
 | 3 | Metadata A/B nằm ở đâu? | Internal `0x0800F800` và `0x0800FC00`, mỗi trang 1 KiB. |
-| 4 | External Flash Metadata A/B có giống Internal Flash Metadata A/B không? | Không; hai sector W25Q chứa download Checkpoint/handoff riêng. |
+| 4 | External Flash Metadata A/B có giống Internal Flash Metadata A/B không? | Không; hai sector W25Q chứa download Checkpoint/bản ghi bàn giao riêng. |
 | 5 | Vì sao dùng hai trang Erase tách biệt? | Xóa bản đích không làm mất bản đang hợp lệ. |
 | 6 | Metadata record gồm những nhóm trường nào? | Nhận dạng, generation, state, version, update ID, progress, boot attempts, lỗi, CRC. |
 | 7 | `active_version` cập nhật sau Install hay sau Confirm? | Sau `CONFIRMED` được Bootloader finalize. |
