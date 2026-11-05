@@ -268,7 +268,7 @@ Receiver: bytes ──CRC32──> crc2  ──> so sánh crc2 với crc
 
 **Khái niệm:** **SHA-256** là hàm băm mật mã nhận đầu vào có độ dài thay đổi và tạo **giá trị băm 256 bit = 32 byte**. Cùng một dãy byte luôn cho cùng kết quả; thay đổi nhỏ ở đầu vào thường làm nhiều bit đầu ra thay đổi (**avalanche effect**).
 
-**Nguyên lý hoạt động (mức phỏng vấn)**
+**Nguyên lý hoạt động**
 
 1. **Padding:** thêm bit `1`, các bit `0` phù hợp, rồi ghi độ dài thông điệp theo quy tắc SHA-256 để tổng dữ liệu chia thành các khối **512 bit**.
 2. **Message schedule:** mở rộng mỗi khối thành các từ dữ liệu dùng trong các vòng xử lý.
