@@ -32,205 +32,432 @@
    - [6.10. Watchdog, Debugging & Testing](#chuong-6-10)
 7. [Câu hỏi phỏng vấn trọng tâm](#phan-7)
 
-[Phụ lục A – Khái niệm, công nghệ và thuật toán chính](#phu-luc-a)
+**Phụ lục tra cứu nhanh:** [Phụ lục A – Các khái niệm và nguyên lý hoạt động về công nghệ và thuật toán cốt lõi](#phu-luc-a)
 
 <a id="phu-luc-a"></a>
-## Phụ lục A. Các khái niệm, công nghệ và thuật toán cốt lõi của project
+## Phụ lục A. Các khái niệm và nguyên lý hoạt động về công nghệ và thuật toán cốt lõi
 
-<a id="phu-luc-a-2"></a>
-### A.2. Application, Bootloader và bộ nhớ Flash
+> **Mục tiêu:** Hiểu **nó là gì → hoạt động như thế nào → được dùng ở đâu trong Secure Delta OTA Bootloader** trước khi đọc các phần phân tích kiến trúc và source code. Đây là kiến thức nền trực tiếp phục vụ project, không phải giáo trình Embedded tổng quát.
+>
+> **Phạm vi:** Tập trung vào các thuật toán và cơ chế quyết định sự đúng đắn, bảo mật và khả năng phục hồi của OTA. **Không mở mục dạy nguyên lý UART hoặc SPI** trong phụ lục; các giao tiếp này đã được phân tích tại [Chương 6.5](#chuong-6-5) và [Chương 6.6](#chuong-6-6). Tên giao tiếp có thể xuất hiện khi cần mô tả đúng luồng dữ liệu của project.
+>
+> **Cách đọc:** Mỗi mục gồm **Khái niệm**, **Nguyên lý hoạt động**, **Ví dụ / tình huống**, **Trong project** và **Câu hỏi phỏng vấn**. Các ví dụ nhỏ dùng để minh họa cơ chế, **không phải trích nguyên văn thuật toán hay mã nguồn**. Mỗi nhóm có liên kết đến chương chuyên sâu.
 
-#### A.2.1. Firmware và Application
+**Đi nhanh đến từng nhóm:** [A.1. Bootloader và bộ nhớ](#phu-luc-a-1) · [A.2. Công nghệ OTA](#phu-luc-a-2) · [A.3. Đóng khung và kiểm tra dữ liệu](#phu-luc-a-3) · [A.4. Bảo mật firmware](#phu-luc-a-4) · [A.5. Trạng thái và phục hồi](#phu-luc-a-5) · [A.6. Khởi động thử và Watchdog](#phu-luc-a-6).
 
-- **Firmware** là chương trình máy được biên dịch thành image (ví dụ `.bin`) để chạy trên MCU. 
-- **Application** là firmware thực hiện chức năng bình thường của thiết bị.
+**Các nhóm cần ưu tiên giải thích nguyên lý khi phỏng vấn:** Flash Programming; Application Jump; Full/Delta OTA và JojoDiff/JANPatch; COBS; CRC32; SHA-256; ECDSA P-256; Metadata A/B; Checkpoint/Power-loss Recovery; Trial Boot/Watchdog/Rollback.
 
-#### A.2.2. Bootloader, Reset Vector, Vector Table, MSP và VTOR
+<a id="phu-luc-a-1"></a>
+### A.1. Bootloader và bộ nhớ
 
-- **Bootloader** là chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
-- **Bootloader** chạy sau reset tại vùng Flash khởi động, đọc **Metadata**, chọn Boot Action, xác thực/cài đặt firmware khi cần, hoặc chuyển quyền sang Application. Trong project: Bootloader tại `0x08000000`, Application tại `0x08006000`.
-- **Vector Table** là bảng các địa chỉ phục vụ khởi động và xử lý ngắt. Word đầu là **giá trị MSP ban đầu** (Main Stack Pointer), word kế tiếp là địa chỉ **Reset Handler**. **VTOR** (Vector Table Offset Register) chỉ vị trí bảng vector dùng khi phát sinh exception/interrupt.
-- **Application Jump** không chỉ là gọi một hàm: Bootloader cần kiểm tra vector hợp lệ, dọn trạng thái ngoại vi/ngắt phù hợp, thiết lập MSP/VTOR đúng và chuyển đến Reset Handler của Application. Nếu bỏ qua, một interrupt cũ có thể gọi sai handler.
-- **Linker Script** xác định vùng địa chỉ các section (`.text`, `.data`, `.bss`) của firmware. **Startup code** copy `.data` từ Flash vào RAM và khởi tạo `.bss` bằng 0 trước khi vào `main()`.
+#### A.1.1. Firmware, Application và Bootloader
 
-#### A.2.3. Internal Flash, External SPI NOR Flash và SRAM
+**Khái niệm**
 
-| Loại bộ nhớ | Bản chất | Vai trò trong project |
-|---|---|---|
-| **Internal Flash** | Bộ nhớ không mất dữ liệu khi tắt nguồn, nằm trong STM32 | Bootloader, Application đang chạy và **Internal Flash Metadata A/B**. |
-| **External SPI NOR Flash W25Q** | Bộ nhớ không mất dữ liệu, STM32 truy cập qua SPI | Incoming SDOT, Reconstructed Image, Backup Image và **External Flash Metadata/Checkpoint**. |
-| **SRAM** | Bộ nhớ làm việc mất dữ liệu khi mất nguồn | Stack, biến runtime, bộ đệm chunk dùng khi truyền/hash/ghi Flash. |
+- **Firmware** là chương trình đã biên dịch để thực thi trên vi điều khiển; firmware image thường là tệp nhị phân `.bin`.
+- **STM32 Application** là firmware đảm nhiệm chức năng hoạt động bình thường của thiết bị, bao gồm tiếp nhận gói cập nhật trong hệ thống này.
+- **STM32 Bootloader** là chương trình chạy khi MCU khởi động, đọc trạng thái bền vững để quyết định chạy Application hay thực hiện bước xác thực, cài đặt hoặc phục hồi.
 
-**Đặc tính NOR Flash:** Khi **Erase**, các bit trong vùng bị xóa quay về `1`; khi **Program**, phần cứng thường chỉ chuyển bit `1 → 0`. Muốn đặt lại bit từ `0 → 1` phải xóa đơn vị Erase phù hợp. Vì vậy phải phân biệt:
+**Nguyên lý hoạt động:** Sau reset, MCU bắt đầu tại vector khởi động của Bootloader. Bootloader đọc **Metadata**, đánh giá **Boot Decision**, rồi hoặc xử lý cập nhật, hoặc chuyển quyền sang Application. Hai chương trình dùng chung CPU nhưng nằm ở hai vùng Internal Flash khác nhau.
 
-- **Erase:** Xóa theo đơn vị vật lý (trong project, trang **Internal Flash STM32 1 KiB**, sector **W25Q 4 KiB**).
-- **Program:** Ghi dữ liệu; STM32F103 lập trình Flash theo **half-word 16 bit**, W25Q **Page Program tối đa 256 byte** trong một trang.
-- **Read-back Verify:** Đọc lại dữ liệu đã ghi để xác minh trước khi đánh dấu thao tác thành công.
+**Trong project:** Bootloader bắt đầu tại `0x08000000`; Application bắt đầu tại `0x08006000`. Application **nhận và lưu gói SDOT**; Bootloader **xác thực chữ ký và quyết định cài đặt**.
 
-<a id="phu-luc-a-3"></a>
-### A.3. Công nghệ OTA, thuật toán Delta và bản phát hành
+**Câu hỏi phỏng vấn:** Vì sao không để Application tự ghi đè chính nó? Bootloader và Application có chạy đồng thời không?
 
-#### A.3.1. OTA (Over-the-Air Update), Full OTA và Delta OTA
+#### A.1.2. Internal Flash và External Flash W25Q
 
-**OTA** là cập nhật firmware từ xa, không cần nạp trực tiếp bằng cáp debug. Trong hệ thống này, OTA bao gồm **phát hành → tải qua mạng → truyền UART → lưu W25Q → xác thực → cài đặt → xác nhận hoặc khôi phục**.
+**Khái niệm:** **Internal Flash** là bộ nhớ không mất dữ liệu nằm trong STM32; **External Flash W25Q** là bộ nhớ NOR Flash bên ngoài, được truy cập qua driver giao tiếp; **SRAM** là bộ nhớ làm việc và mất dữ liệu khi mất nguồn.
 
-- **Full OTA:** Gói chứa **toàn bộ firmware mục tiêu**. Ưu điểm: không phụ thuộc image hiện tại. Nhược điểm: thường truyền nhiều byte hơn.
-- **Delta OTA:** Gói chứa **Delta Patch** — mô tả cách biến đổi **Base Image** (firmware cũ chính xác) thành **Target Image** (firmware mới). Ưu điểm: thường nhỏ hơn nếu hai bản giống nhau nhiều; đổi lại cần kiểm tra đúng base và thực hiện tái tạo.
+**Nguyên lý hoạt động:** Internal Flash chứa mã máy được CPU thực thi; External Flash đóng vai trò vùng lưu tạm và sao lưu, không được dùng như địa chỉ RAM/Flash nội có thể tùy ý dereference. Dữ liệu bền vững nằm trong Flash, trong khi stack và buffer nằm trong SRAM.
 
-#### A.3.2. Binary Diff, JojoDiff, JANPatch và Round-trip
+**Ví dụ / tình huống:** Nếu đang nhận gói SDOT mà mất nguồn, dữ liệu đã lưu bền vững trên W25Q có thể được sử dụng để tiếp tục; dữ liệu mới chỉ nằm trong buffer SRAM thì không thể tin là còn nguyên.
 
-- **Binary Diff** là kỹ thuật tìm sự khác nhau giữa **hai dãy byte**, không cần hiểu source code C. Vì firmware `.bin` chứa cả mã máy và dữ liệu, diff phụ thuộc mạnh vào cách build/link và vị trí byte thay đổi.
-- **JojoDiff** là công cụ/định dạng tạo **patch** được dùng ở phía host để so sánh firmware v1 và v2. Patch chứa các chỉ thị cho việc tái tạo dữ liệu mới từ dữ liệu cũ, thay vì gửi cả firmware mới.
-- **JANPatch** là thành phần **áp dụng patch** ở phía thiết bị để tạo Target Image từ Base Image và Delta Patch. **JojoDiff tạo patch** không đồng nghĩa **JANPatch tạo patch**.
-- **Round-trip Validation** là kiểm tra: `apply_patch(base, patch) == target`. Việc áp dụng thử ở máy build giảm nguy cơ phát hành patch không tái tạo chính xác; STM32 vẫn phải tự kiểm tra base/target khi cài.
-- **Chính sách chọn Delta:** Repository chỉ phát hành Delta khi tiết kiệm đủ ngưỡng cấu hình (mặc định **20%**); nếu không, **Full OTA** vẫn là phương án khả dụng.
+**Trong project:** Internal Flash **64 KiB** gồm Bootloader **24 KiB**, Application **38 KiB**, hai trang **Internal Flash Metadata A/B** mỗi trang **1 KiB**. W25Q chứa các vùng logic **Incoming** (gói SDOT), **Reconstructed Image** (firmware đích đã chuẩn bị), **Backup Image** (firmware cũ) và vùng Metadata/Checkpoint bên ngoài.
+
+**Câu hỏi phỏng vấn:** Vì sao phải có W25Q? Tại sao không dùng SRAM để lưu toàn bộ gói OTA hoặc Checkpoint?
+
+#### A.1.3. Flash Programming — Erase, Program và Read-back Verify
+
+**Khái niệm:** **Erase** xóa một đơn vị Flash; **Program** lập trình dữ liệu mới; **Read-back Verify** đọc lại và đối chiếu dữ liệu đã ghi.
+
+**Nguyên lý hoạt động**
+
+1. Trong NOR Flash, đơn vị đã xóa thường đọc là `0xFF` (các bit ở trạng thái `1`). Khi Program, bit thường chỉ chuyển từ **`1 → 0`**; muốn đưa bit từ `0 → 1` phải Erase đơn vị tương ứng.
+2. Phải **Erase đúng trang/sector** trước khi ghi dữ liệu không tương thích với trạng thái hiện tại. Erase có đơn vị lớn hơn một byte nên cần tính giới hạn địa chỉ chặt chẽ.
+3. Thực hiện **Program** theo đơn vị phần cứng hỗ trợ, kiểm tra trạng thái hoàn thành và **đọc lại** để so sánh. Chỉ khi Verify đạt mới ghi nhận tiến độ an toàn.
+
+**Ví dụ / tình huống:** Byte đang là `0x00` không thể được lập trình trực tiếp thành `0xFF`; cần xóa vùng Flash trước. Nếu mất nguồn khi đang Program, trang có thể chỉ được ghi một phần và phải được xử lý lại.
+
+**Trong project:** STM32F103 xóa **Internal Flash theo trang 1 KiB**, Program theo **half-word 16 bit**. W25Q hỗ trợ xóa **sector 4 KiB** và **Page Program tối đa 256 byte trong một trang**. Bootloader cài firmware theo các trang Internal Flash, **Verify rồi mới commit Checkpoint**; không xóa sang vùng Bootloader hoặc Metadata.
+
+**Câu hỏi phỏng vấn:** Vì sao Erase trước Program? Vì sao không commit tiến độ ngay sau khi gọi hàm ghi Flash? Nếu mất nguồn giữa trang đang ghi, phải làm gì?
+
+#### A.1.4. Application Jump — Vector Table, MSP, Reset Handler và VTOR
+
+**Khái niệm:** **Vector Table** chứa các vector khởi động/ngắt; từ đầu tiên là giá trị **MSP** ban đầu, từ thứ hai là địa chỉ **Reset Handler**. **VTOR** là thanh ghi chỉ vị trí bảng vector được dùng cho exception/interrupt.
+
+**Nguyên lý hoạt động**
+
+1. Bootloader đọc hai word đầu tại địa chỉ Application, xác nhận **MSP** thuộc SRAM, được căn chỉnh phù hợp; **Reset Handler** nằm trong vùng Application và có **Thumb bit** hợp lệ.
+2. Dừng SysTick, xử lý các interrupt/NVIC đang bật hoặc pending, đưa clock/ngoại vi về trạng thái phù hợp với startup của Application.
+3. Đặt **VTOR** đến bảng vector của Application; dùng đoạn handoff phù hợp để **nạp MSP** và chuyển điều khiển tới **Reset Handler**, tránh chạy phần kết thúc hàm C trên stack cũ.
+
+**Ví dụ / tình huống:** Nếu chỉ gọi Reset Handler như một hàm C thông thường mà không chuyển MSP/VTOR và dọn ngắt, Application có thể HardFault hoặc dùng sai interrupt handler.
 
 ```text
-Base firmware v1 ──┐
-                   ├── JojoDiff (host) ──> Delta Patch
-Target firmware v2 ┘                          │
-                                             │ + đúng Base v1
-                                             ▼
-                                      JANPatch (STM32)
-                                             │
-                                             ▼
-                                  Reconstructed firmware v2
-                                             │
-                                      Verify Target SHA-256
+Reset → Bootloader → Đọc Metadata / Boot Decision
+                     ↓
+          Kiểm tra Application vector
+                     ↓
+          Dọn SysTick / IRQ / Clock
+                     ↓
+          VTOR → MSP → Reset Handler
+                     ↓
+               Application
 ```
 
-#### A.3.3. SDOT Container, SCX1, Manifest và Release
+**Trong project:** Application vector tại `0x08006000`; initial MSP ở `0x08006000`, Reset Handler ở `0x08006004`. Tra cứu `application_jump.c` và `application_handoff.s` để xem các bước chuyển quyền thực tế.
 
-- **SDOT (Secure Delta OTA Container)** là tệp cập nhật SDOT mang **Header + Payload (Full hoặc Delta) + Digital Signature**. Header chứa loại gói, version, product/hardware identity, hash và thông tin để Bootloader xác thực/cài đặt đúng.
-- **SCX1** là phần mở rộng header bắt buộc trong profile SDOT có chữ ký đang triển khai: **120 byte header cố định + 20 byte SCX1 = 140 byte signed header**, sau đó đến Payload và chữ ký ECDSA P-256 dạng raw `r||s` **64 byte**. Đây là đặc tả của project, không phải định dạng OTA phổ quát.
-- **Manifest** (`manifest.json`) là **bảng mô tả release**: phiên bản, sản phẩm, các gói cập nhật, size/hash, URL...; nó **không phải** Payload SDOT. Manifest được ký riêng. ESP32 trong luồng hiện tại nhận **URL SDOT trực tiếp trong lệnh MQTTS**, không bắt buộc tự tải/parse Manifest để chọn gói.
-- **CI / Release Tooling** là chuỗi thao tác build, test, tạo Full/Delta, đóng gói, ký và kiểm tra các tệp cập nhật. **Release Server** phân phối các tệp cập nhật đã chuẩn bị; không phải thành phần tạo mã máy firmware.
+**Câu hỏi phỏng vấn:** Tại sao phải nạp MSP? VTOR dùng để làm gì? Vì sao thay PC mà không dọn ngắt có thể xảy ra lỗi?
+
+**Học sâu:** [6.1 – STM32F103 và Cortex-M3](#chuong-6-1) · [6.2 – Startup, Vector Table và Linker](#chuong-6-2) · [6.3 – Internal Flash](#chuong-6-3) · [6.4 – External Flash W25Q](#chuong-6-4).
+
+<a id="phu-luc-a-2"></a>
+### A.2. Công nghệ OTA và thuật toán Delta
+
+#### A.2.1. OTA, Full OTA và Delta OTA
+
+**Khái niệm:** **OTA (Over-the-Air Update)** là cập nhật firmware từ xa. **Full OTA** mang toàn bộ firmware đích; **Delta OTA** mang **Delta Patch** dùng để dựng firmware đích từ một firmware gốc xác định.
+
+**Nguyên lý hoạt động:** Bên phát hành build firmware mới, chuẩn bị gói SDOT Full hoặc Delta, ký số và phân phối. Thiết bị nhận đủ gói, Bootloader xác thực rồi chuẩn bị **Target Image**. Full OTA sao chép firmware từ payload; Delta OTA phải kiểm tra Base Image và áp dụng patch. Sau khi có Target Image hoàn chỉnh mới được Backup/Install/Trial Boot.
+
+**Ví dụ / tình huống:** Giữa v1 và v2 chỉ có một số vùng byte thay đổi. Delta Patch có thể nhỏ hơn nhiều so với file v2 đầy đủ; nhưng nếu hai image khác nhau quá nhiều, chi phí patch có thể không đáng để sử dụng.
+
+**Trong project:** Bên phát hành **luôn chuẩn bị Full OTA** và chỉ chọn phát hành Delta OTA khi vượt ngưỡng tiết kiệm đã cấu hình (mặc định **20%**). **Full và Delta đều đi qua trạng thái bền vững `UPDATE_PATCHING`**: Full copy payload, Delta áp dụng patch.
+
+**Câu hỏi phỏng vấn:** Delta OTA giảm dung lượng bằng cách nào? Khi nào nên dùng Full OTA? Tại sao Full OTA vẫn có `UPDATE_PATCHING`?
+
+#### A.2.2. Base Image, Target Image và Delta Patch
+
+**Khái niệm**
+
+- **Base Image (firmware gốc):** Image **đúng từng byte** đã dùng khi tạo patch.
+- **Target Image (firmware đích):** Image hoàn chỉnh cần tạo và cài đặt.
+- **Delta Patch:** Dữ liệu mô tả cách tái tạo Target Image dựa trên Base Image.
+
+**Nguyên lý hoạt động:** Patch thường mô tả các đoạn được lấy lại từ Base Image và các byte mới; bộ áp dụng patch phối hợp chúng theo thứ tự để sinh Target Image. Vì vị trí và nội dung trong Base Image có thể được tham chiếu, **cùng số phiên bản nhưng khác byte chưa chắc dùng được cùng patch**.
+
+**Ví dụ / tình huống:** Base Image v1-A và v1-B đều báo version `1`, nhưng SHA-256 khác nhau. Patch được tạo từ v1-A **không được** áp dụng lên v1-B chỉ dựa trên số version.
+
+**Trong project:** Bootloader đối chiếu **Base SHA-256** trước khi xử lý Delta; sau khi tạo image ở phân vùng **Reconstructed Image** của W25Q, đối chiếu **Target SHA-256** trước khi Backup và Install. **Target Image** là nội dung firmware; **Reconstructed Image** là tên phân vùng chứa nội dung đó.
+
+**Câu hỏi phỏng vấn:** Tại sao kiểm tra cả Base SHA-256 lẫn Target SHA-256? Tại sao chỉ kiểm tra `base_version` là chưa đủ?
+
+#### A.2.3. JojoDiff và JANPatch — tạo và áp dụng Delta Patch
+
+**Khái niệm:** **JojoDiff** là công cụ tạo bản vá nhị phân phía host. **JANPatch** là thành phần áp dụng bản vá trên thiết bị. Hai thành phần thực hiện **hai chiều công việc khác nhau**.
+
+**Nguyên lý hoạt động**
+
+1. **Tạo patch:** Cung cấp Base Image và Target Image cho JojoDiff. Công cụ tìm những phần có thể tái sử dụng từ Base Image và phần dữ liệu cần bổ sung để tạo patch.
+2. **Kiểm tra phía phát hành:** Áp dụng thử patch lên đúng Base Image và so sánh kết quả **từng byte** với Target Image — gọi là **round-trip validation**.
+3. **Áp dụng trên thiết bị:** JANPatch đọc Base Image và các chỉ thị/dữ liệu trong Delta Patch để tạo đầu ra tuần tự. Bootloader kiểm tra SHA-256 của image đã dựng.
+
+**Ví dụ khái niệm (không phải cú pháp lệnh thật của định dạng JojoDiff):**
+
+```text
+Base Image:    A B C D E F
+Target Image:  A B X Y E F
+
+Patch (minh họa):
+  - Lấy lại 2 byte đầu từ Base Image
+  - Ghi mới X Y
+  - Lấy lại 2 byte cuối từ Base Image
+
+Base Image + Patch → A B X Y E F (= Target Image)
+```
+
+**Trong project:** JojoDiff chạy ở **Developer/CI**, còn JANPatch chạy ở **STM32 Bootloader**. STM32 có SRAM hạn chế nên quá trình xử lý cần dùng buffer và lưu đầu ra sang W25Q thay vì giữ toàn bộ image trong RAM. **Không suy diễn lệnh byte-level của JojoDiff từ ví dụ minh họa trên**; định dạng thực tế phải đối chiếu implementation.
+
+**Câu hỏi phỏng vấn:** JojoDiff và JANPatch khác nhau thế nào? Nếu dùng sai Base Image thì điều gì xảy ra? Vì sao phải round-trip trên host và kiểm tra lại Target SHA-256 trên STM32?
+
+#### A.2.4. SDOT Container và Manifest
+
+**Khái niệm:** **SDOT (Secure Delta OTA Container)** là gói cập nhật chứa thông tin điều khiển, payload Full/Delta và chữ ký số. **Manifest** (`manifest.json`) là tệp mô tả bản phát hành và các gói có thể phân phối; Manifest không chứa thay cho payload SDOT.
+
+**Nguyên lý hoạt động:** Header cho biết loại cập nhật, phiên bản, thông tin thiết bị, kích thước/hash và các trường để áp dụng chính sách. Payload mang firmware đầy đủ hoặc Delta Patch. Chữ ký bảo vệ vùng dữ liệu được quy định; Bootloader xác minh chữ ký **trước khi cài đặt**.
+
+```text
+Gói SDOT đã ký trong project:
+┌─────────────────────────────────────────┐
+│ Header cố định 120 B + SCX1 20 B       │ ← 140 B thuộc vùng được ký
+├─────────────────────────────────────────┤
+│ Payload: Full firmware hoặc Delta Patch │ ← thuộc vùng được ký
+├─────────────────────────────────────────┤
+│ ECDSA P-256 Signature: r[32] || s[32] │ ← 64 B
+└─────────────────────────────────────────┘
+```
+
+**Trong project:** Release Server có thể dùng Manifest để mô tả/chọn gói, còn ESP32 nhận **URL gói SDOT trực tiếp từ lệnh MQTTS** rồi tải bằng HTTPS. ESP32 không phải nơi quyết định chữ ký SDOT có đủ tin cậy để Install.
+
+**Câu hỏi phỏng vấn:** Vì sao phải ký cả Header và Payload? Manifest khác gói SDOT thế nào? Tại sao kiểm tra CRC32 khi tải về chưa đủ để tin cậy firmware?
+
+**Học sâu:** [4.1 – Tạo bản phát hành](#luong-1) · [4.2 – Phân phối bản cập nhật](#luong-2) · [6.7 – Full OTA, Delta OTA và JojoDiff](#chuong-6-7) · [6.8 – Bảo mật SDOT](#chuong-6-8).
+
+<a id="phu-luc-a-3"></a>
+### A.3. Đóng khung, kiểm tra dữ liệu và truyền tiếp sau gián đoạn
+
+#### A.3.1. Packet, Framing và COBS
+
+**Khái niệm:** **Packet** là đơn vị dữ liệu của giao thức OTA, có các trường điều khiển, Payload và CRC32. **Framing** xác định ranh giới packet trên dòng byte liên tục. **COBS (Consistent Overhead Byte Stuffing)** là cơ chế mã hóa để byte `0x00` không xuất hiện bên trong dữ liệu đã mã hóa và có thể dùng `0x00` làm **byte phân tách** giữa các frame.
+
+**Nguyên lý hoạt động**
+
+1. Tạo packet gốc gồm các trường và CRC32.
+2. COBS thay những vị trí byte `0x00` bằng cơ chế mã hóa độ dài nhóm byte khác 0, để đầu ra mã hóa không chứa `0x00`.
+3. Nối thêm **byte phân tách `0x00`** sau frame đã mã hóa.
+4. Bộ nhận tìm `0x00`, tách frame, **giải mã COBS**, sau đó mới kiểm tra cấu trúc và CRC32 của packet gốc.
+
+**Ví dụ COBS đúng ở mức byte:**
+
+```text
+Dữ liệu gốc (hex):   11 22 00 33
+COBS encoded (hex):  03 11 22 02 33
+Dữ liệu trên dây:    03 11 22 02 33 00
+                                             ↑ byte phân tách
+```
+
+Byte `03` biểu thị nhóm có hai byte khác 0 (`11 22`), byte `02` biểu thị nhóm một byte (`33`). Đây là ví dụ nhỏ; frame thực tế còn header/payload/CRC32. COBS **không** bảo đảm packet không bị lỗi hoặc bị giả mạo.
+
+**Trong project:** ESP32 đóng khung packet truyền tới STM32 Application bằng COBS. STM32 giải mã rồi kiểm tra CRC32, `update_id`, **Sequence** và **Offset** trước khi ghi dữ liệu vào vùng Incoming của W25Q.
+
+**Câu hỏi phỏng vấn:** Tại sao không tìm trực tiếp byte `0x00` trong dữ liệu gốc để cắt packet? COBS và CRC32 giải quyết hai vấn đề khác nhau như thế nào?
+
+#### A.3.2. CRC32 — phép chia đa thức nhị phân và XOR
+
+**Khái niệm:** **CRC32 (Cyclic Redundancy Check 32-bit)** tạo mã kiểm tra lỗi **32 bit (4 byte)** từ dữ liệu. Đây là cơ chế phát hiện lỗi, **không phải chữ ký số và không phải hàm băm mật mã**.
+
+**Nguyên lý hoạt động**
+
+1. Xem dãy bit dữ liệu như các hệ số của đa thức trên **GF(2)**. Phép cộng/trừ trong GF(2) là **XOR**, không có nhớ.
+2. Sử dụng một **đa thức sinh** cố định để xử lý dãy bit. Quá trình tương tự phép chia đa thức, với các bước dịch bit và XOR, tạo phần dư nằm trong thanh ghi 32 bit.
+3. CRC nhận được còn phụ thuộc **bộ tham số cụ thể**: đa thức, giá trị khởi tạo, phản xạ bit đầu vào/đầu ra và XOR cuối.
+4. Bên nhận tính CRC với cùng tham số và so sánh. **CRC trùng** chỉ có nghĩa là *chưa phát hiện lỗi bằng phép kiểm tra này*, không chứng minh ai đã tạo dữ liệu.
+
+**Ví dụ kiểm tra chuẩn:** Với **CRC-32/ISO-HDLC** (thường gọi CRC-32/IEEE), chuỗi ASCII `123456789` cho kết quả **`0xCBF43926`**. Không mặc định mọi hàm tên `CRC32` đều dùng đúng biến thể này.
+
+```text
+Sender:   bytes ──CRC32──> crc   ──> gửi bytes + crc
+Receiver: bytes ──CRC32──> crc2  ──> so sánh crc2 với crc
+                                  ├─ khác: phát hiện lỗi
+                                  └─ trùng: không phát hiện lỗi
+```
+
+**Trong project:** CRC32 được dùng ở nhiều cấp độ **khác nhau**: packet OTA, kiểm tra toàn bộ gói SDOT đã nhận và kiểm tra bản ghi Metadata. Bootloader vẫn cần SHA-256 và ECDSA P-256 để xác thực gói cập nhật; kẻ tấn công có thể thay dữ liệu rồi tính lại CRC32.
+
+**Câu hỏi phỏng vấn:** Tại sao CRC dùng XOR? Vì sao CRC32 trùng vẫn có thể là dữ liệu bị sửa? CRC32 có thay thế SHA-256 hoặc ECDSA được không?
+
+#### A.3.3. ACK/NACK, Retry, Resume, Sequence, Offset và Checkpoint nhận
+
+**Khái niệm:** **ACK** báo packet được chấp nhận; **NACK** báo từ chối; **Retry** là gửi lại packet/lệnh; **Resume** là tiếp tục một phiên cập nhật bị gián đoạn dựa trên trạng thái bền vững. **Sequence** là thứ tự packet, còn **Offset** là vị trí byte trong toàn bộ gói SDOT.
+
+**Nguyên lý hoạt động:** Bên gửi truyền DATA và chờ phản hồi. Với NACK hoặc timeout, bên gửi có thể Retry. Nếu ACK bị mất, packet trùng phải được nhận diện/xử lý phù hợp; không thể mù quáng ghi tăng offset. Khi thiết bị reset, bộ nhận nạp **Download Checkpoint** đã lưu bền vững và thông báo offset an toàn để bên gửi Resume.
+
+**Ví dụ / tình huống:** Packet đã ACK đến **10 KiB**, nhưng Checkpoint mới được lưu đến **8 KiB**. Sau khi mất nguồn, hệ thống **Resume từ offset 8192**, không mặc định tiếp tục từ 10 KiB.
+
+**Trong project:** DATA Payload tối đa **256 byte**, timeout phản hồi **1500 ms**, tối đa **5 Retry**, Checkpoint nhận theo ranh giới sector W25Q **4 KiB**. `FINISH` xác nhận nhận đủ/kích thước/CRC32; `INSTALL` mới commit `UPDATE_ARTIFACT_READY` vào **Internal Flash Metadata A/B** và reset.
+
+**Câu hỏi phỏng vấn:** Nếu mất ACK phải làm gì? ACK và Checkpoint khác nhau ra sao? Retry khác Resume ở đâu? Tại sao `FINISH` không đồng nghĩa `INSTALL`?
+
+**Học sâu:** [4.3 – Nhận và lưu SDOT](#luong-3) · [5.2 – Nhận OTA và bàn giao](#chuong-5-2) · [6.5 – OTA Protocol và COBS](#chuong-6-5) · [6.9 – Checkpoint](#chuong-6-9).
 
 <a id="phu-luc-a-4"></a>
-### A.4. Giao tiếp, đóng khung và truyền dữ liệu tin cậy
+### A.4. Bảo mật firmware
 
-#### A.4.1. UART, SPI, HTTPS và MQTTS
+#### A.4.1. SHA-256 — hàm băm mật mã
 
-| Công nghệ | Định nghĩa dễ nhớ | Vai trò trong project |
-|---|---|---|
-| **UART** (Universal Asynchronous Receiver/Transmitter) | Truyền **bất đồng bộ**, không có dây clock riêng; hai phía thống nhất baud rate và frame | ESP32 ↔ STM32 Application, cấu hình **115200 8-N-1**. |
-| **SPI** (Serial Peripheral Interface) | Giao tiếp **đồng bộ** dùng SCK, MOSI, MISO, CS; phía Master tạo clock | STM32 ↔ W25Q; SPI1 **Mode 0**. |
-| **HTTPS** | HTTP chạy trên TLS, hỗ trợ bảo vệ kết nối tải dữ liệu | ESP32 tải file SDOT từ server. |
-| **MQTTS** | MQTT chạy trên TLS, thường dùng publish/subscribe | Server thông báo lệnh cập nhật; gateway báo trạng thái. |
+**Khái niệm:** **SHA-256** là hàm băm mật mã nhận đầu vào có độ dài thay đổi và tạo **giá trị băm 256 bit = 32 byte**. Cùng một dãy byte luôn cho cùng kết quả; thay đổi nhỏ ở đầu vào thường làm nhiều bit đầu ra thay đổi (**avalanche effect**).
 
-#### A.4.2. Packet, Framing, COBS và byte `0x00`
+**Nguyên lý hoạt động (mức phỏng vấn)**
 
-- **Packet** là đơn vị dữ liệu tầng giao thức, thường gồm **Header, Payload, CRC**. Header cho biết lệnh, ID, offset, sequence và độ dài.
-- **Framing** là cách biết chính xác một packet bắt đầu/kết thúc ở đâu trên dòng byte UART liên tục. UART cung cấp các byte, **không tự phân tách OTA packet**.
-- **COBS (Consistent Overhead Byte Stuffing)** là thuật toán mã hóa để dữ liệu frame **không còn byte `0x00` bên trong**, từ đó dùng `0x00` làm ký hiệu kết thúc frame. Bộ nhận tìm byte phân tách `0x00`, giải mã COBS rồi mới xử lý packet gốc.
-- **CRC32 packet** được tính trên các byte packet **trước COBS** (không bao gồm chính trường CRC hay byte phân tách). COBS **không thay thế** CRC32: COBS giải quyết biên frame, CRC32 phát hiện lỗi byte.
+1. **Padding:** thêm bit `1`, các bit `0` phù hợp, rồi ghi độ dài thông điệp theo quy tắc SHA-256 để tổng dữ liệu chia thành các khối **512 bit**.
+2. **Message schedule:** mở rộng mỗi khối thành các từ dữ liệu dùng trong các vòng xử lý.
+3. **Compression:** mỗi khối trải qua **64 vòng** phép toán trên các thanh ghi 32 bit (xoay/dịch bit, XOR, cộng modulo `2^32`, các hàm chọn và đa số).
+4. **Cập nhật trạng thái băm:** kết quả mỗi khối được kết hợp với trạng thái trước. Sau khối cuối, ghép **8 word 32 bit** thành giá trị băm **256 bit**.
 
-**Ví dụ COBS minh họa:** `11 22 00 33` có thể được mã hóa thành `03 11 22 02 33`, sau đó thêm byte phân tách `00` trên UART. Đây chỉ là ví dụ encoding; gói OTA thật còn có header và CRC.
+**Ví dụ đã biết:**
 
-#### A.4.3. Update ID, Sequence, Offset, ACK/NACK, Retry và Resume
-
-- **Update ID** định danh một phiên cập nhật; không để packet của gói khác lẫn vào phiên đang nhận.
-- **Sequence** là số thứ tự packet; **Offset** là vị trí byte trong **toàn bộ SDOT** nơi payload DATA phải được ghi. Hai trường không thể tùy tiện thay cho nhau.
-- **ACK** báo packet được chấp nhận; **NACK** báo packet bị từ chối (CRC sai, offset sai, trạng thái không phù hợp, lỗi Flash...). **Retry** gửi lại packet khi NACK/timeout.
-- **Resume** là **tiếp tục cả một lần tải bị gián đoạn**, sau khi khởi động lại và đọc **Checkpoint bền vững**. `last ACK` không nhất thiết trùng `last persisted offset`.
-- **FINISH** chỉ kiểm tra gói SDOT đã **nhận đủ và CRC toàn bộ hợp lệ**; **INSTALL** mới commit `UPDATE_ARTIFACT_READY` vào Internal Flash Metadata và reset để Bootloader xử lý.
-
-Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **1500 ms**, retry tối đa **5** và Checkpoint nhận được lưu theo ranh giới **sector 4 KiB**. MQTTS với QoS 1 có thể giao thông điệp nhiều hơn một lần; lệnh cần được xử lý an toàn khi trùng.
-
-<a id="phu-luc-a-5"></a>
-### A.5. Mật mã, kiểm tra toàn vẹn và xác thực nguồn phát hành
-
-#### A.5.1. CRC32
-
-**CRC32** là phương pháp tính **mã kiểm tra lỗi 32 bit**, không phải thuật toán mật mã. Nó diễn giải các bit dữ liệu như một đa thức nhị phân rồi tính **phần dư phép chia đa thức trên GF(2)**. Trên GF(2), phép cộng/trừ tương đương **XOR**, không dùng nhớ như cộng số nguyên thông thường.
-
-**Luồng nguyên lý:** dữ liệu → xử lý bit/byte với đa thức sinh cố định → thanh ghi dư 32 bit → CRC. Bên nhận tính lại bằng **cùng tham số CRC** (polynomial, init, phản xạ bit, XOR cuối) rồi so sánh. Nếu khác nhau: dữ liệu bị lỗi; nếu bằng nhau: chỉ cho thấy **không phát hiện lỗi bằng CRC**, không chứng minh nguồn gửi đáng tin.
-
-- **Vì sao 32 bit?** Thanh ghi kết quả dài **32 bit = 4 byte**, có giới hạn xác suất va chạm tương ứng; không phải vì packet luôn dài 32 bit.
-- **Ưu điểm:** Nhanh, chi phí thấp, phù hợp cho UART packet, SDOT payload và Metadata.
-- **Giới hạn:** Kẻ tấn công có thể sửa dữ liệu và **tính lại CRC**. Một số mẫu lỗi cũng có thể không bị phát hiện. **CRC32 không chứng minh tính xác thực**.
-
-#### A.5.2. Cryptographic Hash và SHA-256
-
-**Hash function** ánh xạ dữ liệu có kích thước bất kỳ thành **giá trị băm** có kích thước cố định. **SHA-256** là hàm băm mật mã sinh **256 bit = 32 byte**. Các tính chất quan trọng để hiểu ở mức phỏng vấn:
-
-- **Deterministic:** Cùng input byte → cùng hash.
-- **Preimage resistance:** Từ một giá trị băm, về mặt tính toán khó tìm input tạo ra giá trị băm đó.
-- **Second-preimage resistance:** Khó tìm một input khác có cùng hash với input đã cho.
-- **Collision resistance:** Khó tìm **bất kỳ hai input khác nhau** có cùng hash; tuy nhiên không phải về mặt toán học là "không thể trùng".
-- **Avalanche effect:** Thay đổi nhỏ ở input thường làm nhiều bit của giá trị băm thay đổi.
-- **Streaming:** Có thể cập nhật SHA-256 theo từng chunk 256 byte; rất phù hợp STM32 có RAM hạn chế.
-
-**Vai trò trong project:** tính giá trị băm của vùng SDOT được ký, kiểm tra **Base SHA-256** của firmware cũ và **Target SHA-256** của image hoàn chỉnh. **Hash một mình không chứng minh ai tạo ra firmware**: kẻ tấn công sửa cả firmware lẫn trường hash nếu chúng không được ký.
-
-#### A.5.3. Mật mã bất đối xứng, Public Key và Private Key
-
-**Asymmetric Cryptography** dùng **cặp khóa liên quan về toán học**:
-
-- **Private Key** là bí mật, chỉ phía phát hành firmware được dùng để **ký**. Không đưa khóa bí mật vào ESP32, STM32 hay commit lên Git.
-- **Public Key** có thể phân phối công khai, nhưng Bootloader phải có **bản khóa công khai tin cậy** để xác minh chữ ký. Khóa "public" không đồng nghĩa "lấy tùy ý từ file tải về là đáng tin".
-- Với elliptic curve: có thể hình dung **Public Key `Q = d × G`**, trong đó `d` là Private Key, `G` là điểm gốc của đường cong; tính ngược `d` từ `Q` được thiết kế là rất khó.
-
-**Digital Signature (chữ ký số)** cung cấp bằng chứng rằng nội dung đã ký khớp với một Private Key tương ứng với Public Key tin cậy. **Chữ ký không mã hóa firmware** và không làm cho firmware trở nên bí mật.
-
-#### A.5.4. ECDSA P-256
-
-- **ECDSA** là thuật toán **ký/xác minh chữ ký số** dựa trên elliptic curve, không phải thuật toán băm và không phải mã hóa nội dung.
-- **P-256** là đường cong elliptic chuẩn với khóa/bài toán có kích thước danh nghĩa **256 bit**.
-- **Ký (host):** serialise chính xác các byte cần bảo vệ → tính `SHA-256(signed_bytes)` → dùng Private Key ECDSA tạo chữ ký gồm hai số nguyên `(r,s)`.
-- **Xác minh (STM32 Bootloader):** tính lại giá trị băm **trên đúng các byte đó** → dùng **Trusted Public Key** và `(r,s)` để kiểm tra chữ ký. Nếu sai, từ chối trước Install.
-- **Định dạng signature trong SDOT:** raw `r[32] || s[32]` = **64 byte**; khác với chữ ký **DER** có độ dài biến thiên do OpenSSL thường xuất ra. Phía host chuyển DER ↔ raw khi đóng gói/kiểm tra.
-- **Lưu ý triển khai mật mã:** Chữ ký ECDSA cần nonce `k` an toàn/không lặp; quản lý Private Key và chọn thư viện mật mã đáng tin cậy quan trọng không kém thuật toán.
-
-```mermaid
-sequenceDiagram
-    participant Host as Developer / CI
-    participant Node as STM32 Bootloader
-    Host->>Host: Hash = SHA-256(Header + Payload)
-    Host->>Host: Signature = ECDSA_Sign(PrivateKey, Hash)
-    Host->>Node: SDOT Header + Payload + Signature
-    Node->>Node: Hash2 = SHA-256(Header + Payload)
-    Node->>Node: ECDSA_Verify(TrustedPublicKey, Hash2, Signature)
-    alt Signature hợp lệ + policy hợp lệ
-      Node->>Node: Prepare Image, Verify Target, Backup / Install
-    else Signature không hợp lệ
-      Node->>Node: Từ chối gói cập nhật
-    end
+```text
+SHA-256("abc") =
+ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 ```
 
-#### A.5.5. Trust Anchor, Key Provisioning, Key ID, Anti-rollback
+**Giới hạn:** SHA-256 có các tính chất chống tìm tiền ảnh/chống va chạm ở mức tính toán, nhưng **bản thân giá trị băm không xác nhận nguồn phát hành**: người sửa firmware có thể tự tính lại hash nếu giá trị mong đợi không được bảo vệ.
 
-- **Trust Anchor** là mốc tin cậy gốc mà thiết bị sử dụng để quyết định chữ ký nào được phép. Trong project đó là **Trusted Public Key** được provision ở phía Bootloader, **không phải public key gửi kèm một gói mạng bất kỳ**.
-- **Key Provisioning** là bước cấu hình/nạp khóa tin cậy vào firmware/thiết bị trước khi xác thực bản phát hành. Bản repository mặc định **chưa provision khóa production** (`TRUSTED_KEY_PROVISIONED = 0`); không được suy ra thiết bị production đã sẵn sàng chỉ vì code có ECDSA.
-- **Key ID** là mã định danh khóa để chọn/đối chiếu khóa cấu hình; **Key ID một mình không phải chữ ký** và không tạo ra sự tin cậy.
-- **Anti-rollback / Anti-downgrade** là chính sách **ngăn cài phiên bản thấp hơn mức cho phép**. Khác với **Rollback** (khôi phục bản Backup cũ đã được chấp nhận nếu bản thử nghiệm không chạy tốt).
-- **Signed OTA ≠ hardware Secure Boot / encryption:** Hệ thống xác minh gói cập nhật trước Install, nhưng không đồng nghĩa có **hardware Root of Trust bất biến**, chống đọc Flash vật lý hoặc mã hóa payload SDOT.
+**Trong project:** SHA-256 được tính theo từng chunk để tiết kiệm SRAM: băm **vùng SDOT được ký**, đối chiếu **Base SHA-256** trước Delta và **Target SHA-256** sau tái tạo. Chữ ký ECDSA mới gắn nội dung đó với một khóa tin cậy.
+
+**Câu hỏi phỏng vấn:** Vì sao SHA-256 cho ra đúng 32 byte? Padding dùng để làm gì? Vì sao cần streaming? Vì sao một trường SHA-256 đứng riêng không chứng minh firmware đáng tin?
+
+#### A.4.2. Public Key và Private Key — cơ sở mật mã bất đối xứng
+
+**Khái niệm:** **Private Key (khóa bí mật)** chỉ bên phát hành giữ để ký; **Public Key (khóa công khai)** được Bootloader dùng để xác minh. Khóa công khai có thể được chia sẻ, nhưng thiết bị phải biết **khóa công khai nào là đáng tin cậy**.
+
+**Nguyên lý hoạt động:** Trong ECDSA trên đường cong P-256, một giá trị bí mật `d` tạo ra điểm công khai **`Q = d × G`**, với `G` là điểm sinh của đường cong. Phép nhân điểm theo chiều tạo khóa thực hiện được, còn suy ra `d` từ `Q` được thiết kế là khó về mặt tính toán.
+
+**Trong project:** Private Key ở Developer/CI; Bootloader giữ **Trusted Public Key**. Không lấy một public key bất kỳ gửi kèm SDOT làm căn cứ tin cậy.
+
+**Câu hỏi phỏng vấn:** Tại sao Bootloader không cần Private Key? Public Key không bí mật thì vì sao vẫn phải provision khóa tin cậy?
+
+#### A.4.3. Digital Signature và ECDSA P-256 — ký và xác minh
+
+**Khái niệm:** **Digital Signature (chữ ký số)** chứng minh dữ liệu đã ký khớp với một khóa bí mật tương ứng với khóa công khai tin cậy. **ECDSA P-256** là thuật toán chữ ký số trên đường cong elliptic P-256. **Chữ ký không mã hóa và không che giấu nội dung firmware.**
+
+**Nguyên lý hoạt động**
+
+1. **Phía phát hành:** tạo giá trị băm SHA-256 của **đúng vùng byte cần ký**, dùng Private Key và một nonce `k` hợp lệ để tạo cặp chữ ký **`(r, s)`**.
+2. **Phía thiết bị:** tính lại SHA-256 trên **cùng vùng byte**, dùng Trusted Public Key và `(r, s)` để thực hiện phép xác minh ECDSA.
+3. **Kết quả:** nếu dữ liệu bị sửa, chọn sai khóa, chữ ký sai hoặc chính sách cập nhật không hợp lệ, Bootloader **từ chối trước Install**. Cần lưu ý bảo vệ Private Key và **không sử dụng lại nonce `k`** khi ký ECDSA.
+
+**Vì sao có thể xác minh không cần khóa bí mật?** Trong nguyên lý ECDSA, chữ ký được ràng buộc với phép toán sử dụng Private Key; phép xác minh tận dụng quan hệ giữa **Public Key `Q`** và điểm sinh `G` để kiểm tra tính nhất quán của `(r, s)` với giá trị băm. Người xác minh không cần biết `d`.
+
+```text
+Developer/CI:
+  Header 140 B + SDOT Payload
+           ↓ SHA-256
+       giá trị băm
+           ↓ ECDSA Sign (Private Key)
+     chữ ký (r, s) 64 B
+
+STM32 Bootloader:
+  Header 140 B + SDOT Payload
+           ↓ SHA-256
+       giá trị băm
+           ↓ ECDSA Verify (Trusted Public Key, r, s)
+       hợp lệ / từ chối
+```
+
+**Trong project:** SDOT dùng chữ ký **raw `r[32] || s[32]` = 64 byte**, không nhầm với định dạng DER có độ dài biến thiên. **120 byte Header cố định + 20 byte SCX1 + Payload** là vùng dữ liệu được ký. CRC32 được dùng để phát hiện dữ liệu hỏng; **ECDSA mới cung cấp bước xác minh nguồn ký**.
+
+**Câu hỏi phỏng vấn:** Vì sao không chỉ gửi SHA-256? ECDSA khác mã hóa dữ liệu thế nào? Tại sao `r||s` khác DER? Điều gì có thể xảy ra nếu nonce `k` lặp lại?
+
+#### A.4.4. Trust Anchor, Key Provisioning và Anti-rollback
+
+**Khái niệm:** **Trust Anchor (mốc tin cậy)** là khóa/căn cứ tin cậy ban đầu để xác minh chữ ký. **Key Provisioning** là bước nạp/cấu hình khóa đó vào hệ thống. **Anti-rollback** là chính sách không cho cài một phiên bản thấp hơn mức được phép.
+
+**Nguyên lý hoạt động:** Bootloader chỉ chấp nhận chữ ký tương ứng **Trusted Public Key** đã cấu hình và chỉ cho phép cập nhật nếu các điều kiện sản phẩm, phần cứng, phiên bản được đáp ứng. Anti-rollback là **bộ lọc chính sách cài đặt**, khác **Rollback**, hành động khôi phục Backup khi bản mới chạy thử thất bại.
+
+**Trong project:** Repository mặc định có **`TRUSTED_KEY_PROVISIONED = 0`**; muốn kiểm tra firmware ký số trên thiết bị cần provision khóa phù hợp. Có cơ chế xác thực gói OTA **không đồng nghĩa** có hardware Root of Trust bất biến hoặc mã hóa firmware.
+
+**Câu hỏi phỏng vấn:** Vì sao không được nhận khóa công khai bất kỳ từ mạng? Anti-rollback có mâu thuẫn với việc Rollback về firmware cũ không? Điều gì còn thiếu để tuyên bố Secure Boot ở cấp phần cứng?
+
+**Học sâu:** [5.3 – Xác thực SDOT và chuẩn bị firmware](#chuong-5-3) · [6.8 – Cryptography & Firmware Security](#chuong-6-8).
+
+<a id="phu-luc-a-5"></a>
+### A.5. Trạng thái, lưu tiến độ và phục hồi sau lỗi
+
+#### A.5.1. Boot State Machine
+
+**Khái niệm:** **Finite State Machine (FSM)** là mô hình gồm tập trạng thái hữu hạn và quy tắc chuyển trạng thái. **Boot State Machine** trong project điều phối quá trình OTA theo các mốc đã ghi bền vững.
+
+**Nguyên lý hoạt động:** Bootloader đọc `state` trong Metadata, kiểm tra điều kiện hiện tại và đưa ra **Boot Decision / Boot Action**. Các state như `UPDATE_VERIFYING_CONTAINER`, `UPDATE_PATCHING`, `UPDATE_INSTALLING`, `UPDATE_TRIAL_BOOT`, `UPDATE_ROLLBACK` quyết định bước nào an toàn để chạy tiếp. Không phải mọi bước đều tiếp tục từ offset; một số phải làm lại từ đầu.
+
+**Ví dụ / tình huống:** Sau reset, state `UPDATE_INSTALLING` dẫn đến **Resume Install**; `UPDATE_PATCHING` dẫn đến **Restart Patch**; `UPDATE_TRIAL_BOOT` phải kiểm tra số lần thử trước khi Jump hoặc Rollback.
+
+**Trong project:** `BootDecision_Evaluate()` chọn hành động từ Metadata; `BootManager_Run()` thực hiện các công việc xác thực, sao lưu, cài và phục hồi. **State không đồng nghĩa Action**.
+
+**Câu hỏi phỏng vấn:** Vì sao phải lưu trạng thái trong Flash? Vì sao tách Boot Decision khỏi Boot Manager? Điều gì xảy ra với chuyển trạng thái không hợp lệ?
+
+#### A.5.2. Metadata và Metadata A/B
+
+**Khái niệm:** **Metadata** là dữ liệu điều khiển cập nhật, không phải bytes firmware. Các trường tiêu biểu gồm `state`, `active_version`, `pending_version`, `active_update_id`, `copy_offset`, `boot_attempts`, `generation` và `crc32`. **Metadata A/B** là hai bản lưu luân phiên để tránh mất toàn bộ trạng thái khi đang ghi một bản.
+
+**Nguyên lý hoạt động**
+
+1. Đọc cả bản **A** và **B**, kiểm tra format, giá trị trường và **CRC32** của mỗi bản.
+2. Chọn bản hợp lệ mới nhất bằng **`generation`**.
+3. Khi commit trạng thái mới, ghi vào **vùng không được chọn**, đọc lại để Verify; chỉ sau khi ghi hợp lệ mới chọn generation mới.
+4. Nếu mất nguồn giữa Erase/Program một bản, bản cũ **có thể vẫn hợp lệ** để tiếp tục Boot Decision; không coi bản ghi dở là bản đã commit.
+
+**Ví dụ / tình huống:** A có `generation = 10` hợp lệ, B đang ghi `generation = 11` thì mất nguồn. Nếu B có CRC sai, Bootloader tiếp tục chọn A. Nếu B được ghi và xác minh hoàn chỉnh, B trở thành bản mới nhất.
+
+**Trong project:** **Internal Flash Metadata A** tại `0x0800F800`, **B** tại `0x0800FC00`, mỗi bản một trang **1 KiB**. W25Q còn có cơ chế **External Flash Metadata/Checkpoint** riêng; không đồng nhất hai cặp A/B thuộc hai loại Flash. CRC32 kiểm tra lỗi bản ghi, **không xác thực nguồn ký**.
+
+**Câu hỏi phỏng vấn:** Nếu mất nguồn ngay khi ghi Metadata B thì sao? `generation` khác `copy_offset` thế nào? Vì sao không cập nhật một bản Metadata duy nhất?
+
+#### A.5.3. Checkpoint — mốc tiến độ đã được xác minh
+
+**Khái niệm:** **Checkpoint** là mốc xác nhận một phần công việc đã **hoàn tất, kiểm tra và lưu bền vững**. Nó không đồng nghĩa với vị trí byte đã thử ghi hay ACK gần nhất.
+
+**Nguyên lý hoạt động:** Xử lý dữ liệu theo đơn vị an toàn; sau khi **Erase/Program hoặc Copy + Verify** thành công, mới commit Checkpoint. Khi reset, khôi phục từ mốc này và **làm lại đơn vị chưa được xác nhận**. Cách thiết kế thao tác có thể thực hiện lại an toàn gần với nguyên tắc **idempotency**.
+
+**Ví dụ / tình huống:** Install đã Verify 4 trang Internal Flash (4 KiB), đang ghi trang thứ 5 thì mất nguồn. Checkpoint còn **`copy_offset = 4096`**; Bootloader xóa/ghi lại trang thứ 5, không tiếp tục giữa những half-word bị ghi dở.
+
+**Trong project:** Download/Backup Checkpoint gắn với sector W25Q **4 KiB**; Install/Rollback Checkpoint gắn với trang Internal Flash **1 KiB**. Metadata và Checkpoint hỗ trợ phục hồi ở các lớp khác nhau.
+
+**Câu hỏi phỏng vấn:** Tại sao Checkpoint phải đặt sau Verify? Vì sao cần hai kích thước Checkpoint 4 KiB và 1 KiB? Tại sao ACK không được coi là Checkpoint?
+
+#### A.5.4. Power-loss Recovery — tiếp tục hoặc làm lại một bước an toàn
+
+**Khái niệm:** **Power-loss Recovery** là khả năng khôi phục tiến trình OTA sau mất nguồn/reset bất ngờ bằng trạng thái và tiến độ đã lưu bền vững.
+
+**Nguyên lý hoạt động:** Sau reset, Bootloader đọc Metadata A/B, đánh giá state và chọn hành động **Resume**, **Restart** hoặc **Rollback** tùy giai đoạn. Không Jump vào Application đang được ghi dở.
+
+| Trạng thái khi gián đoạn | Cách xử lý an toàn |
+|---|---|
+| Nhận gói SDOT (`RECEIVING`) | Application/ESP32 **Resume** từ Download Checkpoint W25Q. |
+| `UPDATE_VERIFYING_CONTAINER`, `UPDATE_VERIFYING_BASE` | **Kiểm tra lại** nguồn SDOT/Base Image. |
+| `UPDATE_PATCHING` | **Chuẩn bị lại** Reconstructed Image từ đầu. |
+| `UPDATE_BACKING_UP` | **Tiếp tục/ghi lại** từ Backup Checkpoint an toàn. |
+| `UPDATE_INSTALLING`, `UPDATE_ROLLBACK` | **Resume** từ trang Internal Flash chưa Verify. |
+| `UPDATE_VERIFYING_INSTALL` | **Verify lại** firmware đã cài. |
+| `UPDATE_TRIAL_BOOT` | Đánh giá `boot_attempts`, chọn thử lại hoặc Rollback. |
+
+**Trong project:** `UPDATE_FAILED` dẫn đến `BOOT_ACTION_STAY_RECOVERY`; bản triển khai đang được mô tả **không có dịch vụ Bootloader tự nhận UART `START` để cứu hộ từ xa ở trạng thái này**. Không khẳng định mọi lỗi đều tự sửa được.
+
+**Câu hỏi phỏng vấn:** Mất nguồn khi Patch khác mất nguồn khi Install ở đâu? Khi nào Restart, khi nào Resume? Tại sao Power-loss Recovery không phải Rollback?
+
+#### A.5.5. Rollback — khôi phục firmware đã sao lưu
+
+**Khái niệm:** **Rollback** là quá trình khôi phục Application đã được chấp nhận trước đó từ **Backup Image**, khi firmware mới không đủ điều kiện trở thành phiên bản chính thức.
+
+**Nguyên lý hoạt động:** Bootloader phải **sao lưu và Verify Backup trước khi Install**. Khi cần Rollback, Bootloader đọc Backup từ W25Q, Erase/Program lại từng trang Application của Internal Flash, đọc lại Verify và commit Checkpoint. Sau khôi phục thành công mới cho chạy firmware cũ.
+
+**Ví dụ / tình huống:** Firmware v2 Install đúng dữ liệu nhưng reset liên tục trong Trial Boot. Sau khi hết số lần thử, Bootloader khôi phục v1 từ Backup Image thay vì tiếp tục chạy v2.
+
+**Trong project:** Rollback dùng Backup trên W25Q, Checkpoint theo trang Internal Flash **1 KiB**. **Rollback ≠ Anti-rollback**: một cơ chế khôi phục bản đã được chấp nhận, một cơ chế ngăn *cài đặt* bản bị cấm theo chính sách phiên bản.
+
+**Câu hỏi phỏng vấn:** Tại sao Backup phải được Verify trước Install? Nếu mất nguồn khi đang Rollback thì sao? Nếu Backup bị hỏng thì có thể bảo đảm phục hồi không?
+
+**Học sâu:** [3 – Boot State Machine](#phan-3) · [5 – Phân tích trạng thái](#phan-5) · [6.9 – Metadata, Checkpoint và Fault Tolerance](#chuong-6-9).
 
 <a id="phu-luc-a-6"></a>
-### A.6. State Machine, lưu trạng thái bền vững và phục hồi
+### A.6. Khởi động thử, xác nhận và Watchdog
 
-#### A.6.1. State Machine, Metadata và Boot Decision
+#### A.6.1. Trial Boot và Confirm
 
-- **Finite State Machine (FSM)** là mô hình có **tập trạng thái hữu hạn** và điều kiện chuyển trạng thái rõ ràng. Trong OTA, các trạng thái như `UPDATE_VERIFYING_CONTAINER`, `UPDATE_PATCHING`, `UPDATE_INSTALLING`, `UPDATE_TRIAL_BOOT` giúp hạn chế thao tác sai thứ tự.
-- **Metadata** là **thông tin điều khiển** được lưu bền vững: `state`, `active_version`, `pending_version`, `active_update_id`, `boot_attempts`, `copy_offset`, `generation`, `crc32`... **Không phải** toàn bộ bytes firmware.
-- **Boot Decision** là logic biến Metadata + điều kiện hệ thống thành hành động tiếp theo: boot Application, xử lý SDOT, Resume Install, Rollback, hay Stay Recovery.
-- **Metadata A/B** là **hai bản lưu độc lập**, được cập nhật luân phiên. Bản mới chỉ được chấp nhận sau khi ghi và Verify; nếu mất nguồn giữa commit, bản cũ vẫn có thể hợp lệ. **CRC32** kiểm tra record, còn **generation** cho biết bản hợp lệ nào mới hơn.
+**Khái niệm:** **Trial Boot** là lần chạy thử Application mới sau khi cài đặt và Verify. **Confirm** là hành động xác nhận firmware thử nghiệm đã đáp ứng điều kiện để được chấp nhận chính thức.
 
-#### A.6.2. Atomicity, Commit, Checkpoint và Idempotency
+**Nguyên lý hoạt động:** Bootloader chuyển `UPDATE_TRIAL_BOOT`, lưu `boot_attempts` **trước khi Jump**, sau đó chạy Application mới. Nếu Application xác nhận thành công, nó commit `UPDATE_CONFIRMED` và reset để Bootloader **Finalize Confirmation**, cập nhật `active_version` và trở về `UPDATE_IDLE`. Nếu liên tục không Confirm, Bootloader có thể Rollback.
 
-- **Atomicity (tính nguyên tử)** là ý tưởng một cập nhật trạng thái hoặc **hoàn tất**, hoặc **không được xem là đã hoàn tất**. Flash không tự làm mọi thao tác ghi nhiều byte thành atomic; thiết kế A/B, record validation và thứ tự commit tạo ra *hiệu ứng commit an toàn trước mất nguồn*.
-- **Checkpoint** là **mốc tiến độ đã lưu và xác minh bền vững**, chẳng hạn offset theo sector W25Q **4 KiB** khi nhận/backup, hay theo trang STM32 Internal Flash **1 KiB** lúc cài đặt. Chỉ Checkpoint sau khi đơn vị đó hoàn tất/Verify.
-- **Idempotency** nghĩa là chạy lại một thao tác nhiều lần không làm sai kết quả so với một lần (trong điều kiện thiết kế cho phép). Ví dụ: sau mất nguồn giữa Install, xóa và ghi lại **trang chưa Checkpoint** từ image hợp lệ, thay vì tiếp tục vào giữa dữ liệu dở.
-- **Power-loss Recovery** là đọc Metadata/Checkpoint sau reset để **tiếp tục hoặc làm lại bước an toàn**. Nó khác với **Rollback**: Recovery xử lý thao tác dang dở, Rollback **khôi phục Application Backup**.
+**Ví dụ / tình huống:** Image mới có CRC32 đúng và vector hợp lệ nhưng treo trong main loop. **Install thành công không đồng nghĩa firmware hoạt động ổn định**, nên vẫn cần giai đoạn Trial Boot và giới hạn số lượt thử.
 
-#### A.6.3. Trial Boot, Confirm, Rollback, Watchdog và Fault Injection
+**Trong project:** Giới hạn **3 lần Trial Boot**. Bản demo tự Confirm sau khoảng **750 ms main loop** hoạt động; đó chỉ là **liveness check cơ bản**, **không phải full health check** cho mọi chức năng của thiết bị.
 
-- **Backup Image:** Bản sao Application đã xác nhận trước đó, lưu trên W25Q **trước khi** ghi đè Internal Flash, được dùng cho Rollback.
-- **Trial Boot:** Khởi động **candidate firmware** để quan sát khả năng chạy. **Install thành công ≠ Confirm thành công**; `active_version` vẫn là bản đã xác nhận trước khi đóng Trial.
-- **Confirm:** Application đánh dấu phiên bản mới đã đạt điều kiện kiểm tra; Bootloader finalize trạng thái thành phiên bản được chấp nhận. Trong demo, điểm xác nhận khoảng **750 ms main loop** chỉ kiểm tra khả năng chạy cơ bản, **chưa phải full health check**.
-- **Rollback:** Khôi phục Backup hợp lệ khi firmware Trial không được xác nhận sau giới hạn; project giới hạn **3 lần Trial Boot**.
-- **IWDG (Independent Watchdog):** Bộ đếm độc lập có thể **reset MCU** nếu phần mềm không phục vụ trong thời gian cho phép. Watchdog **không trực tiếp thực hiện Rollback**: nó tạo reset, còn Bootloader đọc trạng thái/attempts để quyết định.
-- **Fault Injection:** Chủ động gây lỗi tại điểm xác định (mất nguồn, cắt dữ liệu, chữ ký bị sửa...) để thử các invariant của hệ thống. **HIL (Hardware-in-the-Loop)** dùng phần cứng thật trong chu trình kiểm thử; kết quả **9/9 scenario PASS** là bằng chứng trong phạm vi 9 kịch bản đó, **không phải bảo đảm tuyệt đối**.
+**Câu hỏi phỏng vấn:** Vì sao không cập nhật `active_version` ngay sau Install? Vì sao phải lưu `boot_attempts` trước Jump? 750 ms có đủ chứng minh firmware ổn định không?
+
+#### A.6.2. Watchdog và IWDG — phát hiện phần mềm không đáp ứng
+
+**Khái niệm:** **Watchdog** là bộ đếm giám sát, cần được phần mềm phục vụ (refresh/feed) đúng hạn. **IWDG (Independent Watchdog)** của STM32 sử dụng nguồn clock độc lập để có thể reset MCU khi ứng dụng không đáp ứng.
+
+**Nguyên lý hoạt động:** Cấu hình bộ chia clock và giá trị reload để xác định timeout; phần mềm định kỳ làm mới bộ đếm. Nếu không làm mới trước khi đếm hết, Watchdog gây **reset**. Watchdog **không tự sao chép firmware Backup**; sau reset, Bootloader đọc Metadata, số lần Trial Boot và đưa ra Boot Decision.
+
+**Ví dụ / tình huống:** Firmware mới bị kẹt trước bước Confirm. IWDG có thể reset STM32; Bootloader ghi nhận lần thử thất bại, cho thử lại nếu còn lượt, hoặc khởi động Rollback khi vượt ngưỡng.
+
+**Trong project:** IWDG được dùng trong Trial Boot (timeout danh định khoảng **4,8 giây**, phụ thuộc cấu hình/clock thực tế). **IWDG reset ≠ Rollback tự động**. Nếu Application Confirm quá sớm, Watchdog vẫn có thể không phát hiện lỗi nghiệp vụ xuất hiện muộn.
+
+**Câu hỏi phỏng vấn:** Watchdog khác Timer thông thường như thế nào? Vì sao IWDG có thể hỗ trợ phát hiện treo? Ai thực sự quyết định Rollback sau reset? Vì sao Confirm sớm có thể là một giới hạn?
+
+**Học sâu:** [5.5 – Trial Boot và Rollback](#chuong-5-5) · [6.10 – Watchdog, Debugging và Testing](#chuong-6-10).
 
 ---
 
