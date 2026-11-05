@@ -180,7 +180,7 @@ Base Image + Patch → A B X Y E F (= Target Image)
 ```text
 Gói SDOT đã ký trong project:
 ┌─────────────────────────────────────────┐
-│ Header cố định 120 B + SCX1 20 B         │ ← 140 B thuộc vùng được ký
+│ Header cố định 120 B + SCX1 20 B        │ ← 140 B thuộc vùng được ký
 ├─────────────────────────────────────────┤
 │ Payload: Full firmware hoặc Delta Patch │ ← thuộc vùng được ký
 ├─────────────────────────────────────────┤
