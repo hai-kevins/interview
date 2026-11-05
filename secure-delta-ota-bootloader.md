@@ -2449,18 +2449,10 @@ Những ràng buộc này bảo vệ tính nhất quán của State Machine: **m
 <a id="phan-6"></a>
 ## Phần 6. Ôn tập kiến thức kỹ thuật
 
-> **Tiến độ:** **Chương 6.1–6.10 đã được phát triển thành bài học chi tiết** theo trình tự **nguyên lý → liên hệ project → mã nguồn → tình huống lỗi → câu hỏi phỏng vấn**. **Cả 10 chương đã có nội dung ôn tập chi tiết**. Nội dung được tách rõ giữa hành vi hiện có trong repository, ví dụ minh họa và hướng cải tiến production.
-
-**Kiến thức Embedded tổng quát cần ôn song song:** C (pointer, `volatile`, `const`, `static`, bitwise), ngắt, Timer, I2C, debugging, build/link và Git. Đây là nội dung mở rộng phục vụ phỏng vấn; không phải tất cả đều là tính năng đã triển khai trong project.
-
 ---
 
 <a id="chuong-6-1"></a>
 ### 6.1. STM32F103 & ARM Cortex-M3
-
-> **Mục tiêu:** Hiểu bộ xử lý Cortex-M3 và các tài nguyên STM32F103C8T6 mà **Bootloader** và **Application** cùng sử dụng; biết cách liên hệ **Memory Map, MSP/PSP, NVIC, Clock và Reset** với một lần khởi động, chuyển quyền điều khiển và phục hồi OTA. Chương này ôn nền tảng phần cứng; chi tiết startup/linker được đào sâu tiếp ở **6.2**.
->
-> **Phân biệt nguồn thông tin:** Các **địa chỉ phân vùng và thứ tự handoff** dưới đây được đối chiếu với repository. Các giải thích như **Thread/Handler mode**, **MSP/PSP**, **NVIC**, **RCC/PLL** là kiến thức nền Cortex-M3/STM32F1 và được chỉ rõ khi liên hệ vào project.
 
 #### Sơ đồ tổng quan: Cortex-M3 trong project
 
@@ -2768,10 +2760,6 @@ void example_read_application_vectors(uint32_t *initial_msp,
 
 <a id="chuong-6-2"></a>
 ### 6.2. Boot Process, Vector Table & Linker Script
-
-> **Mục tiêu:** Hiểu trọn chuỗi **reset phần cứng → vector table → `Reset_Handler` → C runtime → `main()`**, đồng thời giải thích được cách **Bootloader chuyển quyền điều khiển sang Application** mà không reset MCU. Đọc được hai linker script, phát hiện lỗi vị trí image/vector và trả lời các câu hỏi phỏng vấn thường gặp về **MSP, VTOR, `.data`, `.bss` và `Application Jump`**.
->
-> **Phạm vi và nguồn:** Các địa chỉ, tên file, kiểm tra vector, trình tự cleanup và các ký hiệu linker dưới đây được đối chiếu với repository của project. Các đoạn C hoặc assembly ghi rõ **"mã minh họa"** chỉ để giải thích nguyên lý; **không** thay thế nguyên văn source code trong repository. Đây là chương nối tiếp **6.1** (kiến trúc MCU), **Phần 3/5** (Boot State Machine), và **4.4–4.5** (cập nhật rồi chạy Application).
 
 #### Sơ đồ tổng quan: Reset, Startup và Application Handoff
 
@@ -3174,10 +3162,6 @@ p/x $pc             # PC hiện tại
 <a id="chuong-6-3"></a>
 ### 6.3. STM32 Internal Flash Programming
 
-> **Mục tiêu:** Giải thích được **vì sao phải Erase trước khi Program**, tại sao STM32F103 dùng **trang xóa 1 KiB** và **đơn vị ghi half-word 16-bit**, cách Bootloader ghi firmware mới từ **W25Q Reconstructed Image** vào **Internal Flash Application** và xác minh kết quả. Quan trọng nhất: giải thích được cơ chế **Checkpoint theo trang** để phục hồi an toàn khi mất nguồn giữa quá trình ghi.
->
-> **Phạm vi và nguồn:** Các địa chỉ, hàm `FLASH_ErasePage()`, `FLASH_ProgramHalfWord()`, luồng `ProgramBufferedApplicationPage()`, `ResumePageCheckpointedCopy()` và hành vi kiểm tra/commit dưới đây được đối chiếu với **repository**. Những phần diễn giải cơ chế Flash, ví dụ byte/half-word và đoạn *pseudocode* được đánh dấu là **kiến thức giải thích hoặc mô phỏng**, không phải đoạn code sao chép nguyên văn. Chương này nối tiếp **6.1** (Memory Map), **6.2** (Boot Process) và **5.4** (Backup → Install → Verify).
-
 #### Sơ đồ tổng quan: Ghi Application vào Internal Flash
 
 ```mermaid
@@ -3560,12 +3544,6 @@ Metadata nằm trong **Internal Flash** nhưng có nhiệm vụ khác với firm
 <a id="chuong-6-4"></a>
 ### 6.4. External SPI Flash W25Q
 
-> **Mục tiêu:** Giải thích được cơ chế hoạt động của **SPI NOR Flash W25Q**, sự khác nhau giữa **Read**, **Page Program (256 byte)** và **Sector Erase (4 KiB)**, ý nghĩa **WIP/BUSY** và **WEL**, giới hạn địa chỉ/phân vùng, cách **STM32 Application** lưu gói SDOT và cách **STM32 Bootloader** dùng các vùng **Reconstructed Image** và **Backup Image**. Quan trọng nhất: phân tích được **Resume sau mất nguồn** mà không phá hỏng các phân vùng khác.
->
-> **Phạm vi đối chiếu:** Thông số về W25Q32/W25Q64, wiring, lệnh SPI, bảng phân vùng, các tên hàm và quy tắc bảo vệ lấy từ [`docs/external-spi-flash.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/external-spi-flash.md), [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md), `spi_flash.c`, `external_flash_storage.c` và các storage/receiver tương ứng. Các sơ đồ, ví dụ hex và **pseudocode** dưới đây dùng để giảng giải, không phải code sao chép nguyên văn.
->
-> **Liên hệ:** Chương 6.3 giải thích **Internal Flash STM32** (Erase 1 KiB, Program 16-bit). Chương này giải thích **External Flash W25Q** (Erase sector 4 KiB, Program theo page tối đa 256 byte). Phần 6.6 sẽ đi sâu hơn về tầng tín hiệu **SPI**.
-
 #### Sơ đồ tổng quan: Dữ liệu OTA đi qua W25Q như thế nào?
 
 ```mermaid
@@ -3944,12 +3922,6 @@ flowchart TD
 
 <a id="chuong-6-5"></a>
 ### 6.5. UART Communication & OTA Protocol
-
-> **Mục tiêu:** Giải thích được **UART 115200 8-N-1**, cách phân tách packet bằng **COBS + `0x00`**, cấu trúc packet OTA v1, **CRC32**, quy tắc `Sequence`/`Offset`/`Update ID`, phản hồi **ACK/NACK**, cơ chế **Retry/Resume**, và điểm bàn giao **`FINISH` → `INSTALL` → Bootloader**. Sau chương này, em cần phân tích được vì sao hệ thống có thể nhận một gói SDOT qua UART và tiếp tục sau mất nguồn mà không tin nhầm vào dữ liệu chưa được lưu an toàn.
->
-> **Phạm vi đối chiếu repository:** Giao thức và các giá trị cụ thể lấy từ [`docs/uart-ota-protocol.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/uart-ota-protocol.md), [`shared/include/ota_protocol.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/ota_protocol.h), [`gateway-esp32/README.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/gateway-esp32/README.md) và code STM32/Gateway liên quan. Những đoạn code ghi **“pseudocode minh họa”** chỉ giúp học nguyên lý, không phải hàm được sao chép nguyên văn từ repository.
->
-> **Liên hệ với các phần đã học:** Phần **4.3** giới thiệu đường truyền ESP32 → STM32 Application; **5.2** nói về các trạng thái nhận OTA; **6.4** phân tích W25Q và Checkpoint. **6.5** đi sâu vào lớp truyền thông: làm thế nào từng byte UART trở thành một packet hợp lệ và một gói SDOT đã nhận đầy đủ.
 
 #### Sơ đồ tổng quan: Từ gói SDOT trong ESP32 đến bàn giao Bootloader
 
@@ -4639,12 +4611,6 @@ Flash write/verify, sector erase, xử lý MCU, Wi-Fi hoặc các lần Retry.
 <a id="chuong-6-6"></a>
 ### 6.6. SPI Communication
 
-> **Mục tiêu:** Hiểu từ nguyên lý **SPI Master/Slave, SCK/MOSI/MISO/CS, CPOL/CPHA** đến cấu hình **SPI1 trên STM32F103** và cách chương trình thực sự trao đổi opcode, địa chỉ, dữ liệu với **W25Q**. Có thể lần theo `SpiFlash_Init()`, `Transfer()`, `SpiFlash_Read()`, `SpiFlash_Write()` và `SpiFlash_EraseSector()`; giải thích lỗi truyền và tác động tới OTA khi phỏng vấn.
->
-> **Phạm vi đối chiếu:** Các chân, chế độ, prescaler, opcode và hành vi driver lấy từ [`docs/external-spi-flash.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/external-spi-flash.md), [`spi_flash.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/drivers/spi_flash.c), [`external_flash_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/external_flash_storage.c) và [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md). Kiến thức chung về timing, CPOL/CPHA, logic analyzer được ghi rõ là **giải thích nền tảng**, không phải một tính năng phần mềm riêng của repository.
->
-> **Liên hệ các chương:** **6.4** tập trung vào đặc tính và phân vùng W25Q; **6.5** tập trung vào UART truyền SDOT giữa ESP32 và STM32; còn **6.6** tập trung vào **đường truyền SPI bên trong STM32 ↔ W25Q**. Vì vậy, SPI không trực tiếp nối ESP32 với STM32 trong cấu hình của project.
-
 #### Sơ đồ tổng quan: SPI nằm ở đâu trong hệ thống OTA?
 
 ```mermaid
@@ -5241,12 +5207,6 @@ SPI Flash hardware test: PASS
 
 <a id="chuong-6-7"></a>
 ### 6.7. Full OTA, Delta OTA & JojoDiff
-
-> **Mục tiêu:** Hiểu vì sao project hỗ trợ đồng thời **Full OTA** và **Delta OTA**, cách tạo **JojoDiff-compatible Delta Patch** ở máy phát hành, cách gói patch vào **SDOT v1 + SCX1**, quy trình xác minh **exact-base** và tái tạo **Target Image** trong STM32 Bootloader. Sau chương này, bạn cần giải thích được **vì sao patch nhỏ hơn nhưng không mặc nhiên an toàn**, điều kiện dùng Delta và cách khôi phục nếu mất nguồn trong `UPDATE_PATCHING`.
->
-> **Phạm vi đối chiếu repository:** Các quy tắc release, định dạng SDOT, các hàm tạo/áp dụng patch và trạng thái Bootloader được đối chiếu từ [`tools/jojodiff_patch.py`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/tools/jojodiff_patch.py), [`tools/release.py`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/tools/release.py), [`tools/secure_container.py`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/tools/secure_container.py), [`docs/firmware-container.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/firmware-container.md), [`docs/release-process.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/release-process.md) và [`node-stm32f103/bootloader/src/secure_container.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/secure_container.c). Các ví dụ byte và mã giả dưới đây được ghi rõ là **minh họa**; không phải bản chép nguyên văn source code.
->
-> **Liên hệ các chương:** **4.1** trình bày quy trình Developer/CI tạo release; **5.3** trình bày các trạng thái `VERIFYING_BASE` và `PATCHING`; **6.4** trình bày phân vùng W25Q; **6.5** trình bày đường truyền UART. **6.7** kết nối các kiến thức đó, tập trung vào **dữ liệu Full/Delta**, quá trình tạo patch ở host và quá trình tái tạo image ở STM32.
 
 #### Sơ đồ tổng quan: Một firmware đích, hai cách cập nhật
 
