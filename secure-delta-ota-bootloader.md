@@ -37,14 +37,8 @@
 <a id="phu-luc-a"></a>
 ## Phụ lục A. Các khái niệm, công nghệ và thuật toán cốt lõi của project
 
-> **Mục đích:** Tra cứu **khái niệm → nguyên lý → vai trò trong Secure Delta OTA Bootloader** trước khi học Phần 1–7. Đây là **phụ lục kiến thức nền** chứ không phải phần mô tả một tính năng mới. Các thông số ghi rõ "trong project" được đối chiếu với repository; những ví dụ thuật toán nhỏ là **ví dụ giảng giải**, không phải trích nguyên văn mã nguồn.
->
-> **Cách học:** Với mỗi thuật ngữ, thử trả lời ba câu: **(1) Nó là gì? (2) Nó hoạt động ra sao? (3) Tại sao project cần nó?** Nếu muốn đi sâu, dùng liên kết "Học kỹ" ở cuối mỗi nhóm để đến chương tương ứng.
-
 <a id="phu-luc-a-0"></a>
 ### A.0. Quy ước thuật ngữ thống nhất cho toàn tài liệu
-
-> **Nguyên tắc:** Chọn một cách gọi chính cho từng khái niệm; khi cần, dùng tiếng Việt giải thích trong ngoặc ở lần đầu. **Không đồng nhất các khái niệm khác nhau chỉ vì chúng có tên gần giống nhau.** Các định danh viết trong `code`, tên file, enum, API, macro, tiêu đề tài liệu gốc và trường protocol được giữ đúng chính tả của repository.
 
 | Thuật ngữ chuẩn | Ý nghĩa / quy tắc sử dụng | Không đánh đồng với |
 |---|---|---|
@@ -69,55 +63,6 @@
 | **Power-loss Recovery / Rollback / Anti-rollback** | Recovery tiếp tục/làm lại việc an toàn; Rollback phục hồi firmware đã sao lưu; Anti-rollback ngăn cập nhật xuống phiên bản cũ không cho phép. | Ba cơ chế độc lập về mục tiêu. |
 | **Watchdog / IWDG** | Watchdog là khái niệm; **IWDG** là Independent Watchdog của STM32F103 dùng trong Trial Boot. | Watchdog reset không tự thực hiện Rollback; Bootloader xử lý sau reset. |
 | **Verify / Validation / xác thực / kiểm tra** | Nêu rõ đối tượng: **CRC32 check**, **SHA-256 hash check**, **ECDSA signature verification**, **Flash read-back Verify**, hoặc **Release Validation**. | Không coi mọi từ "Verify" là xác thực chữ ký số. |
-
-**Quy ước viết:** Dùng `CRC32`, `SHA-256`, `ECDSA P-256`, `Full OTA`, `Delta OTA`, `Delta Patch`, `SDOT`, `SCX1`, `Boot State Machine`, `Boot Decision`, `Metadata`, `Checkpoint`, `Trial Boot`, `Confirm`, `Rollback`, `Power-loss Recovery` như trên. Những tên chuẩn của thuật toán CRC (ví dụ **CRC-32/ISO-HDLC**) được giữ nguyên khi đang chỉ **biến thể/chuẩn cụ thể**, không sửa thành tên cơ chế chung.
-
-**Phân biệt tên code và tên mô tả:** Các enum `UPDATE_*`, các lệnh `FINISH`/`INSTALL`, hàm `BootDecision_Evaluate()` và các tên biến như `base_image_sha256` luôn giữ nguyên. Khi mô tả luồng bằng sơ đồ, `VERIFYING_CONTAINER`, `PATCHING` hoặc `TRIAL_BOOT` có thể là nhãn rút gọn; đừng hiểu chúng là chuỗi enum thay thế tên `UPDATE_*` trong source code.
-
-
-**Đi nhanh đến nhóm kiến thức:** [A.0. Quy ước chung](#phu-luc-a-0) · [A.1. Tổng quan](#phu-luc-a-1) · [A.2. MCU, Boot và Flash](#phu-luc-a-2) · [A.3. OTA, Delta và Release](#phu-luc-a-3) · [A.4. Truyền thông](#phu-luc-a-4) · [A.5. Thuật toán bảo mật](#phu-luc-a-5) · [A.6. Phục hồi, kiểm thử](#phu-luc-a-6) · [A.7. Các ví dụ tính toán](#phu-luc-a-7) · [A.8. Bảng phân biệt nhanh](#phu-luc-a-8).
-
-<a id="phu-luc-a-1"></a>
-### A.1. Bức tranh tổng quan: mỗi công nghệ giải quyết vấn đề gì?
-
-**Luồng cập nhật firmware từ trên xuống:**
-
-```mermaid
-flowchart TD
-    CI["Developer/CI<br/>Build + tạo Full/Delta + ký số"] --> S["Release Server<br/>Manifest + MQTTS / HTTPS"]
-    S --> E["ESP32 Gateway<br/>Tải SDOT + Flash cache"]
-    E -->|"UART / COBS / CRC32"| A["STM32 Application<br/>Nhận và lưu W25Q"]
-    A -->|"INSTALL + Metadata + Reset"| B["STM32 Bootloader<br/>SHA-256 / ECDSA / policy"]
-    B -->|"Full copy hoặc Delta patch"| R["Reconstructed Image"]
-    R --> I["Backup / Install / Verify"]
-    I --> T["Trial Boot → Confirm / Rollback"]
-```
-
-**Các bài toán và công nghệ tương ứng (trình bày dọc):**
-
-**1. Giảm dữ liệu tải về**  
-**Công nghệ / thuật toán chính:** Full/Delta OTA, JojoDiff, JANPatch.  
-**Ý tưởng cần nhớ:** Chỉ gửi khác biệt khi patch đủ nhỏ; phải có **đúng firmware gốc**.
-
-**2. Truyền gói không lẫn packet**  
-**Công nghệ / thuật toán chính:** UART, COBS, Sequence/Offset.  
-**Ý tưởng cần nhớ:** Chia thành frame, biết thứ tự và vị trí từng phần.
-
-**3. Phát hiện lỗi truyền/lưu**  
-**Công nghệ / thuật toán chính:** CRC32, ACK/NACK, Retry.  
-**Ý tưởng cần nhớ:** Phát hiện dữ liệu lỗi do đường truyền/bộ nhớ, yêu cầu truyền lại.
-
-**4. Xác minh bản cập nhật**  
-**Công nghệ / thuật toán chính:** SHA-256, ECDSA P-256, Trusted Public Key.  
-**Ý tưởng cần nhớ:** Kiểm tra nội dung và nguồn ký **trước khi cài đặt**.
-
-**5. Không mất khả năng khởi động khi cập nhật lỗi**  
-**Công nghệ / thuật toán chính:** External Flash, Backup, Metadata A/B, Checkpoint.  
-**Ý tưởng cần nhớ:** Giữ dữ liệu và trạng thái phục hồi bền vững.
-
-**6. Phát hiện firmware mới không chạy ổn**  
-**Công nghệ / thuật toán chính:** Trial Boot, IWDG, Rollback.  
-**Ý tưởng cần nhớ:** Chạy thử có giới hạn, không xác nhận thì khôi phục bản cũ.
 
 <a id="phu-luc-a-2"></a>
 ### A.2. Nền tảng MCU, Bootloader và bộ nhớ Flash
@@ -149,8 +94,6 @@ flowchart TD
 - **Program:** Ghi dữ liệu; STM32F103 lập trình Flash theo **half-word 16 bit**, W25Q **Page Program tối đa 256 byte** trong một trang.
 - **Read-back Verify:** Đọc lại dữ liệu đã ghi để xác minh trước khi đánh dấu thao tác thành công.
 - **WIP/WEL (trên W25Q):** **WIP** báo thiết bị Flash đang bận với thao tác nội bộ; **WEL** cho biết lệnh ghi/xóa đã được cho phép. **WIP không phải cờ BSY của ngoại vi SPI trong STM32**.
-
-**Học kỹ:** [6.1 – Cortex-M3](#chuong-6-1) · [6.2 – Boot Process/Linker](#chuong-6-2) · [6.3 – Internal Flash](#chuong-6-3) · [6.4 – W25Q](#chuong-6-4).
 
 <a id="phu-luc-a-3"></a>
 ### A.3. Công nghệ OTA, thuật toán Delta và bản phát hành
