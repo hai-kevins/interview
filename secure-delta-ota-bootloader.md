@@ -5796,12 +5796,6 @@ python3 tools/release.py \
 <a id="chuong-6-8"></a>
 ### 6.8. Cryptography & Firmware Security
 
-> **Mục tiêu:** Nắm được **SHA-256, CRC32, ECDSA P-256, Public/Private Key, Trust Anchor, Signed SDOT, Anti-rollback** và cách STM32 Bootloader đưa ra quyết định **chấp nhận hoặc từ chối một bản cập nhật**. Sau chương này, bạn cần giải thích được đường đi từ **ký firmware tại Developer/CI** đến **xác thực tại STM32F103**, vì sao **HTTPS và CRC32 không thay thế chữ ký số**, và điều kiện nào phải hoàn thành trước khi ghi đè Internal Flash.
->
-> **Phạm vi đối chiếu repository:** Các quy tắc SDOT được đối chiếu từ [`docs/firmware-container.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/firmware-container.md); luồng xác thực thực tế từ [`secure_container.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/secure_container.c), [`firmware_container.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/src/firmware_container.c); ký gói từ [`tools/secure_container.py`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/tools/secure_container.py); provision khóa từ [`tools/keytool.py`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/tools/keytool.py) và [`trusted_key.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/include/trusted_key.h). Mô hình đe dọa và giới hạn được ghi tại [`docs/threat-model.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/threat-model.md). **Mã C/Python bên dưới là minh họa hoặc giản lược có ghi chú, không phải bản sao nguyên văn source.**
->
-> **Liên hệ các phần:** **4.1** giải thích khâu tạo release; **4.4–4.5** giải thích bàn giao và cài đặt; **5.3** giải thích `VERIFYING_CONTAINER`/`VERIFYING_BASE`; **6.5** phân biệt CRC ở tầng giao tiếp; **6.7** phân biệt Full/Delta và Target Image. **6.8** tập trung vào **ranh giới tin cậy và điều kiện bảo mật** xuyên suốt các luồng đó.
-
 #### Sơ đồ tổng quan: Chuỗi tin cậy của một bản OTA
 
 ```mermaid
@@ -6428,12 +6422,6 @@ node-stm32f103/bootloader/src/secure_container.c
 <a id="chuong-6-9"></a>
 ### 6.9. Metadata, Checkpoint & Fault Tolerance
 
-> **Mục tiêu:** Hiểu vì sao một OTA Bootloader cần **trạng thái bền vững**, cách **Metadata A/B + generation + CRC32** bảo vệ lần ghi trạng thái, sự khác nhau giữa **Metadata và Checkpoint**, và cách từng thao tác **Download / Patch / Backup / Install / Rollback** được phục hồi sau reset. Sau chương này, bạn cần giải thích được: *"Nếu mất nguồn đúng lúc đang ghi Flash hoặc Metadata thì thiết bị dựa vào đâu để quyết định tiếp tục?"*
->
-> **Nguồn triển khai:** [`docs/metadata-and-boot-decision.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/metadata-and-boot-decision.md), [`docs/boot-state-machine.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-state-machine.md), [`shared/include/boot_metadata.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/boot_metadata.h), [`node-stm32f103/bootloader/storage/metadata_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/storage/metadata_storage.c), [`node-stm32f103/bootloader/src/boot_manager.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/boot_manager.c), [`VALIDATION.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/VALIDATION.md). Đoạn mã có nhãn *pseudocode* chỉ diễn giải nguyên lý, **không phải bản sao source**.
->
-> **Liên hệ chương trước:** 6.3 nói về ghi **Internal Flash**, 6.4 nói về **W25Q**, 6.5 nói về **Receive/Resume**; Chương 5 mô tả **State Machine**. Chương 6.9 giải thích *cách các trạng thái và tiến độ sống sót qua một lần reset*.
-
 #### Sơ đồ tổng quan: Ba lớp trạng thái trong Secure Delta OTA
 
 ```mermaid
@@ -6799,12 +6787,6 @@ Sau reset:
 
 <a id="chuong-6-10"></a>
 ### 6.10. Watchdog, Debugging & Testing
-
-> **Mục tiêu:** Nắm **IWDG**, giới hạn của **Trial Boot health check**, cách sử dụng **SWD/GDB/OpenOCD**, quy trình **fault injection**, **HIL (Hardware-in-the-Loop)**, kiểm thử tự động/CI và cách đọc **benchmark** đúng ngữ cảnh. Sau chương này, bạn cần trả lời: *"Làm sao chứng minh Bootloader thực sự sống sót qua mất nguồn, và bằng chứng kiểm thử nói được đến đâu?"*
->
-> **Nguồn đối chiếu:** [`docs/boot-state-machine.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-state-machine.md), [`node-stm32f103/bootloader/src/trial_boot.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/trial_boot.c), [`node-stm32f103/bootloader/src/boot_manager.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/boot_manager.c), [`docs/hil-results.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/hil-results.md), [`VALIDATION.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/VALIDATION.md), [`REPORT.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/REPORT.md). **Ví dụ lệnh Debug GDB có đánh dấu minh họa** phải điều chỉnh theo ELF/board/adapter thật; chỉ các `make` target được nêu trong repo mới được coi là lệnh tái lập đã công bố.
->
-> **Liên hệ:** Chương 5 mô tả Trial Boot/Rollback, 6.2 nói về Reset/Jump, 6.3 và 6.9 giải thích Install/Checkpoint. **6.10** tập trung vào *phát hiện firmware không xác nhận, quan sát trạng thái và kiểm chứng các bất biến trên phần cứng*.
 
 #### Sơ đồ tổng quan: Từ Trial Boot đến bằng chứng kiểm thử
 
