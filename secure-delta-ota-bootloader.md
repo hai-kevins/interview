@@ -65,7 +65,7 @@
 | **Verify / Validation / xác thực / kiểm tra** | Nêu rõ đối tượng: **CRC32 check**, **SHA-256 hash check**, **ECDSA signature verification**, **Flash read-back Verify**, hoặc **Release Validation**. | Không coi mọi từ "Verify" là xác thực chữ ký số. |
 
 <a id="phu-luc-a-2"></a>
-### A.2. Nền tảng MCU, Bootloader và bộ nhớ Flash
+### A.2. Bootloader và bộ nhớ Flash
 
 #### A.2.1. Firmware và Application
 
