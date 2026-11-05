@@ -732,10 +732,6 @@ Release Server sử dụng bộ release đã triển khai để:
 <a id="luong-2"></a>
 ### 4.2. Release Server → ESP32 Gateway
 
-> **Mục tiêu:** Hiểu cách Release Server **xác minh và lựa chọn gói cập nhật SDOT**, thông báo cập nhật bằng **MQTTS**, và cách ESP32 Gateway tải gói đó bằng **HTTPS** trước khi truyền xuống STM32 Application.
->
-> **Phân biệt hai giao thức:** **MQTTS** dùng để gửi lệnh cập nhật và trao đổi trạng thái; **HTTPS** dùng để tải nội dung gói cập nhật SDOT. Firmware không được truyền trực tiếp trong thông điệp MQTTS.
-
 #### Sơ đồ luồng hoạt động
 
 ```mermaid
@@ -855,10 +851,6 @@ ESP32 có thể gửi thông tin **tiến độ/trạng thái** về hệ thốn
 
 <a id="luong-3"></a>
 ### 4.3. ESP32 Gateway → STM32 Application
-
-> **Mục tiêu:** Hiểu cách **ESP32 Gateway** truyền gói cập nhật **SDOT** xuống **STM32 Application** qua **UART**, cách STM32 lưu dữ liệu vào **External Flash W25Q** qua **SPI**, và cách hệ thống xử lý lỗi truyền, **Retry**, **Resume** trước khi bàn giao cho **STM32 Bootloader**.
->
-> **Phân chia trách nhiệm:** **STM32 Application** nhận, kiểm tra và lưu **gói cập nhật SDOT**; **STM32 Bootloader** xác thực chữ ký, xử lý Full/Delta OTA và cài đặt **firmware mới** vào Internal Flash.
 
 #### Sơ đồ luồng hoạt động
 
@@ -1146,10 +1138,6 @@ STM32 Bootloader
 <a id="luong-4"></a>
 ### 4.4. STM32 Application → STM32 Bootloader
 
-> **Mục tiêu:** Hiểu cách **STM32 Application** bàn giao gói cập nhật **SDOT** cho **STM32 Bootloader** thông qua **Metadata + Reset**; cách Bootloader xác thực, chuẩn bị firmware mới, sao lưu, cài đặt và quyết định **Trial Boot / Rollback**.
->
-> **Phân chia trách nhiệm:** **STM32 Application** nhận và lưu SDOT, sau đó yêu cầu cài đặt. **STM32 Bootloader** đọc Metadata, xác thực chữ ký, xử lý **Full OTA / Delta OTA**, cài đặt firmware mới vào **Internal Flash** và thực hiện các bước phục hồi khi cần.
-
 #### Sơ đồ luồng hoạt động
 
 ```mermaid
@@ -1435,10 +1423,6 @@ INSTALL → Metadata + Reset
 
 <a id="luong-5"></a>
 ### 4.5. STM32 Bootloader → STM32 Internal Flash
-
-> **Mục tiêu:** Hiểu cách **STM32 Bootloader** cài đặt firmware mới vào **STM32 Internal Flash**: đọc firmware từ **External Flash W25Q**, xóa và ghi từng trang, kiểm tra dữ liệu đã ghi, cập nhật **Checkpoint** và chuyển sang **Trial Boot**.
->
-> **Điều kiện đầu vào:** Gói SDOT đã được xác thực; firmware mới đã nằm trong vùng **Reconstructed Image** của External Flash W25Q; bản **Backup** của firmware hiện tại đã được tạo và kiểm tra. Ở phần này tập trung vào quá trình **Install** thay vì lặp lại quá trình xác thực SDOT hay tạo Delta Patch.
 
 #### Sơ đồ luồng hoạt động
 
