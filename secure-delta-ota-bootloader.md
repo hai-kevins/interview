@@ -1934,10 +1934,6 @@ STM32 Application dùng **Download Checkpoint** ở External Flash W25Q, đượ
 <a id="chuong-5-3"></a>
 ### 5.3. `VERIFYING_CONTAINER` → `VERIFYING_BASE` → `PATCHING` → `IMAGE_READY`
 
-> **Mục tiêu:** Phân tích cách Bootloader **xác thực nguồn cập nhật**, kiểm tra **Base Image** của Delta OTA, chuẩn bị firmware mục tiêu và xác minh firmware mới **trước khi** ghi đè Application đang hoạt động.
->
-> **Phân biệt Full/Delta:** Full OTA mang **toàn bộ firmware mới**; Delta OTA mang **patch** và phải khớp firmware gốc. **Cả Full và Delta** đều đi qua trạng thái persisted `UPDATE_PATCHING` trong triển khai hiện tại.
-
 #### Sơ đồ luồng hoạt động
 
 ```mermaid
@@ -2066,8 +2062,6 @@ Bootloader kiểm tra **Target SHA-256** và các điều kiện hợp lệ củ
 <a id="chuong-5-4"></a>
 ### 5.4. `IMAGE_READY` → `BACKING_UP` → `INSTALLING` → `VERIFYING_INSTALL`
 
-> **Mục tiêu:** Hiểu vì sao Bootloader phải **Backup trước khi Install**, cách ghi Internal Flash theo trang và cách lưu Checkpoint để phục hồi khi thiết bị mất nguồn đúng lúc đang ghi firmware.
-
 #### Sơ đồ luồng hoạt động
 
 ```mermaid
@@ -2195,8 +2189,6 @@ Theo tài liệu trạng thái, khi quá trình cài đặt không thể tiếp 
 <a id="chuong-5-5"></a>
 ### 5.5. `TRIAL_BOOT` → `CONFIRMED` / `ROLLBACK` → `IDLE`
 
-> **Mục tiêu:** Hiểu vì sao **Install thành công chưa phải cập nhật thành công**, cách Bootloader quản lý số lần thử, cách Application xác nhận bản mới và cách quay về firmware cũ nếu Trial Boot thất bại.
-
 #### Sơ đồ luồng hoạt động
 
 ```mermaid
@@ -2305,8 +2297,6 @@ Bootloader không coi vùng Application đang khôi phục dở là ứng dụng
 
 <a id="chuong-5-6"></a>
 ### 5.6. Power-loss Recovery, trạng thái `FAILED` và các chuyển trạng thái không hợp lệ
-
-> **Mục tiêu:** Tổng hợp hành vi phục hồi theo **từng state**, chỉ rõ trường hợp nào **Resume**, trường hợp nào **Restart**, trường hợp nào **Rollback** và khi nào phải **STAY_RECOVERY**.
 
 #### Sơ đồ quyết định sau reset bất ngờ
 
