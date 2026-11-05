@@ -91,7 +91,7 @@
 
 **Khái niệm:** **Internal Flash** là bộ nhớ không mất dữ liệu nằm trong STM32; **External Flash W25Q** là bộ nhớ NOR Flash bên ngoài, được truy cập qua driver giao tiếp; **SRAM** là bộ nhớ làm việc và mất dữ liệu khi mất nguồn.
 
-**Nguyên lý hoạt động:** Internal Flash chứa mã máy được CPU thực thi; External Flash đóng vai trò vùng lưu tạm và sao lưu, không được dùng như địa chỉ RAM/Flash nội có thể tùy ý dereference. Dữ liệu bền vững nằm trong Flash, trong khi stack và buffer nằm trong SRAM.
+**Nguyên lý hoạt động:** Internal Flash chứa mã máy được CPU thực thi; External Flash đóng vai trò vùng lưu tạm và sao lưu, không được dùng như địa chỉ RAM/Flash nội có thể tùy ý giải tham chiếu. Dữ liệu bền vững nằm trong Flash, trong khi stack và buffer nằm trong SRAM.
 
 **Ví dụ / tình huống:** Nếu đang nhận gói SDOT mà mất nguồn, dữ liệu đã lưu bền vững trên W25Q có thể được sử dụng để tiếp tục; dữ liệu mới chỉ nằm trong buffer SRAM thì không thể tin là còn nguyên.
 
