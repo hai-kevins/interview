@@ -77,7 +77,7 @@
 
 **Khái niệm**
 
-- **Firmware** là chương trình đã biên dịch để thực thi trên vi điều khiển; firmware image thường là tệp nhị phân `.bin`.
+- **Firmware** là chương trình đã biên dịch để thực thi trên vi điều khiển; thường là tệp nhị phân `.bin`.
 - **STM32 Application** là firmware đảm nhiệm chức năng hoạt động bình thường của thiết bị, bao gồm tiếp nhận gói cập nhật trong hệ thống này.
 - **STM32 Bootloader** là chương trình chạy khi MCU khởi động, đọc trạng thái bền vững để quyết định chạy Application hay thực hiện bước xác thực, cài đặt hoặc phục hồi.
 
