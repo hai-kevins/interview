@@ -74,7 +74,7 @@
 
 #### A.2.2. Bootloader, Reset Vector, Vector Table, MSP và VTOR
 
-- **Bootloader* là chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
+- **Bootloader** là chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
 - **Bootloader** chạy sau reset tại vùng Flash khởi động, đọc **Metadata**, chọn Boot Action, xác thực/cài đặt firmware khi cần, hoặc chuyển quyền sang Application. Trong project: Bootloader tại `0x08000000`, Application tại `0x08006000`.
 - **Vector Table** là bảng các địa chỉ phục vụ khởi động và xử lý ngắt. Word đầu là **giá trị MSP ban đầu** (Main Stack Pointer), word kế tiếp là địa chỉ **Reset Handler**. **VTOR** (Vector Table Offset Register) chỉ vị trí bảng vector dùng khi phát sinh exception/interrupt.
 - **Application Jump** không chỉ là gọi một hàm: Bootloader cần kiểm tra vector hợp lệ, dọn trạng thái ngoại vi/ngắt phù hợp, thiết lập MSP/VTOR đúng và chuyển đến Reset Handler của Application. Nếu bỏ qua, một interrupt cũ có thể gọi sai handler.
