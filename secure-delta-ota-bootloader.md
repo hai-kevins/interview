@@ -67,9 +67,11 @@
 <a id="phu-luc-a-2"></a>
 ### A.2. Nền tảng MCU, Bootloader và bộ nhớ Flash
 
-#### A.2.1. MCU (Microcontroller Unit), Firmware và Application
+#### A.2.1. Firmware và Application
 
-- **Firmware** là chương trình máy được biên dịch thành image (ví dụ `.bin`) để chạy trên MCU. **Application** là firmware thực hiện chức năng bình thường của thiết bị; nó khác với **Bootloader**, chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
+- **Firmware** là chương trình máy được biên dịch thành image (ví dụ `.bin`) để chạy trên MCU. 
+- **Application** là firmware thực hiện chức năng bình thường của thiết bị
+- **Bootloader**, chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
 - **Gateway** là thiết bị trung gian nối hai miền giao tiếp. ESP32 dùng Wi-Fi/HTTPS/MQTTS ở phía server và UART ở phía STM32; gateway **không phải** nơi quyết định một gói SDOT có chữ ký đủ tin cậy để cài đặt hay không.
 
 #### A.2.2. Bootloader, Reset Vector, Vector Table, MSP và VTOR
