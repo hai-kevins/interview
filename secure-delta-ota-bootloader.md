@@ -40,12 +40,12 @@
 <a id="phu-luc-a-0"></a>
 ### A.1. Quy ước thuật ngữ thống nhất cho toàn tài liệu
 
-| Thuật ngữ chuẩn | Ý nghĩa / quy tắc sử dụng |
+| Thuật ngữ chuẩn | Ý nghĩa / quy tắc sử dụng | Không đánh đồng với |
 |---|---|---|
-| **STM32 Bootloader / STM32 Application / ESP32 Gateway / Release Server / Developer/CI** | Tên của năm thành phần kiến trúc; khi ngữ cảnh rõ có thể viết tắt thành **Bootloader / Application / Gateway / Server / CI**. |
-| **Internal Flash / External Flash W25Q / Flash cache của ESP32** | Ba vùng lưu trữ riêng; khi nói Metadata hay SDOT nên chỉ rõ vùng chứa. |
-| **Gói SDOT (tệp cập nhật đã đóng gói)** | Gói SDOT được truyền qua mạng/UART rồi lưu ở vùng **Incoming**; chứa header, Payload và chữ ký. |
-| **Payload** | Phần dữ liệu trong container/packet; khi dễ nhầm cần viết **SDOT Payload** hoặc **DATA payload**. |
+| **STM32 Bootloader / STM32 Application / ESP32 Gateway / Release Server / Developer/CI** | Tên của năm thành phần kiến trúc; khi ngữ cảnh rõ có thể viết tắt thành **Bootloader / Application / Gateway / Server / CI**. | Bootloader không phải Application; ESP32 Gateway không thay Bootloader quyết định cài đặt. |
+| **Internal Flash / External Flash W25Q / Flash cache của ESP32** | Ba vùng lưu trữ riêng; khi nói Metadata hay SDOT nên chỉ rõ vùng chứa. | External Flash W25Q của STM32 không phải Flash cache của ESP32. |
+| **Gói SDOT (tệp cập nhật đã đóng gói)** | Gói SDOT được truyền qua mạng/UART rồi lưu ở vùng **Incoming**; chứa header, Payload và chữ ký. | **Target Image** là firmware hoàn chỉnh, không phải nguyên gói SDOT. |
+| **Payload** | Phần dữ liệu trong container/packet; khi dễ nhầm cần viết **SDOT Payload** hoặc **DATA payload**. | Payload trong packet UART không đồng nghĩa toàn bộ SDOT. |
 | **Manifest** | Tệp mô tả release (`manifest.json`); chữ ký Manifest được quản lý riêng. | Gói SDOT chứa dữ liệu cập nhật. |
 | **Full OTA / Delta OTA / Delta Patch** | Full OTA chứa firmware đích hoàn chỉnh; Delta OTA chứa Delta Patch để tái tạo firmware. | Delta Patch không phải firmware có thể khởi động. |
 | **Base Image (firmware gốc)** | Binary *chính xác* đã dùng tạo Delta Patch; kiểm tra bằng Base SHA-256. | Không phải cứ cùng `base_version` là có Base Image đúng. |
