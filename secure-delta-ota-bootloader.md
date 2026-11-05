@@ -633,8 +633,6 @@ Developer chỉnh sửa mã nguồn **STM32 Application** (ví dụ từ v1 lên
 
 Nếu repository đã cấu hình **GitHub Actions**, các file workflow `.yml`/`.yaml` trong thư mục `.github/workflows/` có thể tự chạy khi có sự kiện `push`. **CI (Continuous Integration)** thực hiện các lệnh đã khai báo, chẳng hạn **build firmware** để tạo **`application-v2.bin`**, kiểm thử và chuẩn bị các tệp phát hành. Vì vậy, Developer **không bắt buộc tự build `.bin` trước khi push**; các bước tự động thực tế phụ thuộc vào nội dung YAML.
 
-> **Phân biệt:** Developer/CI chịu trách nhiệm **tạo và kiểm tra firmware**; việc đưa các tệp cập nhật lên **Release Server** là bước riêng, chỉ tự động nếu workflow đã cấu hình triển khai.
-
 #### Bước 2. Tạo Full OTA và Delta OTA
 
 Từ firmware mới, release tooling chuẩn bị các gói cập nhật tương ứng:
