@@ -40,12 +40,12 @@
 <a id="phu-luc-a-0"></a>
 ### A.1. Quy ước thuật ngữ thống nhất cho toàn tài liệu
 
-| Thuật ngữ chuẩn | Ý nghĩa / quy tắc sử dụng | Không đánh đồng với |
+| Thuật ngữ chuẩn | Ý nghĩa / quy tắc sử dụng |
 |---|---|---|
-| **STM32 Bootloader / STM32 Application / ESP32 Gateway / Release Server / Developer/CI** | Tên của năm thành phần kiến trúc; khi ngữ cảnh rõ có thể viết tắt thành **Bootloader / Application / Gateway / Server / CI**. | Bootloader không phải Application; ESP32 Gateway không thay Bootloader quyết định cài đặt. |
-| **Internal Flash / External Flash W25Q / Flash cache của ESP32** | Ba vùng lưu trữ riêng; khi nói Metadata hay SDOT nên chỉ rõ vùng chứa. | External Flash W25Q của STM32 không phải Flash cache của ESP32. |
-| **Gói SDOT (tệp cập nhật đã đóng gói)** | Gói SDOT được truyền qua mạng/UART rồi lưu ở vùng **Incoming**; chứa header, Payload và chữ ký. | **Target Image** là firmware hoàn chỉnh, không phải nguyên gói SDOT. |
-| **Payload** | Phần dữ liệu trong container/packet; khi dễ nhầm cần viết **SDOT Payload** hoặc **DATA payload**. | Payload trong packet UART không đồng nghĩa toàn bộ SDOT. |
+| **STM32 Bootloader / STM32 Application / ESP32 Gateway / Release Server / Developer/CI** | Tên của năm thành phần kiến trúc; khi ngữ cảnh rõ có thể viết tắt thành **Bootloader / Application / Gateway / Server / CI**. |
+| **Internal Flash / External Flash W25Q / Flash cache của ESP32** | Ba vùng lưu trữ riêng; khi nói Metadata hay SDOT nên chỉ rõ vùng chứa. |
+| **Gói SDOT (tệp cập nhật đã đóng gói)** | Gói SDOT được truyền qua mạng/UART rồi lưu ở vùng **Incoming**; chứa header, Payload và chữ ký. |
+| **Payload** | Phần dữ liệu trong container/packet; khi dễ nhầm cần viết **SDOT Payload** hoặc **DATA payload**. |
 | **Manifest** | Tệp mô tả release (`manifest.json`); chữ ký Manifest được quản lý riêng. | Gói SDOT chứa dữ liệu cập nhật. |
 | **Full OTA / Delta OTA / Delta Patch** | Full OTA chứa firmware đích hoàn chỉnh; Delta OTA chứa Delta Patch để tái tạo firmware. | Delta Patch không phải firmware có thể khởi động. |
 | **Base Image (firmware gốc)** | Binary *chính xác* đã dùng tạo Delta Patch; kiểm tra bằng Base SHA-256. | Không phải cứ cùng `base_version` là có Base Image đúng. |
@@ -58,7 +58,6 @@
 | **Metadata / Checkpoint** | Metadata mô tả trạng thái và quyết định cập nhật; Checkpoint xác nhận tiến độ *đã lưu bền vững*. | `generation` chọn bản Metadata mới; `copy_offset`/Checkpoint là tiến độ, không phải generation. |
 | **Internal Flash Metadata A/B / External Flash Metadata A/B** | Hai cặp bản lưu A/B độc lập trên hai loại Flash; ghi rõ vùng khi bàn đến layout hoặc phục hồi. | Không dùng "Metadata A/B" để khẳng định chúng cùng một địa chỉ hoặc cùng cấu trúc. |
 | **Boot State Machine / Boot Decision / Boot Action** | Boot State Machine là mô hình trạng thái; Boot Decision suy ra hành động khi khởi động; Boot Action là kết quả quyết định. | State không đồng nghĩa Action. |
-| **`ARTIFACT_READY` / `UPDATE_ARTIFACT_READY`** | `ARTIFACT_READY` trong **runtime của OTA receiver** sau `FINISH`; `UPDATE_ARTIFACT_READY` là **trạng thái Metadata bền vững** sau `INSTALL`. | Không dùng hai tên này thay thế nhau. |
 | **Trial Boot / Confirm / Rollback** | Trial Boot chạy thử Application; Confirm công nhận firmware mới; Rollback khôi phục Backup Image. | Install xong chưa chắc Confirm. |
 | **Power-loss Recovery / Rollback / Anti-rollback** | Recovery tiếp tục/làm lại việc an toàn; Rollback phục hồi firmware đã sao lưu; Anti-rollback ngăn cập nhật xuống phiên bản cũ không cho phép. | Ba cơ chế độc lập về mục tiêu. |
 | **Watchdog / IWDG** | Watchdog là khái niệm; **IWDG** là Independent Watchdog của STM32F103 dùng trong Trial Boot. | Watchdog reset không tự thực hiện Rollback; Bootloader xử lý sau reset. |
