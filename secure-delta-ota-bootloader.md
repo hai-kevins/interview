@@ -527,7 +527,7 @@ Qua project này, em hiểu rõ hơn về Bootloader, quản lý bộ nhớ Flas
 
 ### 2.1. Bài nói khi phỏng vấn
 
-Dạ, về **System Architecture**, hệ thống của em gồm **Developer/CI**, **Release Server**, **ESP32 Gateway**, **STM32 Application** và **STM32 Bootloader**. Em tách luồng **phát hành và truyền dữ liệu** khỏi luồng **xác thực và cài đặt firmware**.
+Dạ, về **System Architecture**, hệ thống của em gồm **Developer/CI**, **Release Server**, **ESP32 Gateway**, **STM32 Application** và **STM32 Bootloader**.
 
 - **Developer/CI** build firmware ra .bin, tạo gói **Full OTA** hoặc **Delta OTA**, đóng gói theo định dạng **SDOT**, ký bằng **ECDSA P-256** và tạo **Manifest**. Các gói cập nhật được kiểm tra release và triển khai lên **Release Server**.
 
