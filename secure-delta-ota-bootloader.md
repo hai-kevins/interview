@@ -34,12 +34,45 @@
 
 **Phụ lục tra cứu nhanh:** [Phụ lục A – Các khái niệm và nguyên lý hoạt động về công nghệ và thuật toán cốt lõi](#phu-luc-a)
 
+**Mục lục chi tiết Phụ lục A:**
+
+- [A.1. Bootloader và bộ nhớ](#phu-luc-a-1)
+  - [A.1.1. Firmware, Application và Bootloader](#phu-luc-a-1-1)
+  - [A.1.2. Internal Flash và External Flash W25Q](#phu-luc-a-1-2)
+  - [A.1.3. Flash Programming — Erase, Program và Read-back Verify](#phu-luc-a-1-3)
+  - [A.1.4. Application Jump — Vector Table, MSP, Reset Handler và VTOR](#phu-luc-a-1-4)
+- [A.2. Công nghệ OTA và thuật toán Delta](#phu-luc-a-2)
+  - [A.2.1. OTA, Full OTA và Delta OTA](#phu-luc-a-2-1)
+  - [A.2.2. Base Image, Target Image và Delta Patch](#phu-luc-a-2-2)
+  - [A.2.3. JojoDiff và JANPatch — tạo và áp dụng Delta Patch](#phu-luc-a-2-3)
+  - [A.2.4. SDOT Container và Manifest](#phu-luc-a-2-4)
+- [A.3. Đóng khung, kiểm tra dữ liệu và truyền tiếp sau gián đoạn](#phu-luc-a-3)
+  - [A.3.1. Packet, Framing và COBS](#phu-luc-a-3-1)
+  - [A.3.2. CRC32 — phép chia đa thức nhị phân và XOR](#phu-luc-a-3-2)
+  - [A.3.3. ACK/NACK, Retry, Resume, Sequence, Offset và Checkpoint nhận](#phu-luc-a-3-3)
+- [A.4. Bảo mật firmware](#phu-luc-a-4)
+  - [A.4.1. SHA-256 — hàm băm mật mã](#phu-luc-a-4-1)
+  - [A.4.2. Public Key và Private Key — cơ sở mật mã bất đối xứng](#phu-luc-a-4-2)
+  - [A.4.3. Digital Signature và ECDSA P-256 — ký và xác minh](#phu-luc-a-4-3)
+  - [A.4.4. Trust Anchor, Key Provisioning và Anti-rollback](#phu-luc-a-4-4)
+- [A.5. Trạng thái, lưu tiến độ và phục hồi sau lỗi](#phu-luc-a-5)
+  - [A.5.1. Boot State Machine](#phu-luc-a-5-1)
+  - [A.5.2. Metadata và Metadata A/B](#phu-luc-a-5-2)
+  - [A.5.3. Checkpoint — mốc tiến độ đã được xác minh](#phu-luc-a-5-3)
+  - [A.5.4. Power-loss Recovery — tiếp tục hoặc làm lại một bước an toàn](#phu-luc-a-5-4)
+  - [A.5.5. Rollback — khôi phục firmware đã sao lưu](#phu-luc-a-5-5)
+- [A.6. Khởi động thử, xác nhận và Watchdog](#phu-luc-a-6)
+  - [A.6.1. Trial Boot và Confirm](#phu-luc-a-6-1)
+  - [A.6.2. Watchdog và IWDG — phát hiện phần mềm không đáp ứng](#phu-luc-a-6-2)
+
+
 <a id="phu-luc-a"></a>
 ## Phụ lục A. Các khái niệm và nguyên lý hoạt động về công nghệ và thuật toán cốt lõi
 
 <a id="phu-luc-a-1"></a>
 ### A.1. Bootloader và bộ nhớ
 
+<a id="phu-luc-a-1-1"></a>
 #### A.1.1. Firmware, Application và Bootloader
 
 **Khái niệm**
@@ -54,6 +87,7 @@
 
 **Câu hỏi phỏng vấn:** Vì sao không để Application tự ghi đè chính nó? Bootloader và Application có chạy đồng thời không?
 
+<a id="phu-luc-a-1-2"></a>
 #### A.1.2. Internal Flash và External Flash W25Q
 
 **Khái niệm:** **Internal Flash** là bộ nhớ không mất dữ liệu nằm trong STM32; **External Flash W25Q** là bộ nhớ NOR Flash bên ngoài, được truy cập qua driver giao tiếp; **SRAM** là bộ nhớ làm việc và mất dữ liệu khi mất nguồn.
@@ -66,6 +100,7 @@
 
 **Câu hỏi phỏng vấn:** Vì sao phải có W25Q? Tại sao không dùng SRAM để lưu toàn bộ gói OTA hoặc Checkpoint?
 
+<a id="phu-luc-a-1-3"></a>
 #### A.1.3. Flash Programming — Erase, Program và Read-back Verify
 
 **Khái niệm:** **Erase** xóa một đơn vị Flash; **Program** lập trình dữ liệu mới; **Read-back Verify** đọc lại và đối chiếu dữ liệu đã ghi.
@@ -82,6 +117,7 @@
 
 **Câu hỏi phỏng vấn:** Vì sao Erase trước Program? Vì sao không commit tiến độ ngay sau khi gọi hàm ghi Flash? Nếu mất nguồn giữa trang đang ghi, phải làm gì?
 
+<a id="phu-luc-a-1-4"></a>
 #### A.1.4. Application Jump — Vector Table, MSP, Reset Handler và VTOR
 
 **Khái niệm:** **Vector Table** chứa các vector khởi động/ngắt; từ đầu tiên là giá trị **MSP** ban đầu, từ thứ hai là địa chỉ **Reset Handler**. **VTOR** là thanh ghi chỉ vị trí bảng vector được dùng cho exception/interrupt.
@@ -115,6 +151,7 @@ Reset → Bootloader → Đọc Metadata / Boot Decision
 <a id="phu-luc-a-2"></a>
 ### A.2. Công nghệ OTA và thuật toán Delta
 
+<a id="phu-luc-a-2-1"></a>
 #### A.2.1. OTA, Full OTA và Delta OTA
 
 **Khái niệm:** **OTA (Over-the-Air Update)** là cập nhật firmware từ xa. **Full OTA** mang toàn bộ firmware đích; **Delta OTA** mang **Delta Patch** dùng để dựng firmware đích từ một firmware gốc xác định.
@@ -127,6 +164,7 @@ Reset → Bootloader → Đọc Metadata / Boot Decision
 
 **Câu hỏi phỏng vấn:** Delta OTA giảm dung lượng bằng cách nào? Khi nào nên dùng Full OTA? Tại sao Full OTA vẫn có `UPDATE_PATCHING`?
 
+<a id="phu-luc-a-2-2"></a>
 #### A.2.2. Base Image, Target Image và Delta Patch
 
 **Khái niệm**
@@ -143,6 +181,7 @@ Reset → Bootloader → Đọc Metadata / Boot Decision
 
 **Câu hỏi phỏng vấn:** Tại sao kiểm tra cả Base SHA-256 lẫn Target SHA-256? Tại sao chỉ kiểm tra `base_version` là chưa đủ?
 
+<a id="phu-luc-a-2-3"></a>
 #### A.2.3. JojoDiff và JANPatch — tạo và áp dụng Delta Patch
 
 **Khái niệm:** **JojoDiff** là công cụ tạo bản vá nhị phân phía host. **JANPatch** là thành phần áp dụng bản vá trên thiết bị. Hai thành phần thực hiện **hai chiều công việc khác nhau**.
@@ -171,6 +210,7 @@ Base Image + Patch → A B X Y E F (= Target Image)
 
 **Câu hỏi phỏng vấn:** JojoDiff và JANPatch khác nhau thế nào? Nếu dùng sai Base Image thì điều gì xảy ra? Vì sao phải round-trip trên host và kiểm tra lại Target SHA-256 trên STM32?
 
+<a id="phu-luc-a-2-4"></a>
 #### A.2.4. SDOT Container và Manifest
 
 **Khái niệm:** **SDOT (Secure Delta OTA Container)** là gói cập nhật chứa thông tin điều khiển, payload Full/Delta và chữ ký số. **Manifest** (`manifest.json`) là tệp mô tả bản phát hành và các gói có thể phân phối; Manifest không chứa thay cho payload SDOT.
@@ -197,6 +237,7 @@ Gói SDOT đã ký trong project:
 <a id="phu-luc-a-3"></a>
 ### A.3. Đóng khung, kiểm tra dữ liệu và truyền tiếp sau gián đoạn
 
+<a id="phu-luc-a-3-1"></a>
 #### A.3.1. Packet, Framing và COBS
 
 **Khái niệm:** **Packet** là đơn vị dữ liệu của giao thức OTA, có các trường điều khiển, Payload và CRC32. **Framing** xác định ranh giới packet trên dòng byte liên tục. **COBS (Consistent Overhead Byte Stuffing)** là cơ chế mã hóa để byte `0x00` không xuất hiện bên trong dữ liệu đã mã hóa và có thể dùng `0x00` làm **byte phân tách** giữa các frame.
@@ -223,6 +264,7 @@ Byte `03` biểu thị nhóm có hai byte khác 0 (`11 22`), byte `02` biểu th
 
 **Câu hỏi phỏng vấn:** Tại sao không tìm trực tiếp byte `0x00` trong dữ liệu gốc để cắt packet? COBS và CRC32 giải quyết hai vấn đề khác nhau như thế nào?
 
+<a id="phu-luc-a-3-2"></a>
 #### A.3.2. CRC32 — phép chia đa thức nhị phân và XOR
 
 **Khái niệm:** **CRC32 (Cyclic Redundancy Check 32-bit)** tạo mã kiểm tra lỗi **32 bit (4 byte)** từ dữ liệu. Đây là cơ chế phát hiện lỗi, **không phải chữ ký số và không phải hàm băm mật mã**.
@@ -247,6 +289,7 @@ Receiver: bytes ──CRC32──> crc2  ──> so sánh crc2 với crc
 
 **Câu hỏi phỏng vấn:** Tại sao CRC dùng XOR? Vì sao CRC32 trùng vẫn có thể là dữ liệu bị sửa? CRC32 có thay thế SHA-256 hoặc ECDSA được không?
 
+<a id="phu-luc-a-3-3"></a>
 #### A.3.3. ACK/NACK, Retry, Resume, Sequence, Offset và Checkpoint nhận
 
 **Khái niệm:** **ACK** báo packet được chấp nhận; **NACK** báo từ chối; **Retry** là gửi lại packet/lệnh; **Resume** là tiếp tục một phiên cập nhật bị gián đoạn dựa trên trạng thái bền vững. **Sequence** là thứ tự packet, còn **Offset** là vị trí byte trong toàn bộ gói SDOT.
@@ -264,6 +307,7 @@ Receiver: bytes ──CRC32──> crc2  ──> so sánh crc2 với crc
 <a id="phu-luc-a-4"></a>
 ### A.4. Bảo mật firmware
 
+<a id="phu-luc-a-4-1"></a>
 #### A.4.1. SHA-256 — hàm băm mật mã
 
 **Khái niệm:** **SHA-256** là hàm băm mật mã nhận đầu vào có độ dài thay đổi và tạo **giá trị băm 256 bit = 32 byte**. Cùng một dãy byte luôn cho cùng kết quả; thay đổi nhỏ ở đầu vào thường làm nhiều bit đầu ra thay đổi (**avalanche effect**).
@@ -288,6 +332,7 @@ ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 
 **Câu hỏi phỏng vấn:** Vì sao SHA-256 cho ra đúng 32 byte? Padding dùng để làm gì? Vì sao cần streaming? Vì sao một trường SHA-256 đứng riêng không chứng minh firmware đáng tin?
 
+<a id="phu-luc-a-4-2"></a>
 #### A.4.2. Public Key và Private Key — cơ sở mật mã bất đối xứng
 
 **Khái niệm:** **Private Key (khóa bí mật)** chỉ bên phát hành giữ để ký; **Public Key (khóa công khai)** được Bootloader dùng để xác minh. Khóa công khai có thể được chia sẻ, nhưng thiết bị phải biết **khóa công khai nào là đáng tin cậy**.
@@ -298,6 +343,7 @@ ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 
 **Câu hỏi phỏng vấn:** Tại sao Bootloader không cần Private Key? Public Key không bí mật thì vì sao vẫn phải provision khóa tin cậy?
 
+<a id="phu-luc-a-4-3"></a>
 #### A.4.3. Digital Signature và ECDSA P-256 — ký và xác minh
 
 **Khái niệm:** **Digital Signature (chữ ký số)** chứng minh dữ liệu đã ký khớp với một khóa bí mật tương ứng với khóa công khai tin cậy. **ECDSA P-256** là thuật toán chữ ký số trên đường cong elliptic P-256. **Chữ ký không mã hóa và không che giấu nội dung firmware.**
@@ -330,6 +376,7 @@ STM32 Bootloader:
 
 **Câu hỏi phỏng vấn:** Vì sao không chỉ gửi SHA-256? ECDSA khác mã hóa dữ liệu thế nào? Tại sao `r||s` khác DER? Điều gì có thể xảy ra nếu nonce `k` lặp lại?
 
+<a id="phu-luc-a-4-4"></a>
 #### A.4.4. Trust Anchor, Key Provisioning và Anti-rollback
 
 **Khái niệm:** **Trust Anchor (mốc tin cậy)** là khóa/căn cứ tin cậy ban đầu để xác minh chữ ký. **Key Provisioning** là bước nạp/cấu hình khóa đó vào hệ thống. **Anti-rollback** là chính sách không cho cài một phiên bản thấp hơn mức được phép.
@@ -345,6 +392,7 @@ STM32 Bootloader:
 <a id="phu-luc-a-5"></a>
 ### A.5. Trạng thái, lưu tiến độ và phục hồi sau lỗi
 
+<a id="phu-luc-a-5-1"></a>
 #### A.5.1. Boot State Machine
 
 **Khái niệm:** **Finite State Machine (FSM)** là mô hình gồm tập trạng thái hữu hạn và quy tắc chuyển trạng thái. **Boot State Machine** trong project điều phối quá trình OTA theo các mốc đã ghi bền vững.
@@ -357,6 +405,7 @@ STM32 Bootloader:
 
 **Câu hỏi phỏng vấn:** Vì sao phải lưu trạng thái trong Flash? Vì sao tách Boot Decision khỏi Boot Manager? Điều gì xảy ra với chuyển trạng thái không hợp lệ?
 
+<a id="phu-luc-a-5-2"></a>
 #### A.5.2. Metadata và Metadata A/B
 
 **Khái niệm:** **Metadata** là dữ liệu điều khiển cập nhật, không phải bytes firmware. Các trường tiêu biểu gồm `state`, `active_version`, `pending_version`, `active_update_id`, `copy_offset`, `boot_attempts`, `generation` và `crc32`. **Metadata A/B** là hai bản lưu luân phiên để tránh mất toàn bộ trạng thái khi đang ghi một bản.
@@ -374,6 +423,7 @@ STM32 Bootloader:
 
 **Câu hỏi phỏng vấn:** Nếu mất nguồn ngay khi ghi Metadata B thì sao? `generation` khác `copy_offset` thế nào? Vì sao không cập nhật một bản Metadata duy nhất?
 
+<a id="phu-luc-a-5-3"></a>
 #### A.5.3. Checkpoint — mốc tiến độ đã được xác minh
 
 **Khái niệm:** **Checkpoint** là mốc xác nhận một phần công việc đã **hoàn tất, kiểm tra và lưu bền vững**. Nó không đồng nghĩa với vị trí byte đã thử ghi hay ACK gần nhất.
@@ -386,6 +436,7 @@ STM32 Bootloader:
 
 **Câu hỏi phỏng vấn:** Tại sao Checkpoint phải đặt sau Verify? Vì sao cần hai kích thước Checkpoint 4 KiB và 1 KiB? Tại sao ACK không được coi là Checkpoint?
 
+<a id="phu-luc-a-5-4"></a>
 #### A.5.4. Power-loss Recovery — tiếp tục hoặc làm lại một bước an toàn
 
 **Khái niệm:** **Power-loss Recovery** là khả năng khôi phục tiến trình OTA sau mất nguồn/reset bất ngờ bằng trạng thái và tiến độ đã lưu bền vững.
@@ -406,6 +457,7 @@ STM32 Bootloader:
 
 **Câu hỏi phỏng vấn:** Mất nguồn khi Patch khác mất nguồn khi Install ở đâu? Khi nào Restart, khi nào Resume? Tại sao Power-loss Recovery không phải Rollback?
 
+<a id="phu-luc-a-5-5"></a>
 #### A.5.5. Rollback — khôi phục firmware đã sao lưu
 
 **Khái niệm:** **Rollback** là quá trình khôi phục Application đã được chấp nhận trước đó từ **Backup Image**, khi firmware mới không đủ điều kiện trở thành phiên bản chính thức.
@@ -423,6 +475,7 @@ STM32 Bootloader:
 <a id="phu-luc-a-6"></a>
 ### A.6. Khởi động thử, xác nhận và Watchdog
 
+<a id="phu-luc-a-6-1"></a>
 #### A.6.1. Trial Boot và Confirm
 
 **Khái niệm:** **Trial Boot** là lần chạy thử Application mới sau khi cài đặt và Verify. **Confirm** là hành động xác nhận firmware thử nghiệm đã đáp ứng điều kiện để được chấp nhận chính thức.
@@ -435,6 +488,7 @@ STM32 Bootloader:
 
 **Câu hỏi phỏng vấn:** Vì sao không cập nhật `active_version` ngay sau Install? Vì sao phải lưu `boot_attempts` trước Jump? 750 ms có đủ chứng minh firmware ổn định không?
 
+<a id="phu-luc-a-6-2"></a>
 #### A.6.2. Watchdog và IWDG — phát hiện phần mềm không đáp ứng
 
 **Khái niệm:** **Watchdog** là bộ đếm giám sát, cần được phần mềm phục vụ (refresh/feed) đúng hạn. **IWDG (Independent Watchdog)** của STM32 sử dụng nguồn clock độc lập để có thể reset MCU khi ứng dụng không đáp ứng.
