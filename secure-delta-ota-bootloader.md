@@ -20,16 +20,16 @@
    - [5.6. Power-loss Recovery, trạng thái `FAILED` và các chuyển trạng thái không hợp lệ](#chuong-5-6)
    - [5.7. Tổng hợp các trạng thái và file mã nguồn nên đọc](#chuong-5-7)
 6. [Ôn tập kiến thức kỹ thuật](#phan-6)
-   - [6.1. STM32F103 & ARM Cortex-M3](#chuong-6-1)
-   - [6.2. Boot Process, Vector Table & Linker Script](#chuong-6-2)
-   - [6.3. STM32 Internal Flash Programming](#chuong-6-3)
-   - [6.4. External SPI Flash W25Q](#chuong-6-4)
-   - [6.5. UART Communication & OTA Protocol](#chuong-6-5)
-   - [6.6. SPI Communication](#chuong-6-6)
+   - [6.1. Các ràng buộc STM32 trực tiếp trong project](#chuong-6-1)
+   - [6.2. Startup, Linker và Application Handoff trong project](#chuong-6-2)
+   - [6.3. Cài firmware vào STM32 Internal Flash](#chuong-6-3)
+   - [6.4. W25Q và tầng lưu trữ OTA](#chuong-6-4)
+   - [6.5. Giao thức truyền OTA qua UART](#chuong-6-5)
+   - [6.6. Driver truy cập W25Q trong source code](#chuong-6-6)
    - [6.7. Full OTA, Delta OTA & JojoDiff](#chuong-6-7)
    - [6.8. Cryptography & Firmware Security](#chuong-6-8)
    - [6.9. Metadata, Checkpoint & Fault Tolerance](#chuong-6-9)
-   - [6.10. Watchdog, Debugging & Testing](#chuong-6-10)
+   - [6.10. Trial Boot, Debugging & Testing](#chuong-6-10)
 7. [Câu hỏi phỏng vấn trọng tâm](#phan-7)
 
 **Phụ lục tra cứu nhanh:** [Phụ lục A – Các khái niệm và nguyên lý hoạt động về công nghệ và thuật toán cốt lõi](#phu-luc-a)
@@ -63,7 +63,7 @@
   - [A.5.5. Rollback — khôi phục firmware đã sao lưu](#phu-luc-a-5-5)
 - [A.6. Khởi động thử, xác nhận và Watchdog](#phu-luc-a-6)
   - [A.6.1. Trial Boot và Confirm](#phu-luc-a-6-1)
-  - [A.6.2. Watchdog và IWDG — phát hiện phần mềm không đáp ứng](#phu-luc-a-6-2)
+  - [A.6.2. Watchdog và IWDG trong Trial Boot](#phu-luc-a-6-2)
 
 
 <a id="phu-luc-a"></a>
@@ -103,50 +103,26 @@
 <a id="phu-luc-a-1-3"></a>
 #### A.1.3. Flash Programming — Erase, Program và Read-back Verify
 
-**Khái niệm:** **Erase** xóa một đơn vị Flash; **Program** lập trình dữ liệu mới; **Read-back Verify** đọc lại và đối chiếu dữ liệu đã ghi.
+**Trong project:** Cài đặt Application sử dụng trang **Internal Flash 1 KiB**, lập trình **half-word 16 bit**; W25Q dùng sector **4 KiB** và Page Program tối đa **256 byte**. Những ràng buộc này quyết định kích thước buffer, phạm vi Erase và Checkpoint.
 
-**Nguyên lý hoạt động**
+**Trình tự cần đối chiếu mã nguồn:** Bootloader kiểm tra firmware đích và Backup hợp lệ → đọc một trang từ Reconstructed Image → Erase/Program vùng Application → Read-back Verify → chỉ sau khi kiểm tra thành công mới commit `copy_offset` vào Metadata A/B.
 
-1. Trong NOR Flash, đơn vị đã xóa thường đọc là `0xFF` (các bit ở trạng thái `1`). Khi Program, bit thường chỉ chuyển từ **`1 → 0`**; muốn đưa bit từ `0 → 1` phải Erase đơn vị tương ứng.
-2. Phải **Erase đúng trang/sector** trước khi ghi dữ liệu không tương thích với trạng thái hiện tại. Erase có đơn vị lớn hơn một byte nên cần tính giới hạn địa chỉ chặt chẽ.
-3. Thực hiện **Program** theo đơn vị phần cứng hỗ trợ, kiểm tra trạng thái hoàn thành và **đọc lại** để so sánh. Chỉ khi Verify đạt mới ghi nhận tiến độ an toàn.
+**Nếu mất nguồn:** Trang chưa được xác nhận phải được xử lý lại từ mốc Checkpoint an toàn; tuyệt đối không coi dữ liệu ghi dở là firmware đã cài thành công.
 
-**Ví dụ / tình huống:** Byte đang là `0x00` không thể được lập trình trực tiếp thành `0xFF`; cần xóa vùng Flash trước. Nếu mất nguồn khi đang Program, trang có thể chỉ được ghi một phần và phải được xử lý lại.
-
-**Trong project:** STM32F103 xóa **Internal Flash theo trang 1 KiB**, Program theo **half-word 16 bit**. W25Q hỗ trợ xóa **sector 4 KiB** và **Page Program tối đa 256 byte trong một trang**. Bootloader cài firmware theo các trang Internal Flash, **Verify rồi mới commit Checkpoint**; không xóa sang vùng Bootloader hoặc Metadata.
-
-**Câu hỏi phỏng vấn:** Vì sao Erase trước Program? Vì sao không commit tiến độ ngay sau khi gọi hàm ghi Flash? Nếu mất nguồn giữa trang đang ghi, phải làm gì?
+**Câu hỏi phỏng vấn gắn với project:** `ProgramBufferedApplicationPage()` làm gì? Vì sao `ResumePageCheckpointedCopy()` lưu Checkpoint sau Verify? Làm thế nào bảo vệ Bootloader và Metadata khi Erase?
 
 <a id="phu-luc-a-1-4"></a>
 #### A.1.4. Application Jump — Vector Table, MSP, Reset Handler và VTOR
 
-**Khái niệm:** **Vector Table** chứa các vector khởi động/ngắt; từ đầu tiên là giá trị **MSP** ban đầu, từ thứ hai là địa chỉ **Reset Handler**. **VTOR** là thanh ghi chỉ vị trí bảng vector được dùng cho exception/interrupt.
+**Trong project:** Bootloader và Application nằm ở hai vùng chương trình khác nhau; **Application Vector Table bắt đầu tại `0x08006000`**. Bootloader chỉ bàn giao khi trạng thái OTA cho phép và vector của Application hợp lệ.
 
-**Nguyên lý hoạt động**
+**Luồng mã nguồn cần hiểu:** `ApplicationJump_Validate()` kiểm tra MSP, Reset Handler và giới hạn vùng Application. `ApplicationJump_Execute()` dọn SysTick/NVIC, chuẩn bị RCC, đặt `SCB->VTOR`, rồi dùng `application_handoff.s` để đặt MSP và chuyển tới Reset Handler. Đây là **handoff bằng phần mềm**, không phải reset MCU.
 
-1. Bootloader đọc hai word đầu tại địa chỉ Application, xác nhận **MSP** thuộc SRAM, được căn chỉnh phù hợp; **Reset Handler** nằm trong vùng Application và có **Thumb bit** hợp lệ.
-2. Dừng SysTick, xử lý các interrupt/NVIC đang bật hoặc pending, đưa clock/ngoại vi về trạng thái phù hợp với startup của Application.
-3. Đặt **VTOR** đến bảng vector của Application; dùng đoạn handoff phù hợp để **nạp MSP** và chuyển điều khiển tới **Reset Handler**, tránh chạy phần kết thúc hàm C trên stack cũ.
+**Lỗi cần phân tích:** Nếu MSP/vector không hợp lệ hoặc còn ngắt từ Bootloader, Application có thể không khởi động đúng; kiểm tra `VTOR`, MSP, Reset Handler, và trạng thái ngắt trong debugger.
 
-**Ví dụ / tình huống:** Nếu chỉ gọi Reset Handler như một hàm C thông thường mà không chuyển MSP/VTOR và dọn ngắt, Application có thể HardFault hoặc dùng sai interrupt handler.
+**Câu hỏi phỏng vấn gắn với project:** Tại sao phải kiểm tra vector trước Jump? Vì sao handoff dùng assembly? Vì sao không Jump khi đang `UPDATE_INSTALLING`?
 
-```text
-Reset → Bootloader → Đọc Metadata / Boot Decision
-                     ↓
-          Kiểm tra Application vector
-                     ↓
-          Dọn SysTick / IRQ / Clock
-                     ↓
-          VTOR → MSP → Reset Handler
-                     ↓
-               Application
-```
-
-**Trong project:** Application vector tại `0x08006000`; initial MSP ở `0x08006000`, Reset Handler ở `0x08006004`. Tra cứu `application_jump.c` và `application_handoff.s` để xem các bước chuyển quyền thực tế.
-
-**Câu hỏi phỏng vấn:** Tại sao phải nạp MSP? VTOR dùng để làm gì? Vì sao thay PC mà không dọn ngắt có thể xảy ra lỗi?
-
-**Học sâu:** [6.1 – STM32F103 và Cortex-M3](#chuong-6-1) · [6.2 – Startup, Vector Table và Linker](#chuong-6-2) · [6.3 – Internal Flash](#chuong-6-3) · [6.4 – External Flash W25Q](#chuong-6-4).
+**Học sâu:** [6.1 – Các ràng buộc STM32 trong project](#chuong-6-1) · [6.2 – Startup, Vector Table và Linker](#chuong-6-2) · [6.3 – Internal Flash](#chuong-6-3) · [6.4 – External Flash W25Q](#chuong-6-4).
 
 <a id="phu-luc-a-2"></a>
 ### A.2. Công nghệ OTA và thuật toán Delta
@@ -489,19 +465,17 @@ STM32 Bootloader:
 **Câu hỏi phỏng vấn:** Vì sao không cập nhật `active_version` ngay sau Install? Vì sao phải lưu `boot_attempts` trước Jump? 750 ms có đủ chứng minh firmware ổn định không?
 
 <a id="phu-luc-a-6-2"></a>
-#### A.6.2. Watchdog và IWDG — phát hiện phần mềm không đáp ứng
+#### A.6.2. Watchdog và IWDG trong Trial Boot
 
-**Khái niệm:** **Watchdog** là bộ đếm giám sát, cần được phần mềm phục vụ (refresh/feed) đúng hạn. **IWDG (Independent Watchdog)** của STM32 sử dụng nguồn clock độc lập để có thể reset MCU khi ứng dụng không đáp ứng.
+**Trong project:** `TrialBoot_PrepareAttempt()` ghi bền vững `boot_attempts`, rồi Bootloader dùng `TrialBoot_StartWatchdog()` bật **IWDG** trước khi `ApplicationJump_Execute()` chạy firmware ứng viên.
 
-**Nguyên lý hoạt động:** Cấu hình bộ chia clock và giá trị reload để xác định timeout; phần mềm định kỳ làm mới bộ đếm. Nếu không làm mới trước khi đếm hết, Watchdog gây **reset**. Watchdog **không tự sao chép firmware Backup**; sau reset, Bootloader đọc Metadata, số lần Trial Boot và đưa ra Boot Decision.
+**Điểm cần hiểu trong source:** IWDG được cấu hình với prescaler **64**, reload **3000**; thời gian reset danh định khoảng **4,8 giây** tùy clock LSI thực tế. IWDG **chỉ gây reset** khi không được làm mới; Bootloader dựa vào Metadata/Boot Decision để quyết định thử lại hoặc Rollback (giới hạn **3 lần**).
 
-**Ví dụ / tình huống:** Firmware mới bị kẹt trước bước Confirm. IWDG có thể reset STM32; Bootloader ghi nhận lần thử thất bại, cho thử lại nếu còn lượt, hoặc khởi động Rollback khi vượt ngưỡng.
+**Giới hạn cơ chế Confirm:** Bản demo có thể xác nhận sau khoảng **750 ms** chạy main loop. Đây không phải kiểm tra toàn bộ chức năng của firmware.
 
-**Trong project:** IWDG được dùng trong Trial Boot (timeout danh định khoảng **4,8 giây**, phụ thuộc cấu hình/clock thực tế). **IWDG reset ≠ Rollback tự động**. Nếu Application Confirm quá sớm, Watchdog vẫn có thể không phát hiện lỗi nghiệp vụ xuất hiện muộn.
+**Câu hỏi phỏng vấn gắn với project:** Vì sao `boot_attempts` phải lưu trước Jump? IWDG có tự Rollback không? Nếu firmware Confirm quá sớm thì cơ chế này chưa kiểm tra được lỗi gì?
 
-**Câu hỏi phỏng vấn:** Watchdog khác Timer thông thường như thế nào? Vì sao IWDG có thể hỗ trợ phát hiện treo? Ai thực sự quyết định Rollback sau reset? Vì sao Confirm sớm có thể là một giới hạn?
-
-**Học sâu:** [5.5 – Trial Boot và Rollback](#chuong-5-5) · [6.10 – Watchdog, Debugging và Testing](#chuong-6-10).
+**Học sâu:** [5.5 – Trial Boot và Rollback](#chuong-5-5) · [6.10 – Trial Boot, Debugging và Testing](#chuong-6-10).
 
 ---
 
@@ -1962,314 +1936,40 @@ Những ràng buộc này bảo vệ tính nhất quán của State Machine: **m
 ---
 
 <a id="chuong-6-1"></a>
-### 6.1. STM32F103 & ARM Cortex-M3
+### 6.1. Các ràng buộc STM32 trực tiếp trong project
 
-#### Sơ đồ tổng quan: Cortex-M3 trong project
+> **Phạm vi:** Chỉ tra cứu cấu hình và mã nguồn của Secure Delta OTA Bootloader. Không ôn lại CPU Cortex-M3, thanh ghi lõi, NVIC, RCC, Clock Tree, các chế độ thực thi hay lý thuyết reset.
 
-```mermaid
-flowchart TD
-    RESET["Reset / Power-on"] --> CORE["Cortex-M3<br/>Đọc vector khởi động và MSP"]
-    CORE --> BOOT["Bootloader<br/>0x08000000"]
-    BOOT --> META["Đọc Metadata A/B<br/>Boot Decision"]
-    META -->|"Boot Application"| HANDOFF["Kiểm tra vector + MSP<br/>Dọn SysTick / NVIC / RCC<br/>Đặt VTOR = 0x08006000"]
-    HANDOFF --> APP["Application<br/>0x08006000"]
-    META -->|"Xử lý OTA"| OTA["Xác thực / Backup / Install / Recovery"]
-    OTA --> META
-    APP --> UART["Ngắt / UART / SPI / SysTick"]
-    APP -->|"INSTALL: lưu Metadata + Reset"| RESET
-```
+#### Bản đồ các vùng bộ nhớ đã cấu hình
 
-> **Ý nghĩa:** Trên **một MCU**, Bootloader và Application **không chạy như hai bộ xử lý độc lập**. Chúng dùng chung CPU, SRAM và ngoại vi, nhưng chiếm **hai vùng chương trình** khác nhau. Khi Application bắt đầu, ngữ cảnh CPU và ngắt phải phù hợp với **vector table của Application**.
+| Phân vùng | Địa chỉ | Dung lượng | Phần mã phụ thuộc |
+|---|---|---:|---|
+| STM32 Bootloader | `0x08000000` | 24 KiB | Startup, Boot Decision, xác thực, Recovery |
+| STM32 Application | `0x08006000` | 38 KiB | Linker, Application Jump, firmware installer |
+| Internal Flash Metadata A | `0x0800F800` | 1 KiB | `MetadataStorage_*` |
+| Internal Flash Metadata B | `0x0800FC00` | 1 KiB | `MetadataStorage_*` |
+| SRAM | `0x20000000–0x20004FFF` | 20 KiB | Buffer trang, stack, dữ liệu tạm |
 
-#### Bước 1. Nắm phần cứng STM32F103C8T6 và vai trò Cortex-M3
+**Ràng buộc triển khai:** Không Erase/Program ra ngoài phân vùng Application khi cài OTA. Linker của Application đặt vector ở `0x08006000`, hai trang Metadata nằm ở cuối vùng Internal Flash.
 
-**STM32F103C8T6** là vi điều khiển 32-bit dùng nhân **Arm Cortex-M3**, với cấu hình danh định mà project xây dựng trên đó:
+#### Những đường xử lý STM32 cần lần theo trong repository
 
-| Thành phần | Thông tin | Liên hệ Secure Delta OTA |
-|---|---|---|
-| CPU | Cortex-M3, thực thi Thumb/Thumb-2; tần số tối đa theo dòng chip là **72 MHz** | Chạy thuật toán Boot Decision, hash, kiểm tra chữ ký, sao chép và ghi Flash. |
-| Internal Flash | **64 KiB** | Chứa Bootloader, Application và Metadata A/B. |
-| SRAM | **20 KiB** | Stack, biến runtime và bộ đệm khi xử lý UART/SPI/Flash. |
-| NVIC + SysTick | Bộ điều khiển ngắt và bộ đếm thời gian thuộc phần lõi | Ngắt giao tiếp và tick của Application; cần dọn trạng thái khi jump. |
-| RCC | Điều khiển clock hệ thống và clock ngoại vi | Ảnh hưởng baudrate UART, tốc độ SPI, delay và SysTick. |
-| Reset / Watchdog | Cơ chế khởi động lại MCU | Bàn giao từ Application sang Bootloader và phục hồi OTA. |
-
-**Cần nhớ về CPU:** Cortex-M3 có các thanh ghi **R0–R12**, **SP (R13)**, **LR (R14)**, **PC (R15)** và các thanh ghi trạng thái/điều khiển như **xPSR**, **CONTROL**, **PRIMASK**, **BASEPRI**. Phần lớn code C không thao tác trực tiếp những thanh ghi này, nhưng thao tác **Jump Application** cần đặc biệt quan tâm **SP, PC, CONTROL và trạng thái ngắt**.
-
-**Phân biệt tần số tối đa và tần số đang chạy:** **72 MHz là khả năng tối đa của dòng MCU, không phải khẳng định firmware hiện tại luôn chạy ở 72 MHz**. Tần số thực tế phụ thuộc cấu hình RCC/SystemInit của image đang chạy.
-
-#### Bước 2. Hiểu Memory Map và các vùng thật sự được project sử dụng
-
-**Memory Map** là cách CPU gán các dải địa chỉ cho Flash, SRAM, ngoại vi và thanh ghi hệ thống. Địa chỉ không đồng nghĩa với việc mọi vùng đều là RAM có thể đọc/ghi tùy ý.
-
-**Các vùng địa chỉ quan trọng trên Cortex-M3/STM32F1:**
-
-| Dải / địa chỉ tiêu biểu | Ý nghĩa | Ví dụ trong project |
-|---|---|---|
-| `0x00000000` | Vùng **alias** được ánh xạ theo lựa chọn khởi động của STM32 | Sau boot thông thường từ User Flash, vector đầu được truy cập qua alias khởi động. |
-| `0x08000000` | Điểm bắt đầu **Internal Flash** vật lý | Vector table Bootloader. |
-| `0x20000000` | Điểm bắt đầu **SRAM** | Stack và biến runtime. |
-| `0x40000000` trở lên | Vùng ngoại vi **memory-mapped I/O** | UART, SPI, GPIO, RCC, FLASH controller. |
-| `0xE000E000` trở lên | Thanh ghi hệ thống **Cortex-M** | NVIC, SysTick, SCB/VTOR. |
-
-**Phân vùng Internal Flash chính xác theo repository:**
-
-| Vùng | Địa chỉ bắt đầu | Địa chỉ kết thúc (inclusive) | Dung lượng |
-|---|---|---|---:|
-| Bootloader | `0x08000000` | `0x08005FFF` | **24 KiB** |
-| Application | `0x08006000` | `0x0800F7FF` | **38 KiB** |
-| Metadata A | `0x0800F800` | `0x0800FBFF` | **1 KiB** |
-| Metadata B | `0x0800FC00` | `0x0800FFFF` | **1 KiB** |
-| SRAM | `0x20000000` | `0x20004FFF` | **20 KiB** |
-
-```text
-Internal Flash — 64 KiB (địa chỉ tăng dần)
-0x08000000  +----------------------------------+
-            | BOOTLOADER          24 KiB       |
-0x08006000  +----------------------------------+
-            | APPLICATION         38 KiB       |
-            | Vector table + code + constants |
-0x0800F800  +----------------------------------+
-            | Metadata A           1 KiB       |
-0x0800FC00  +----------------------------------+
-            | Metadata B           1 KiB       |
-0x08010000  +----------------------------------+ (địa chỉ kết thúc exclusive)
-
-SRAM — 20 KiB
-0x20000000  +----------------------------------+
-            | .data / .bss / Heap / Stack      |
-0x20005000  +----------------------------------+ (top-of-stack; exclusive end)
-```
-
-**Điểm cần hiểu sâu:**
-
-1. **Bootloader** phải nằm trong vùng riêng để quá trình **Install** không xóa chính chương trình đang ghi Flash.
-2. **Application** có vector table riêng tại `0x08006000`, không nằm ở `0x08000000`.
-3. Hai trang **Metadata A/B** lưu trạng thái boot/update bền vững, phục vụ phục hồi khi reset/mất nguồn.
-4. **SRAM không phải nơi lưu Checkpoint sau mất nguồn**. Thông tin sống còn phải được ghi vào Flash thích hợp.
-5. **W25Q SPI NOR không nằm trong dải Internal Flash/SRAM nêu trên**: CPU truy cập nó qua **SPI driver**, không được mặc định dereference một địa chỉ memory-mapped như Internal Flash.
-
-**Ví dụ ôn tập:** Application bắt đầu tại `0x08006000` và giới hạn **38 KiB**. Vì vậy, khi Install, Bootloader phải bảo đảm phạm vi erase/program kết thúc **trước `0x0800F800`**, không chạm vào Metadata A/B. Quy tắc này được thể hiện trong `shared/include/memory_map.h` và `docs/memory-map.md`.
-
-#### Bước 3. Hiểu Reset, Boot Vector và trạng thái CPU ngay sau khởi động
-
-Khi MCU **reset**, phần cứng lựa chọn vùng boot theo cấu hình chân/option tương ứng. Với chế độ **boot từ User Flash** được thiết kế cho project, CPU lấy **word đầu** làm **giá trị MSP ban đầu** và **word thứ hai** làm **địa chỉ Reset Handler**; nó bắt đầu thực thi Bootloader trước. Việc chọn boot từ User Flash/System Memory/SRAM là chức năng boot của STM32F1, **không phải** lựa chọn Full OTA hay Delta OTA của ứng dụng.
-
-```text
-Vector table đầu Bootloader (User Flash)
-0x08000000 : Initial MSP          -> ví dụ top-of-SRAM 0x20005000
-0x08000004 : Reset_Handler        -> địa chỉ mã Bootloader (Thumb bit = 1)
-...
-
-Vector table đầu Application
-0x08006000 : Initial MSP          -> nằm trong SRAM, align 8 bytes
-0x08006004 : Reset_Handler        -> nằm trong vùng Application, Thumb bit = 1
-...
-```
-
-**Luồng điển hình của project:**
-
-1. Reset đưa CPU vào ngữ cảnh khởi động; **Bootloader Reset Handler** được chạy trước.
-2. Startup khởi tạo môi trường C; Bootloader đọc **Metadata A/B** để đưa ra **Boot Decision**.
-3. Nếu cần cập nhật hoặc khôi phục, Bootloader xử lý trong vùng riêng của nó.
-4. Nếu Application được phép chạy, Bootloader **kiểm tra vector, dọn ngắt/clock và handoff** sang Application.
-
-> **Giới hạn của ví dụ:** Hai word vector được đưa ra để học địa chỉ; không mặc định `Reset_Handler` có giá trị số cố định. Giá trị thật phụ thuộc bản firmware đã link. Thứ tự khởi tạo `.data`, `.bss`, gọi `SystemInit()` và `main()` sẽ được phân tích riêng trong **Chương 6.2**.
-
-#### Bước 4. Phân biệt MSP, PSP, Thread Mode và Handler Mode
-
-**Stack** trên Cortex-M3 là vùng SRAM dùng lưu địa chỉ trả về, biến cục bộ, ngữ cảnh gọi hàm và ngữ cảnh ngắt. Stack thường phát triển **từ địa chỉ cao xuống thấp**.
-
-| Khái niệm | Vai trò | Cần nhớ khi phỏng vấn |
-|---|---|---|
-| **MSP** (Main Stack Pointer) | Stack pointer chính, được nạp từ vector[0] lúc reset | **Handler Mode luôn sử dụng MSP**. |
-| **PSP** (Process Stack Pointer) | Stack pointer có thể dùng cho Thread Mode | Thường gặp trong RTOS; bare-metal có thể chỉ dùng MSP. |
-| **Thread Mode** | Thực thi chương trình bình thường | Có thể dùng MSP hoặc PSP tùy `CONTROL.SPSEL`. |
-| **Handler Mode** | Thực thi exception/interrupt | Dùng MSP. |
-| `CONTROL` | Chọn stack trong Thread Mode và đặc quyền thực thi | Handoff cần đưa về ngữ cảnh phù hợp với reset/startup. |
-| `PRIMASK` | Có thể chặn các exception có mức ưu tiên cấu hình được | Nếu không trả về trạng thái phù hợp, Application có thể không nhận ngắt. |
-
-**Ví dụ áp dụng từ repository:**
-
-- Trước khi Jump, `ApplicationJump_Validate()` đọc `vector[0]` và kiểm tra **MSP trong SRAM**, **canh hàng 8 bytes**.
-- `vector[1]` phải có **Thumb bit** và trỏ đến vùng Application.
-- Handoff sử dụng **assembly helper** để đặt MSP rồi nhảy tới Reset Handler **mà không dùng epilogue của hàm C trên stack cũ**.
-- Helper cũng trả các thanh ghi như `CONTROL`, `PRIMASK` về trạng thái phù hợp với khởi động lại; không chỉ đổi PC.
-
-**Vì sao không được Jump kiểu `((void (*)(void))app_reset)();`?** Một lời gọi C thông thường không bảo đảm đổi **MSP**, **VTOR**, ngắt pending và clock về đúng ngữ cảnh. Kết quả có thể là HardFault, dùng nhầm stack hoặc nhảy được nhưng ngắt chạy sai handler.
-
-#### Bước 5. NVIC, Exception và SysTick có ảnh hưởng gì đến Bootloader → Application?
-
-**NVIC** (Nested Vectored Interrupt Controller) quản lý việc enable, pending và mức ưu tiên của nhiều interrupt. **Exception** còn bao gồm các sự kiện cấp lõi như Reset, NMI, HardFault, SysTick; chúng không hoàn toàn giống các IRQ ngoại vi.
-
-- **Enable**: ngắt ngoại vi có được phép đi vào CPU hay không.
-- **Pending**: có yêu cầu ngắt đang chờ phục vụ hay không.
-- **Priority**: ngắt nào được ưu tiên; trên Cortex-M, **số ưu tiên nhỏ hơn thường mang ưu tiên cao hơn**.
-- **Vector Table**: bảng địa chỉ handler tương ứng cho từng exception/IRQ.
-- **SysTick**: timer 24-bit của core; có thể tạo tick định kỳ phục vụ scheduling/delay.
-
-**Một lỗi rất thực tế:** Bootloader bật UART/SysTick rồi Jump thẳng sang Application mà **không dọn pending IRQ và không đổi VTOR**. Khi IRQ xảy ra, CPU có thể lấy địa chỉ handler từ vector table Bootloader thay vì Application. Vì vậy chỉ đổi PC là chưa đủ.
-
-**Luồng cleanup đã được mô tả trong `docs/boot-jump.md`:**
-
-```mermaid
-flowchart LR
-    A["Xác nhận vector hợp lệ"] --> B["Dừng SysTick"]
-    B --> C["Mask IRQ<br/>Disable + Clear NVIC pending"]
-    C --> D["Xóa SysTick/PendSV pending"]
-    D --> E["RCC_DeInit()"]
-    E --> F["SCB->VTOR = 0x08006000"]
-    F --> G["DSB / ISB"]
-    G --> H["Assembly: đặt MSP, reset control/interrupt mask và branch"]
-```
-
-**Liên hệ test:** Tài liệu `docs/boot-jump.md` ghi nhận Application kiểm tra `SCB->VTOR == 0x08006000`, cấu hình **SysTick 1 ms** và phát nhịp **PC13**. Đây là bằng chứng về việc Application đã vào Reset Handler và ngắt được định tuyến qua vector table của Application; **không phải bằng chứng về bảo mật chữ ký SDOT**.
-
-#### Bước 6. Clock Tree và RCC — vì sao phải quan tâm khi chuyển image?
-
-**Clock Tree** cung cấp xung cho CPU và các ngoại vi. Trên STM32F103, các thành phần nền tảng cần phân biệt gồm **HSI** (oscillator nội **8 MHz**), **HSE** (oscillator ngoài, tùy phần cứng), **PLL**, **SYSCLK**, **AHB/HCLK**, **APB1/PCLK1**, **APB2/PCLK2**.
-
-```text
-HSI (nội 8 MHz) -------+
-                       +--> [Clock select / PLL / prescaler] --> SYSCLK
-HSE (ngoài) -----------+                                  |
-                                                          +--> HCLK (CPU / AHB)
-                                                          +--> PCLK1 (APB1)
-                                                          +--> PCLK2 (APB2)
-```
-
-**Vì sao clock quan trọng trong OTA?**
-
-| Nếu clock cấu hình không phù hợp | Biểu hiện có thể gặp |
+| Tình huống | Đường xử lý và điểm cần kiểm tra |
 |---|---|
-| Baudrate UART lệch so với tính toán | Sai packet, CRC32 lỗi, timeout và Retry liên tục. |
-| SPI clock khác dự kiến | Giao tiếp W25Q lỗi hoặc tốc độ thấp. |
-| SysTick reload tính theo `SystemCoreClock` sai | Tick 1 ms và delay thực tế không chính xác. |
-| Bootloader để lại PLL/prescaler và Application giả định trạng thái reset | Startup và timing không ổn định. |
+| Reset bình thường | `BootMetadata_t` → `MetadataStorage_Load()` → `BootDecision_Evaluate()` → `BootManager_Run()` |
+| Bàn giao Application | `ApplicationJump_Validate()` → `ApplicationJump_Execute()` → `application_handoff.s` |
+| Nhận `INSTALL` | STM32 Application commit `UPDATE_ARTIFACT_READY` rồi reset để Bootloader xử lý SDOT |
+| Ghi firmware mới | `ProgramBufferedApplicationPage()` → Read-back Verify → `ResumePageCheckpointedCopy()` ghi Checkpoint |
+| Reset giữa cập nhật | Đọc lại state/`copy_offset`; Resume, Restart hoặc Rollback theo Boot Decision |
 
-**Theo code của project:** Trước khi bàn giao, `application_jump.c` gọi **`RCC_DeInit()`** để đưa clock tree về trạng thái gần reset dựa trên **HSI**; **Application `SystemInit()`** chịu trách nhiệm cấu hình lại clock cho chính image của nó. Không nên suy ra Bootloader và Application luôn dùng cùng một tần số hệ thống từ cấu hình tối đa 72 MHz của MCU.
+**Cần đọc:** `shared/include/memory_map.h`, `shared/include/boot_metadata.h`, `node-stm32f103/bootloader/src/application_jump.c`, `node-stm32f103/bootloader/startup/application_handoff.s`, `node-stm32f103/bootloader/src/boot_decision.c`.
 
-> **Câu hỏi thường gặp:** “Đặt lại RCC có đồng nghĩa reset toàn bộ chip không?” **Không.** `RCC_DeInit()` xử lý trạng thái cấu hình clock/RCC liên quan, không thay thế **system reset** và cũng không tự xóa toàn bộ trạng thái NVIC, SysTick hay SRAM. Vì vậy handoff còn nhiều bước cleanup khác.
-
-#### Bước 7. Các loại Reset và vì sao OTA cần trạng thái bền vững
-
-**Reset** khiến mã boot được thực thi lại, nhưng **không phải mọi loại reset đều có nguyên nhân giống nhau**. Ở mức ôn tập STM32F1, cần phân biệt:
-
-| Tình huống | Ví dụ kích hoạt | Quan hệ với project |
-|---|---|---|
-| **Power-on / Power-down reset** | Cấp nguồn, sụt nguồn vượt ngưỡng | Có thể xảy ra trong Receive/Backup/Install; cần **Power-loss Recovery**. |
-| **External reset** | Tác động chân NRST | Bootloader chạy lại và đọc Metadata để biết trạng thái. |
-| **Software system reset** | Application chủ động yêu cầu reset sau `INSTALL` | Bàn giao OTA cho Bootloader khi Metadata đã commit. |
-| **Watchdog reset** | Application trial không đáp ứng đúng hạn | Bootloader quản lý số lần Trial Boot và có thể Rollback. |
-
-**Điểm mấu chốt:** RAM không phải cơ chế lưu trạng thái cập nhật có thể tin cậy qua mất nguồn. Để biết đang **`UPDATE_INSTALLING`**, đã ghi an toàn đến đâu hay đã **`UPDATE_TRIAL_BOOT`** bao nhiêu lần, hệ thống cần **Metadata/Checkpoint** trong Flash. Sau reset, Bootloader **đọc lại** trạng thái này để quyết định **resume, xử lý lại một bước an toàn hoặc Rollback**, tùy thời điểm lỗi.
-
-**Reset không đồng nghĩa Rollback:** Nếu mất nguồn lúc Install, Bootloader có thể **tiếp tục Install từ Checkpoint**; Rollback là cơ chế riêng dùng **Backup Image** khi cần khôi phục firmware đã được chấp nhận.
-
-#### Bước 8. Tự đọc mã nguồn: nối kiến thức phần cứng với project
-
-**Ví dụ đọc Vector Table (để học, chưa phải hàm Jump hoàn chỉnh):**
-
-```c
-#include <stdint.h>
-
-#define APP_BASE 0x08006000UL
-
-void example_read_application_vectors(uint32_t *initial_msp,
-                                      uint32_t *reset_entry)
-{
-    *initial_msp = *(volatile const uint32_t *)(APP_BASE + 0UL);
-    *reset_entry = *(volatile const uint32_t *)(APP_BASE + 4UL);
-}
-
-/* Ví dụ chỉ để đọc vector: chưa kiểm tra range/alignment/Thumb bit.
-   Handoff thật cần dọn NVIC/SysTick/RCC, đặt VTOR và chuyển MSP
-   trong assembly như implementation của repository. */
-```
-
-**Cách kiểm tra khi đọc code:**
-
-1. `memory_map.h`: tìm `APPLICATION_START_ADDRESS`, `INTERNAL_SRAM_BASE`, `INTERNAL_SRAM_END`, `BOOT_METADATA_A_ADDRESS`.
-2. `application_jump.c`: tìm kiểm tra vector table, **MSP range + 8-byte alignment**, **Thumb bit** và **Reset Handler range**.
-3. Trong chính file đó, theo dõi `SysTick->CTRL`, `NVIC->ICER`, `NVIC->ICPR`, `RCC_DeInit()` và `SCB->VTOR`.
-4. `application_handoff.s`: xem cách restore ngữ cảnh và thực hiện branch mà không chạy epilogue C sau khi đổi MSP.
-5. `application.ld` / `bootloader.ld`: kiểm tra vùng `FLASH`, `RAM` và vị trí `.isr_vector`.
-
-> **Chưa kết luận từ chương này:** Khả năng Jump an toàn chỉ chứng minh firmware có cấu trúc vector hợp lệ và ngữ cảnh phù hợp; **không thay thế xác thực ECDSA P-256**. Quy trình tin cậy cập nhật nằm ở **Phần 4, 5** và sẽ được ôn kỹ trong **6.8**.
-
-#### Tình huống lỗi thực tế và hướng suy luận
-
-| Tình huống | Nguyên nhân cần kiểm tra trước | Cách khoanh vùng |
-|---|---|---|
-| MCU reset xong không vào Application | Sai Boot Decision, vector không hợp lệ, MSP ngoài SRAM hoặc Reset Handler ngoài partition | Đọc Metadata, vector[0]/vector[1], PC và fault status bằng GDB/SWD. |
-| Jump xong vào `HardFault_Handler` | MSP sai/alignment sai, Reset Handler không hợp lệ hoặc ngắt dùng sai vector | Kiểm tra `SCB->VTOR`, MSP/PSP, PC/LR và SCB fault registers. |
-| Application chạy được nhưng UART/SysTick ngừng hoạt động | PRIMASK còn chặn IRQ, NVIC chưa dọn, vector table/clock chưa cấu hình đúng | Kiểm tra `PRIMASK`, `CONTROL`, `NVIC->ISER/ISPR`, `SCB->VTOR`, clock. |
-| Bất thường sau khi đổi clock | HSI/HSE/PLL/prescaler không khớp giả định timing | Đọc trạng thái RCC, đối chiếu clock của USART/SPI/SysTick. |
-| Mất điện giữa Install rồi boot lại | Internal Flash có thể chứa image chưa hoàn chỉnh | Đọc Metadata/Checkpoint; **không Jump** vào firmware chưa Verify thành công. |
-
-#### Bài nói khi phỏng vấn: STM32F103 & Cortex-M3 (khoảng 90 giây)
-
-> Dạ, trong project Secure Delta OTA Bootloader, em sử dụng **STM32F103C8T6** với nhân **Arm Cortex-M3**, **64 KiB Internal Flash** và **20 KiB SRAM**.
->
-> Em chia Internal Flash thành **24 KiB Bootloader**, **38 KiB Application** và **hai trang Metadata A/B, mỗi trang 1 KiB**. Bootloader bắt đầu tại `0x08000000`, còn Application bắt đầu tại `0x08006000`.
->
-> Khi reset, MCU chạy Bootloader trước. Bootloader đọc Metadata để quyết định xử lý cập nhật hay chạy Application. Trước khi nhảy vào Application, hệ thống kiểm tra **MSP** và **Reset Handler** từ vector table, dừng **SysTick**, dọn ngắt **NVIC**, đưa **RCC** về trạng thái phù hợp, đặt lại **VTOR** rồi chuyển quyền điều khiển bằng assembly.
->
-> Trên Cortex-M3, **MSP** được dùng khi reset và trong Handler Mode, còn **PSP** có thể được chọn trong Thread Mode. Em cần hiểu sự khác biệt này để tránh lỗi stack hoặc HardFault khi bàn giao từ Bootloader sang Application.
->
-> Ngoài ra, các trạng thái OTA quan trọng được lưu trong Flash thay vì SRAM, để sau reset hoặc mất nguồn Bootloader có thể đọc lại Metadata/Checkpoint và tiếp tục hoặc khôi phục theo trạng thái an toàn.
-
-#### Câu hỏi ôn tập: STM32F103 & ARM Cortex-M3
-
-| Câu hỏi | Ý chính cần trả lời |
-|---|---|
-| STM32F103 khác Cortex-M3 ở đâu? | STM32F103 là **MCU hoàn chỉnh**; Cortex-M3 là **nhân xử lý** bên trong. |
-| Project sử dụng bao nhiêu Internal Flash và SRAM? | **64 KiB Internal Flash**, **20 KiB SRAM** trên STM32F103C8T6. |
-| Vì sao Bootloader và Application có địa chỉ Flash riêng? | Tránh tự ghi đè Bootloader; boot/jump và giới hạn ghi Flash rõ ràng. |
-| Application bắt đầu ở đâu? | `0x08006000`; Bootloader bắt đầu ở `0x08000000`. |
-| Tại sao Metadata A/B không đặt trong RAM? | Cần trạng thái bền vững qua reset và mất nguồn. |
-| MSP khác PSP như thế nào? | MSP dùng lúc reset và Handler Mode; PSP có thể dùng trong Thread Mode. |
-| Vector[0] và vector[1] chứa gì? | MSP ban đầu và địa chỉ Reset Handler (Thumb bit phải hợp lệ). |
-| VTOR dùng để làm gì? | Chỉ vị trí vector table mà CPU dùng để định tuyến exception/interrupt. |
-| Vì sao phải dọn NVIC/SysTick trước khi Jump? | Không để lại pending/enable/tick của Bootloader gây ngắt sai trong Application. |
-| Vì sao phải dùng assembly khi đổi MSP? | Không để epilogue C dùng stack của Bootloader sau khi chuyển MSP. |
-| Số priority NVIC càng lớn có ưu tiên càng cao không? | **Không**; giá trị priority số nhỏ hơn thường ưu tiên cao hơn. |
-| Clock 72 MHz có chắc là tần số hiện tại không? | **Không**; đây là giới hạn tối đa của dòng MCU, tần số thực do RCC chọn. |
-| HSI trên STM32F103 là bao nhiêu? | Oscillator nội HSI **8 MHz**. |
-| `RCC_DeInit()` có reset toàn bộ MCU không? | Không; nó dọn cấu hình clock, không thay thế system reset. |
-| Mất nguồn khi đang Install có phải luôn Rollback? | Không; Bootloader đánh giá Metadata/Checkpoint để Resume hoặc Rollback đúng tình huống. |
-| Kiểm tra vector có đủ chứng minh firmware được ký tin cậy không? | Không; vector validation khác **xác thực SDOT/ECDSA**. |
-
-#### Điểm cần ghi nhớ
-
-- **STM32F103 là MCU**, **Cortex-M3 là CPU core** bên trong; hiểu core phải đi cùng hiểu Flash/SRAM/NVIC/RCC của chip.
-- **Địa chỉ và dung lượng cụ thể:** Bootloader `0x08000000` (24 KiB), Application `0x08006000` (38 KiB), Metadata A/B (1 KiB mỗi vùng), SRAM `0x20000000`–`0x20004FFF` (20 KiB).
-- **MSP ≠ PSP:** Reset dùng MSP; Handler Mode dùng MSP; Thread Mode có thể chọn PSP.
-- **Jump Application ≠ gọi hàm C thông thường:** Phải kiểm tra vector, dọn SysTick/NVIC, xử lý RCC, đặt VTOR và khôi phục ngữ cảnh CPU.
-- **72 MHz là giới hạn, không phải mặc định chạy 72 MHz**; dựa vào cấu hình clock thật để tính UART, SPI và SysTick.
-- **Reset ≠ xóa trạng thái OTA trong Flash**; Metadata/Checkpoint là căn cứ phục hồi, còn Rollback chỉ là một nhánh xử lý.
-- **Vector validation ≠ firmware authentication**; chữ ký ECDSA được kiểm tra trong luồng cập nhật khác.
-
-#### Các file mã nguồn và tài liệu nên đọc
-
-| Tài liệu / File | Tại sao cần đọc |
-|---|---|
-| [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md) | Phân vùng Internal Flash, SRAM, W25Q và giới hạn erase/write. |
-| [`shared/include/memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h) | Các hằng địa chỉ thực sự dùng trong code. |
-| [`docs/boot-jump.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/boot-jump.md) | Trình tự kiểm tra vector, dọn NVIC/SysTick, RCC, VTOR và assembly handoff. |
-| [`node-stm32f103/bootloader/src/application_jump.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/application_jump.c) | Kiểm tra MSP/Reset Handler và C-side cleanup trước khi Jump. |
-| [`node-stm32f103/bootloader/startup/application_handoff.s`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/startup/application_handoff.s) | Cách chuyển stack, control và branch trong assembly. |
-| [`node-stm32f103/application/linker/application.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/linker/application.ld) | Vùng đặt Application và địa chỉ vector table trong linker script. |
-| [`node-stm32f103/bootloader/linker/bootloader.ld`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/linker/bootloader.ld) | Vùng đặt Bootloader và SRAM. |
-| [ST STM32F103C8 Product Overview](https://www.st.com/en/microcontrollers-microprocessors/stm32f103c8.html) | Thông số chip: Cortex-M3, 64 KiB Flash, 20 KiB SRAM, tốc độ tối đa, HSI. |
-| [ST PM0056 — Cortex-M3 Programming Manual](https://www.st.com/resource/en/programming_manual/pm0056-stm32f10xxx20xxx21xxxl1xxxx-cortexm3-programming-manual-stmicroelectronics.pdf) | Kiến thức nền MSP/PSP, NVIC, exception, thanh ghi core. |
-
-> **Gợi ý tự kiểm tra:** Giải thích bằng lời vì sao chỉ `SCB->VTOR = 0x08006000` chưa đủ để chuyển an toàn từ Bootloader sang Application. Nếu trả lời được cả **MSP, ngắt pending, SysTick, RCC và Reset Handler**, bạn đã nắm cốt lõi Chương 6.1.
+**Đọc tiếp:** [6.2 – Startup, linker và Application Handoff](#chuong-6-2), [6.3 – Cài firmware vào Internal Flash](#chuong-6-3), [6.9 – Metadata/Checkpoint](#chuong-6-9).
 
 ---
 
 <a id="chuong-6-2"></a>
-### 6.2. Boot Process, Vector Table & Linker Script
+### 6.2. Startup, Linker và Application Handoff trong project
 
 #### Sơ đồ tổng quan: Reset, Startup và Application Handoff
 
@@ -2290,119 +1990,30 @@ flowchart TD
 
 > **Phân biệt quan trọng:** **Power-on/reset** là sự kiện phần cứng khiến CPU nạp vector khởi động. **Application Jump** là chuyển quyền điều khiển bằng phần mềm tới `Reset_Handler` của image thứ hai; thao tác jump **không tự tạo ra một lần reset phần cứng** và không tự reset mọi ngoại vi. Đó là lý do project có quy trình cleanup trước khi jump.
 
-#### Bước 1. CPU làm gì ngay sau Reset?
+#### Bước 1. Theo dấu đường khởi động của hai image
 
-Ở chế độ boot từ **User Flash** của STM32F103, CPU truy cập hai word đầu của vùng vector được ánh xạ tại địa chỉ boot:
+Trong project, Bootloader được link tại `0x08000000`, Application tại `0x08006000`; chúng có **startup và linker riêng**. Sau reset vào Bootloader, `main()` đọc Metadata để chọn Boot Action. Nếu được phép chạy Application, Bootloader chuyển qua hàm kiểm tra vector và handoff; nếu còn cập nhật dở, nó xử lý state tương ứng trước.
 
-1. **Word 0:** giá trị **MSP ban đầu** (Main Stack Pointer).
-2. **Word 1:** địa chỉ **Reset Handler** (địa chỉ lệnh Thumb, bit 0 bằng 1).
-3. CPU nạp stack/điểm thực thi và chạy `Reset_Handler` của **Bootloader**.
-4. Startup Bootloader chuẩn bị môi trường C, sau đó vào `main()` để đọc Metadata và đưa ra Boot Decision.
+**Đối chiếu:** `bootloader.ld`, `application.ld`, `startup_stm32f10x_md.s` và `BootDecision_Evaluate()`. Không cần ôn lại trình tự nạp thanh ghi của Cortex-M3; điều cần kiểm tra là **hai image được link đúng địa chỉ** và không chồng lên Metadata.
 
-**Trong project:** Bootloader đặt tại `0x08000000`; Application đặt tại `0x08006000`. Vì vậy, với boot từ User Flash, **Bootloader luôn chạy trước**; trạng thái `UPDATE_IDLE`, `UPDATE_INSTALLING` hay `UPDATE_TRIAL_BOOT` chỉ được xét **sau khi Bootloader đã khởi động**.
+#### Bước 2. Kiểm tra Vector Table của Application theo code
 
-```text
-0x08000000 ┌────────────────────────────────────┐
-           │ Bootloader initial MSP             │  word[0]
-0x08000004 │ Bootloader Reset_Handler (+Thumb)  │  word[1]
-           │ ... exception/IRQ vectors          │
-           └────────────────────────────────────┘
+| Kiểm tra trong `ApplicationJump_Validate()` | Giá trị/ràng buộc của project |
+|---|---|
+| Địa chỉ vector Application | `0x08006000`, căn theo ràng buộc **0x200 byte** |
+| Initial MSP | Trong phạm vi SRAM `0x20000000–0x20005000`, căn hàng hợp lệ |
+| Reset Handler | Thuộc phân vùng Application và có **Thumb bit** phù hợp |
+| VTOR khi handoff | `SCB->VTOR = 0x08006000` |
 
-0x08006000 ┌────────────────────────────────────┐
-           │ Application initial MSP            │  word[0]
-0x08006004 │ Application Reset_Handler (+Thumb) │  word[1]
-           │ ... exception/IRQ vectors          │
-           └────────────────────────────────────┘
-```
+**Phân biệt:** Kiểm tra vector chỉ quyết định Application **có thể được chuyển quyền thực thi hay không**. Xác minh nguồn phát hành firmware được thực hiện riêng bằng SHA-256/ECDSA khi xử lý gói SDOT.
 
-**Lỗi thường gặp:** Đặt một Application build cho `0x08000000` vào vùng `0x08006000` rồi mong nó chạy như image đã relink. Mã chứa địa chỉ tuyệt đối/relocation và vector không tương ứng với vùng flash mới; chỉ **copy file `.bin` sang offset khác** không làm Application tự trở thành relocatable.
+**Mã cần đọc:** `application_jump.c`, `application_handoff.s`; đối chiếu hai word đầu file `.bin` và địa chỉ trong `application.ld` nếu Jump lỗi.
 
-#### Bước 2. Hiểu Vector Table, MSP, Reset Handler và VTOR
+#### Bước 3. Kiểm tra Startup riêng của Bootloader và Application
 
-**Vector Table** là bảng các địa chỉ ngoại lệ/ngắt mà Cortex-M3 sử dụng để tìm handler. Hai entry đầu mang ý nghĩa đặc biệt; các entry sau ánh xạ đến NMI, HardFault, SysTick và ngắt ngoại vi.
+Trong repository, hai image dùng startup assembly `startup_stm32f10x_md.s`, được **link độc lập**. Startup Application khởi tạo `.data`, `.bss`, gọi `SystemInit()` rồi vào `main()`; việc handoff phải đến đúng **Application Reset Handler**, không nhảy trực tiếp vào `main()`.
 
-| Offset tính từ đầu vector | Nội dung | Ý nghĩa khi boot |
-|---|---|---|
-| `+0x00` | Initial MSP | Stack ban đầu phải nằm trong SRAM hợp lệ. |
-| `+0x04` | Reset Handler | Địa chỉ entry point của image; bit 0 biểu thị Thumb state. |
-| `+0x08` | NMI Handler | Handler cho ngoại lệ NMI. |
-| `+0x0C` | HardFault Handler | Handler lỗi nghiêm trọng. |
-| `+0x3C` | SysTick Handler | Handler SysTick (exception số 15). |
-| `+0x40` trở đi | External IRQ handlers | ISR cho các ngắt ngoại vi STM32. |
-
-**Các địa chỉ cần ghi nhớ:**
-
-| Đại lượng | Giá trị project | Lưu ý |
-|---|---|---|
-| Bootloader vector base | `0x08000000` | Lúc khởi động từ User Flash. |
-| Application vector base | `0x08006000` | Linker đặt `.isr_vector` đúng tại đây. |
-| SRAM usable | `0x20000000`–`0x20004FFF` | 20 KiB SRAM. |
-| SRAM top / initial MSP điển hình | `0x20005000` | Địa chỉ **ngay sau** byte cuối SRAM, vẫn là MSP hợp lệ. |
-| Metadata bắt đầu | `0x0800F800` | Không được nhảy vào vùng Metadata. |
-| Vector table alignment | `0x200` bytes | Mức căn chỉnh được áp dụng và kiểm tra trong repo. |
-
-**VTOR (Vector Table Offset Register)** là thanh ghi `SCB->VTOR` xác định base của bảng vector đang được dùng để phân phối ngắt. Trong handoff, Bootloader đặt **`SCB->VTOR = 0x08006000`** để những IRQ phát sinh khi Application chạy được chuyển tới **ISR của Application**, thay vì handler của Bootloader.
-
-**Phân biệt ba khái niệm dễ nhầm:**
-
-- **MSP:** nơi CPU dùng stack; không nói CPU sẽ lấy IRQ handler từ đâu.
-- **PC / Reset Handler:** nơi CPU bắt đầu thực thi mã; chỉ nhảy tới handler **không tự chuyển vector table**.
-- **VTOR:** địa chỉ vector table của ngắt; chỉ đổi VTOR **không tự đổi stack và không tự gọi Reset Handler**.
-
-**Kiểm tra trước khi nhảy** trong `ApplicationJump_Validate()` gồm: base vector căn `0x200`, nằm trong vùng Application, initial MSP nằm trong SRAM và căn 8 byte, Reset Handler có bit Thumb và địa chỉ code (bỏ bit Thumb) nằm trong phân vùng Application. Đây là các **kiểm tra cấu trúc để có thể jump**, **không phải kiểm tra chữ ký/nguồn gốc firmware**.
-
-**Ví dụ đọc hai word đầu (chỉ để học):**
-
-```c
-#include <stdint.h>
-#define APP_BASE  (0x08006000UL)
-
-uint32_t app_msp   = *(volatile const uint32_t *)(APP_BASE + 0x00UL);
-uint32_t app_reset = *(volatile const uint32_t *)(APP_BASE + 0x04UL);
-/* app_msp: đầu vùng stack; app_reset: địa chỉ code có Thumb bit = 1.
- * Chưa được phép branch khi chưa validate và cleanup như code project. */
-```
-
-**Tình huống phỏng vấn:** `app_reset = 0x08006121` là giá trị có bit 0 = 1; địa chỉ instruction thực tế để kiểm tra dải là `app_reset & ~1`, tức `0x08006120`. Ngược lại `0x08006120` với bit 0 = 0 **không phải** entry hợp lệ cho một hàm Thumb trong vector.
-
-#### Bước 3. `Reset_Handler` chuẩn bị môi trường C như thế nào?
-
-Trong repository, cả Bootloader và Application dùng startup assembly `startup_stm32f10x_md.s`, nhưng chúng được **link thành hai image riêng**. Phần `Reset_Handler` trong file Application thực hiện theo thứ tự:
-
-1. Dùng các ký hiệu linker `_sidata`, `_sdata`, `_edata` để **copy giá trị khởi tạo của `.data` từ Flash vào SRAM**.
-2. Dùng `_sbss`, `_ebss` để **ghi 0 vào vùng `.bss`**.
-3. Gọi **`SystemInit()`** để khởi tạo cấu hình hệ thống theo startup code.
-4. Gọi **`main()`** của Application.
-
-**Mã giả C tương đương (minh họa nguyên lý, không phải source nguyên văn):**
-
-```c
-extern uint32_t _sidata, _sdata, _edata, _sbss, _ebss;
-
-void example_reset_runtime(void) {
-    uint32_t *dst = &_sdata;
-    const uint32_t *src = &_sidata;
-    while (dst < &_edata) { *dst++ = *src++; }  /* Flash → RAM */
-
-    for (dst = &_sbss; dst < &_ebss; ++dst) { *dst = 0; }
-
-    SystemInit();
-    main();
-    for (;;) {}  /* main() không nên return trong firmware bình thường */
-}
-```
-
-**Tại sao phải copy/zero?** Xem ví dụ:
-
-```c
-uint32_t retries = 3;      /* .data: chạy ở RAM, giá trị đầu nằm trong Flash */
-uint32_t rx_count;         /* .bss: startup đưa về 0 */
-const char tag[] = "OTA";  /* dữ liệu const thông thường được linker đặt ở Flash */
-```
-
-Nếu bỏ qua `.data` copy, `retries` có thể không bằng 3; nếu bỏ `.bss` clear, `rx_count` có thể mang giá trị rác. Đặc biệt, **Jump Application không thay thế startup của Application**: sau khi Bootloader giao quyền, Application vẫn phải đi qua `Reset_Handler` của chính mình để tái tạo các biến C của image mới.
-
-> **Chi tiết được xác nhận ở repo:** `Reset_Handler` của `node-stm32f103/application/startup/startup_stm32f10x_md.s` thực hiện **copy `.data` → zero `.bss` → `SystemInit()` → `main()`**. Đừng tự áp một thứ tự chung khác lên source thực tế.
+**Trường hợp cần debug:** Khi Application không chạy sau Jump, so sánh các ký hiệu linker `_sidata`, `_sdata`, `_edata`, `_sbss`, `_ebss` và entry symbol giữa ELF và startup của image đang cài. Điều cần giữ ở đây là **quan hệ giữa linker file và startup thực tế**, không phải học lại cách khởi tạo biến C.
 
 #### Bước 4. Linker Script là gì? Tại sao Bootloader và Application phải có script riêng?
 
@@ -2670,7 +2281,7 @@ p/x $pc             # PC hiện tại
 ---
 
 <a id="chuong-6-3"></a>
-### 6.3. STM32 Internal Flash Programming
+### 6.3. Cài firmware vào STM32 Internal Flash
 
 #### Sơ đồ tổng quan: Ghi Application vào Internal Flash
 
@@ -2700,32 +2311,17 @@ flowchart TD
 3. **Verify** diễn ra **trước** khi tiến độ được lưu bền vững; `copy_offset` chỉ đại diện cho trang đã ghi thành công và được kiểm tra.
 4. **CRC32 toàn image và kiểm tra vector** diễn ra sau bước ghi các trang; đây là bước riêng với kiểm tra từng trang.
 
-#### Bước 1. Hiểu nguyên lý Internal Flash và Erase/Program
+#### Bước 1. Ràng buộc thao tác ghi Internal Flash trong firmware installer
 
-**Kiến thức nền về NOR Flash:** Sau khi xóa, các bit của vùng được xóa ở trạng thái logic `1` (đọc thường thấy `0xFF`). Quá trình lập trình chuyển các bit được chọn từ `1` sang `0`; để trở về `1`, cần **Erase** đúng đơn vị xóa. Vì vậy không nên giả định có thể ghi tùy ý một firmware mới đè lên dữ liệu cũ mà bỏ qua Erase.
+| Quy tắc của project | Nơi kiểm tra |
+|---|---|
+| Chỉ ghi trong Application **38 KiB**, bắt đầu `0x08006000` | `shared/include/memory_map.h`, `image_installer.c` |
+| Erase theo trang **1 KiB** | `FLASH_ErasePage()` |
+| Program theo **half-word 16 bit** | `FLASH_ProgramHalfWord()` |
+| Đọc lại và đối chiếu trang trước khi cập nhật tiến độ | `ProgramBufferedApplicationPage()` |
+| Không ghi đè Bootloader và Metadata A/B | Kiểm tra phạm vi và các ràng buộc linker |
 
-Ví dụ đơn giản **mang tính minh họa**, không phải một thao tác thực thi trên chip:
-
-```text
-Sau Erase:             1111 1111   (0xFF)
-Program dữ liệu:       1010 0101   (0xA5)
-Kết quả:               1010 0101
-Muốn trở lại 0xFF:     Phải Erase đơn vị xóa liên quan
-```
-
-Với **STM32F103C8T6 medium-density** mà repository nhắm đến:
-
-| Thuộc tính | Giá trị / ý nghĩa | Liên hệ project |
-|---|---|---|
-| Internal Flash | **64 KiB** | Chứa Bootloader, Application, Metadata A/B. |
-| Đơn vị xóa | **1 KiB / page** | `FLASH_ErasePage()` xóa một trang theo địa chỉ trang. |
-| Đơn vị lập trình | **16 bit / half-word** | `FLASH_ProgramHalfWord()` ghi 2 byte tại địa chỉ phù hợp. |
-| RAM | **20 KiB SRAM** | Dùng bộ đệm trang, stack và dữ liệu vận hành; không lưu tiến độ sau mất nguồn. |
-| Dữ liệu sau khi xóa | **`0xFF`** | Hữu ích khi xử lý byte đệm và kiểm tra vùng chưa ghi. |
-
-> **Phân biệt:** **1 KiB** là kích thước trang xóa **Internal Flash của STM32F103**. **4 KiB** ở Chương 6.4/5.4 là kích thước sector xóa **External Flash W25Q** dùng trong sao lưu/nhận OTA. Đừng nhầm đơn vị Checkpoint của hai thao tác này.
-
-**Câu hỏi “Vì sao không ghi trực tiếp từng byte?”** Phần cứng dòng STM32F103 được dùng ở đây có thao tác program half-word; do đó firmware ghép mỗi cặp byte thành một `uint16_t`. Cần địa chỉ **căn chỉnh 2 byte** và kiểm tra trạng thái hoàn thành do flash controller trả về.
+**Không lặp lại nguyên lý vật lý của Flash tại đây:** Các phần tiếp theo tập trung vào **thứ tự thao tác của installer, cơ chế Verify, Checkpoint và khôi phục sau mất nguồn**.
 
 #### Bước 2. Đọc Memory Map để không xóa nhầm Bootloader hoặc Metadata
 
@@ -3052,7 +2648,7 @@ Metadata nằm trong **Internal Flash** nhưng có nhiệm vụ khác với firm
 ---
 
 <a id="chuong-6-4"></a>
-### 6.4. External SPI Flash W25Q
+### 6.4. W25Q và tầng lưu trữ OTA
 
 #### Sơ đồ tổng quan: Dữ liệu OTA đi qua W25Q như thế nào?
 
@@ -3099,21 +2695,17 @@ Trong project, layout logic dành cho **W25Q32 (4 MiB, 32 Mbit, JEDEC `EF 40 16`
 
 **File cần đọc:** [`spi_flash.c` → `SpiFlash_Init()`, `ReadJedecIdRaw()`, `SpiFlash_IsSupportedJedecId()`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/drivers/spi_flash.c).
 
-#### Bước 2. Hiểu nguyên lý NOR Flash: Erase, Program, Read và giới hạn đơn vị
+#### Bước 2. Những ràng buộc W25Q mà driver phải thực thi
 
-| Thao tác | Đơn vị/ràng buộc trong thiết kế | Kết quả cần hiểu |
-|---|---|---|
-| `Read Data` | Có thể đọc nhiều byte trong phạm vi hợp lệ. | Không yêu cầu Erase trước khi đọc. |
-| `Page Program` | Tối đa đến **ranh giới 256 byte** của page hiện tại. | Chỉ lập trình bit **`1 → 0`**; không tự xóa dữ liệu cũ. |
-| `4 KiB Sector Erase` | Địa chỉ phải chia hết cho **4096**. | Toàn bộ sector được đưa về trạng thái xóa (`0xFF`). |
-| `Read Status Register-1` | Đọc thanh ghi trạng thái. | Quan sát `WIP/BUSY`, `WEL`. |
-| `Write Enable` | Cần trước từng thao tác Program/Erase. | Đặt latch cho phép ghi; phải kiểm tra WEL thay vì chỉ gửi opcode rồi giả định thành công. |
+| Thao tác W25Q | Ràng buộc thể hiện trong project |
+|---|---|
+| `SpiFlash_Read()` | Đọc dữ liệu trong phạm vi chip được chấp nhận. |
+| `SpiFlash_Write()` | Chia theo ranh giới **page 256 byte**; không tự Erase; có `PreflightProgrammable()` trước ghi. |
+| `SpiFlash_EraseSector()` | Cần địa chỉ căn theo **sector 4 KiB**. |
+| Status register | Theo dõi **WIP/WEL** trong quy trình Write Enable và đợi hoàn tất. |
+| Storage API | Kiểm tra offset **tương đối trong phân vùng**, tránh tràn qua vùng khác. |
 
-**Ví dụ về bit:** dữ liệu hiện tại `1111 0000` (`0xF0`) có thể Program thành `1100 0000` (`0xC0`), nhưng không thể chỉ Program để trở thành `1111 1111` (`0xFF`). Muốn đưa các bit `0` lên `1`, cần Erase sector chứa byte đó.
-
-**Ví dụ phân biệt 256 B và 4 KiB:** Một sector chứa **16 page 256 byte** (`4096 / 256 = 16`). Khi xóa sector, **cả 16 page** bị ảnh hưởng. Khi Program, không được để một lệnh Page Program vượt qua ranh giới page (vì có thể ghi vòng trong page hoặc cho kết quả không như dự định tùy thiết bị).
-
-> **Điểm dễ bị hỏi:** `SpiFlash_Write()` trong repository **không tự Erase**. Hàm kiểm tra trước `PreflightProgrammable()`; nếu byte mới yêu cầu chuyển bit `0 → 1`, driver trả `SPI_FLASH_STATUS_NEEDS_ERASE`. Tầng OTA/storage phải tổ chức Erase đúng sector trước khi ghi mới. Không nên mô tả driver “ghi đè byte bất kỳ”.
+**Điểm cần soi trong mã:** Nếu dữ liệu mới yêu cầu Erase nhưng caller chỉ gọi `SpiFlash_Write()`, driver có thể trả `SPI_FLASH_STATUS_NEEDS_ERASE`; **tầng OTA/storage** chịu trách nhiệm tổ chức lại thao tác theo Checkpoint. Các phần tiếp theo giải thích đường xử lý cụ thể của `spi_flash.c`.
 
 #### Bước 3. Hiểu chuỗi lệnh SPI và vai trò WIP/WEL
 
@@ -3431,7 +3023,7 @@ flowchart TD
 ---
 
 <a id="chuong-6-5"></a>
-### 6.5. UART Communication & OTA Protocol
+### 6.5. Giao thức truyền OTA qua UART
 
 #### Sơ đồ tổng quan: Từ gói SDOT trong ESP32 đến bàn giao Bootloader
 
@@ -3479,42 +3071,16 @@ sequenceDiagram
 3. **ACK không đồng nghĩa với Checkpoint bền vững**. Một packet có thể đã ACK, nhưng sau mất nguồn STM32 vẫn yêu cầu truyền lại từ mốc sector 4 KiB trước đó.
 4. **`FINISH` khác `INSTALL`**: nhận đủ gói SDOT mới chỉ đạt `ARTIFACT_READY` ở runtime; `INSTALL` mới lưu trạng thái bàn giao vào **Internal Flash Metadata A/B** và reset để Bootloader xác thực/cài đặt.
 
-#### Bước 1. Hiểu UART: dây nối, khung byte và thông số 115200 8-N-1
+#### Bước 1. Cấu hình UART được sử dụng trong OTA (không ôn lý thuyết UART)
 
-**UART (Universal Asynchronous Receiver/Transmitter)** là giao tiếp nối tiếp **bất đồng bộ**. Hai phía không chia sẻ chân clock; bên nhận dựa trên tốc độ baud đã cấu hình và các bit bắt đầu/kết thúc để lấy mẫu byte.
+| Đầu nối | Cấu hình của project |
+|---|---|
+| STM32 Application | **USART1**, PA9 (TX), PA10 (RX) |
+| ESP32 Gateway | **UART2**, GPIO17 (TX), GPIO16 (RX) mặc định |
+| Thông số truyền | **115200, 8-N-1**, không RTS/CTS |
+| Ghép nối | ESP32 TX → STM32 RX; STM32 TX → ESP32 RX; GND chung |
 
-| Thành phần | Cấu hình trong project | Vai trò |
-|---|---|---|
-| STM32 peripheral | **USART1** | Nhận/gửi OTA packet ở phía Application. |
-| STM32 TX / RX | **PA9 / PA10** | TX sang ESP32 RX, RX từ ESP32 TX. |
-| ESP32 peripheral mặc định | **UART2** | Gateway gửi SDOT xuống STM32. |
-| ESP32 TX / RX mặc định | **GPIO17 / GPIO16** | TX sang STM32 PA10, RX từ STM32 PA9. |
-| Baud rate ban đầu | **115200** | Hai đầu phải cấu hình tương thích. |
-| Data / Parity / Stop | **8 / None / 1** (`8-N-1`) | 8 bit dữ liệu, không parity, 1 stop bit. |
-| Flow control | **None** | Không dùng RTS/CTS trong cấu hình v1. |
-| Duplex | **Full duplex** | TX và RX độc lập. |
-
-```text
-ESP32 GPIO17 (UART2 TX) -------> STM32 PA10 (USART1 RX)
-ESP32 GPIO16 (UART2 RX) <------- STM32 PA9  (USART1 TX)
-ESP32 GND              -------- STM32 GND
-```
-
-> **Kiến thức nền phần cứng:** Kết nối UART giữa hai MCU cần **chung GND** và **mức điện áp logic tương thích** (hai phía dùng logic 3,3 V trong cấu hình điển hình). Không nối trực tiếp chân UART TTL 3,3 V với cổng RS-232 có mức điện áp khác nếu không có bộ chuyển mức thích hợp. Đây là quy tắc thiết kế phần cứng tổng quát, không phải tính năng riêng của protocol OTA.
-
-**Khung 8-N-1 cho một byte:**
-
-```text
-IDLE(1) | START(0) | D0 D1 D2 D3 D4 D5 D6 D7 | STOP(1) | IDLE(1)
-```
-
-- Mỗi byte dữ liệu chiếm **10 bit trên đường truyền**: 1 start + 8 data + 1 stop.
-- 115200 baud cho mức trần lý thuyết khoảng **11.520 byte dữ liệu UART/giây**, **chưa trừ** header OTA, COBS, ACK, thời gian chờ Flash và Retry.
-- Protocol v1 **luôn bắt đầu ở 115200 8-N-1**; thay đổi baud là khả năng có thể bổ sung trong tương lai, không nên trình bày như đã được tự động thương lượng.
-
-**Tại sao chọn UART giữa ESP32 và STM32?** ESP32 xử lý kết nối mạng và tải gói; STM32 không cần TCP/IP stack để nhận SDOT. UART đơn giản về dây nối, nhưng ứng dụng phải bổ sung framing, kiểm tra lỗi và cơ chế phục hồi.
-
-**Các lỗi vật lý thường gặp:** đảo TX/RX sai, quên nối GND, baud không khớp, chân GPIO chưa cấu hình đúng Alternate Function, UART receive bị nghẽn khi xử lý Flash hoặc reset ngay trước khi truyền ACK xong.
+**Điểm kiểm tra khi đọc code/debug:** Hai bên phải thống nhất UART settings; nhưng **ranh giới OTA packet là của COBS + byte `0x00`**, không phải ranh giới byte UART. Nội dung đáng học sâu trong chương này là **lệnh OTA, framing, CRC32, ACK/NACK, Retry, FINISH/INSTALL, Resume và các lỗi trạng thái**.
 
 #### Bước 2. Đóng khung UART bằng COBS + ký tự phân tách `0x00`
 
@@ -4119,601 +3685,58 @@ Flash write/verify, sector erase, xử lý MCU, Wi-Fi hoặc các lần Retry.
 ---
 
 <a id="chuong-6-6"></a>
-### 6.6. SPI Communication
+### 6.6. Driver truy cập W25Q trong source code
 
-#### Sơ đồ tổng quan: SPI nằm ở đâu trong hệ thống OTA?
+> **Phạm vi:** Không ôn lại SPI Master/Slave, CPOL/CPHA, clock, TXE/RXNE/BSY hay cách truyền từng bit. Chương này chỉ theo dõi **đường gọi hàm truy cập W25Q** của STM32 Application và Bootloader. Ràng buộc bộ nhớ W25Q được phân tích tại [6.4](#chuong-6-4).
 
-```mermaid
-flowchart TD
-    GW["ESP32 Gateway<br/>SDOT đã tải về"] -->|"UART + COBS + CRC32"| APP["STM32 Application"]
-    APP -->|"ExternalFlashStorage_Write"| STORAGE["External Flash Storage<br/>Kiểm tra partition / offset"]
-    STORAGE -->|"SpiFlash_Write"| DRIVER["SPI Flash Driver<br/>SPI1 Master + PB0 /CS"]
-    DRIVER <-->|"SCK / MOSI / MISO / CS"| W25Q["W25Q SPI NOR Flash"]
-    W25Q -->|"Incoming SDOT"| BOOT["STM32 Bootloader"]
-    BOOT -->|"SPI Read / Write / Erase"| DRIVER
-    BOOT -->|"Verify → Backup → Install"| INTERNAL["STM32 Internal Flash"]
-    classDef logic fill:#eef6ff,stroke:#446b9b,color:#111;
-    class APP,STORAGE,DRIVER,BOOT logic;
-```
+#### 1. Khởi tạo chip và kiểm tra nhận diện
 
-| Lớp | Nhiệm vụ | Không nên nhầm với |
+`SpiFlash_Init()` trong `node-stm32f103/common/drivers/spi_flash.c` cấu hình **SPI1**, chọn chip bằng **PB0**, đọc JEDEC ID với opcode **`0x9F`** và chỉ chấp nhận **W25Q32 (`EF 40 16`)** hoặc **W25Q64 (`EF 40 17`)**. Với W25Q64, layout OTA vẫn chỉ sử dụng **4 MiB đầu tiên** theo cấu hình project.
+
+**Cấu hình để đối chiếu source:** PA5 SCK, PA6 MISO, PA7 MOSI, PB0 `/CS`; Mode 0, 8 bit, MSB-first, prescaler `/4`, NSS phần mềm. Đây là giá trị cấu hình thực tế, không phải bài học về ngoại vi SPI.
+
+#### 2. Đường xử lý lệnh W25Q
+
+| Lệnh/hàm | Vai trò trong OTA | Điều cần kiểm tra |
 |---|---|---|
-| **UART OTA** | Chuyển packet SDOT giữa ESP32 và STM32 Application | SPI nối STM32 với W25Q |
-| **SPI peripheral + SPI Flash driver** | Truyền byte, điều khiển CS, opcode, WIP/WEL và truy cập Flash | Boot State Machine |
-| **External Flash Storage** | Chặn truy cập vượt phân vùng, dùng partition + relative offset | Driver tự quyết vùng OTA nào được phép ghi |
-| **OTA Receiver / Bootloader** | Quyết định lúc nào lưu Incoming, tạo Reconstructed, Backup, Rollback | SPI tự xác thực chữ ký firmware |
+| `SpiFlash_Read()` — opcode `0x03` | Đọc SDOT, dữ liệu tái tạo hoặc Backup | Phạm vi địa chỉ và dữ liệu trả về |
+| `SpiFlash_Write()` — opcode `0x02` | Ghi Incoming/Reconstructed/Backup | Chia theo ranh giới 256 B, preflight, Verify |
+| `SpiFlash_EraseSector()` — opcode `0x20` | Chuẩn bị sector cho dữ liệu mới | Căn chỉnh 4 KiB và xử lý lỗi |
+| Write Enable — opcode `0x06` | Cho phép Erase/Program | Kiểm tra WEL sau khi gửi lệnh |
+| Read Status — opcode `0x05` | Chờ Flash hoàn tất thao tác | WIP/BUSY và giới hạn polling |
+| `SpiFlash_Verify()` | Đọc lại dữ liệu đã ghi | Chỉ báo lỗi byte, không xác thực ECDSA |
 
----
+**Thứ tự điển hình trong driver:** Validate range → Write Enable → kiểm tra WEL → Erase/Program → chờ WIP hết bận → Read-back Verify. `SpiFlash_Write()` **không tự xóa sector**. Giá trị `*_TIMEOUT_LOOPS` là ngân sách vòng polling, không phải thời gian mili-giây chính xác.
 
-#### Bước 1. Hiểu SPI: Master, Slave, Full-duplex và bốn đường tín hiệu
-
-**SPI (Serial Peripheral Interface)** là giao tiếp nối tiếp đồng bộ. Trong project, **STM32F103 là Master**, tự phát xung **SCK**; **W25Q là Slave**, nhận lệnh và trả dữ liệu theo xung do STM32 cung cấp.
-
-```text
-            STM32F103 (SPI1 Master)           W25Q32/W25Q64 (Slave)
-
-      PA5  / SPI1_SCK  ----------------------> CLK    (SCK)
-      PA7  / SPI1_MOSI ----------------------> DI     (MOSI)
-      PA6  / SPI1_MISO <---------------------- DO     (MISO)
-      PB0  / GPIO CS   ----------------------> /CS    (active low)
-
-      GND              ----------------------  GND
-      3.3 V            ----------------------  VCC
-```
-
-| Tín hiệu | Hướng trong cấu hình này | Vai trò |
-|---|---|---|
-| **SCK / CLK** | STM32 → W25Q | Xung đồng hồ; mỗi chu kỳ tạo nhịp dịch bit. |
-| **MOSI / DI** | STM32 → W25Q | Opcode, địa chỉ 24-bit, dữ liệu khi Program. |
-| **MISO / DO** | W25Q → STM32 | JEDEC ID, Status Register, dữ liệu khi Read. |
-| **CS / /CS** | STM32 PB0 → W25Q | **Mức thấp** chọn chip/bắt đầu giao dịch; **mức cao** kết thúc giao dịch. |
-
-**Khác UART:** UART truyền bất đồng bộ, không có clock chung, thường dùng start/stop bit. SPI dùng xung chung, thường không có start/stop bit trên từng byte; ranh giới **giao dịch Flash** được xác định bởi **CS** và cấu trúc opcode/địa chỉ/dữ liệu.
-
-**Full-duplex ở mức phần cứng:** Mỗi byte STM32 clock ra trên MOSI đồng thời có một byte được clock vào từ MISO. Tuy nhiên, giao thức lệnh W25Q dùng các **pha theo chức năng**: pha gửi opcode/địa chỉ thường bỏ qua byte đọc vào; pha đọc dữ liệu gửi dummy byte để lấy dữ liệu từ MISO. Vì vậy không nên kết luận rằng thiết bị đang gửi hai luồng dữ liệu ứng dụng độc lập cùng lúc.
-
-**Lỗi phỏng vấn thường gặp:** Nói MISO là chân STM32 truyền sang Flash, hoặc nói CS có mức kích hoạt cao. Với W25Q trong project, cả hai đều sai.
-
-#### Bước 2. CPOL, CPHA và vì sao project chọn SPI Mode 0
-
-**CPOL (Clock Polarity)** xác định mức SCK khi idle; **CPHA (Clock Phase)** xác định cạnh nào được dùng để lấy mẫu dữ liệu. Master và Slave phải tương thích để cùng hiểu vị trí bit.
-
-| SPI mode | CPOL | CPHA | SCK idle | Cạnh lấy mẫu theo quy ước SPI thông dụng |
-|---|---:|---:|---|---|
-| **Mode 0** | 0 | 0 | Low | Cạnh đầu tiên (rising). |
-| Mode 1 | 0 | 1 | Low | Cạnh thứ hai (falling). |
-| Mode 2 | 1 | 0 | High | Cạnh đầu tiên (falling). |
-| Mode 3 | 1 | 1 | High | Cạnh thứ hai (rising). |
-
-**Trong repository:**
-
-```c
-// Trích lược các trường cấu hình thật trong SpiFlash_Init().
-spi.SPI_Mode = SPI_Mode_Master;
-spi.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
-spi.SPI_DataSize = SPI_DataSize_8b;
-spi.SPI_CPOL = SPI_CPOL_Low;
-spi.SPI_CPHA = SPI_CPHA_1Edge;
-spi.SPI_FirstBit = SPI_FirstBit_MSB;
-```
-
-Các trường này tương ứng **SPI Mode 0, 8-bit, MSB-first**. Dữ liệu được đặt ổn định quanh cạnh lấy mẫu theo timing yêu cầu của chip; không nên diễn giải rằng phần mềm phải tự điều khiển từng cạnh SCK, vì **SPI peripheral** thực hiện việc dịch bit.
-
-**Ví dụ lỗi:** Nếu STM32 dùng Mode 1 còn W25Q yêu cầu Mode 0 trong kết nối hiện tại, thời điểm lấy mẫu có thể lệch, dẫn đến đọc JEDEC ID sai hoặc ghi/đọc dữ liệu không nhất quán. Đây là **lý giải phần cứng**; driver không có cơ chế tự nhận diện và tự đổi Mode nếu cấu hình sai.
-
-> **Ghi nhớ:** `CPOL=0, CPHA=0` không mô tả tốc độ SPI. Tốc độ do clock nguồn của SPI và prescaler quyết định.
-
-#### Bước 3. Clock, prescaler, thứ tự bit và thông số cấu hình thực tế
-
-`SPI1` thuộc bus **APB2** của STM32F103. Driver bật clock cho **GPIOA, GPIOB và SPI1**, sau đó đặt prescaler chia 4:
-
-```c
-RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA |
-                       RCC_APB2Periph_GPIOB |
-                       RCC_APB2Periph_SPI1, ENABLE);
-
-spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_4;
-spi.SPI_NSS = SPI_NSS_Soft;
-spi.SPI_FirstBit = SPI_FirstBit_MSB;
-```
-
-Ở mức nguyên lý:
+#### 3. Phân tầng API trong repository
 
 ```text
-f_SPI_SCK = f_PCLK2 / 4
+STM32 Application / Bootloader
+  → ExternalFlashStorage_Read/Write/EraseRange(partition, offset, ...)
+  → Kiểm tra phạm vi partition + chuyển offset sang địa chỉ W25Q tuyệt đối
+  → SpiFlash_Read/Write/EraseSector/Verify(...)
+  → Driver SPI1 giao tiếp W25Q
 ```
 
-**Ví dụ tính toán có điều kiện:** Nếu cấu hình clock chạy thực tế là `PCLK2 = 72 MHz` thì SCK xấp xỉ **18 MHz**. Đây chỉ là ví dụ công thức; muốn biết tốc độ SPI thật của board tại từng thời điểm phải kiểm tra **RCC clock tree** và/hoặc đo SCK bằng oscilloscope/logic analyzer. Không mặc định mọi chương trình STM32F103 đều dùng PCLK2 72 MHz.
+`ExternalFlashStorage_*` biết phân vùng OTA và giới hạn offset; `SpiFlash_*` biết opcode và ràng buộc thiết bị. **Không** đánh đồng driver SPI với tầng xác thực gói SDOT hoặc Boot Decision.
 
-| Thuộc tính | Giá trị trong `SpiFlash_Init()` | Ý nghĩa |
-|---|---|---|
-| Peripheral | `SPI1` | Controller SPI trên STM32. |
-| Vai trò | `Master` | STM32 phát SCK và chọn W25Q. |
-| Dây dữ liệu | `2Lines_FullDuplex` | MOSI/MISO riêng. |
-| Khung SPI | `8b` | Gửi từng byte opcode, address, payload. |
-| Clock | `CPOL_Low` / `CPHA_1Edge` | Mode 0. |
-| Bit order | `MSB` | Bit có trọng số cao trước. |
-| Prescaler | `/4` | Chia nguồn clock peripheral. |
-| NSS | `NSS_Soft` | Phần mềm quản lý chọn chip. |
-| `SPI_CRCPolynomial = 7` | Trường được gán trong cấu hình | **Không** có nghĩa driver đã bật kiểm tra CRC phần cứng SPI. |
+**Ví dụ địa chỉ:** Nếu Incoming có base `0x002000`, ghi ở offset `0x0100` của phân vùng thì địa chỉ W25Q là `0x002100`. Lớp storage phải từ chối ghi vượt khỏi Incoming thay vì tràn sang Reconstructed Image.
 
-**Vì sao không suy ra có SPI CRC?** Đoạn mã của project truyền lệnh W25Q bằng `Transfer()` và kiểm tra kết quả bằng **read-back Verify**; không có bằng chứng driver đang sử dụng tính năng phát CRC SPI phần cứng để bảo vệ toàn bộ gói SDOT. **CRC32 ở chương 6.5** là tầng UART OTA, không phải `SPI_CRCPolynomial`.
+#### 4. Các tình huống cần theo dõi trong code
 
-**Ba yếu tố dễ làm giảm tốc độ hữu hiệu:** overhead CS/opcode/address, polling `TXE/RXNE/BSY`, và thời gian Flash nội bộ **Program/Erase** (có WIP), nên tốc độ SCK cao không đồng nghĩa tốc độ cập nhật OTA tương ứng.
-
-#### Bước 4. Phân tích `SpiFlash_Init()`: GPIO, NSS mềm và kiểm tra JEDEC ID
-
-Mở file [`node-stm32f103/common/drivers/spi_flash.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/drivers/spi_flash.c), tìm hàm **`SpiFlash_Init()`**.
-
-Trình tự rút gọn **đúng theo mã nguồn hiện tại**:
-
-1. Đặt trạng thái driver về chưa khởi tạo và xóa JEDEC ID đã lưu.
-2. Bật clock **GPIOA, GPIOB, SPI1**.
-3. Đặt **PB0 CS lên mức cao** trước khi sử dụng SPI, tránh chọn chip ngoài ý muốn.
-4. Cấu hình **PA5 SCK, PA7 MOSI** là `GPIO_Mode_AF_PP` (alternate-function push-pull), **PA6 MISO** là `GPIO_Mode_IN_FLOATING`.
-5. Cấu hình **PB0** là `GPIO_Mode_Out_PP` và tiếp tục bảo đảm CS đang inactive.
-6. De-init rồi cấu hình SPI1: Master, 2-line Full Duplex, 8-bit, Mode 0, software NSS, /4, MSB-first.
-7. Bật SPI peripheral, gửi `0x9F` đọc **JEDEC ID**.
-8. Chỉ chấp nhận W25Q32 **`EF 40 16`** hoặc W25Q64 **`EF 40 17`**, sau đó đợi chip hết BUSY; thành công mới đặt `g_initialized=1`.
-
-```mermaid
-flowchart TD
-    A["SpiFlash_Init()"] --> B["Enable RCC: GPIOA / GPIOB / SPI1"]
-    B --> C["Set PB0 /CS HIGH<br/>Configure PA5 PA7 AF_PP, PA6 INPUT"]
-    C --> D["SPI1 Master / Mode 0 / 8-bit / MSB /4"]
-    D --> E["Read JEDEC ID: 0x9F"]
-    E --> F{"W25Q32/W25Q64<br/>supported?"}
-    F -->|"Không"| ERR["UNSUPPORTED_DEVICE / fail init"]
-    F -->|"Có"| G["WaitReady: WIP = 0"]
-    G --> H{"Đọc status OK?"}
-    H -->|"Không"| ERR2["Timeout / SPI error"]
-    H -->|"Có"| I["g_initialized = 1"]
-```
-
-**Đặc điểm NSS mềm:** `SPI_NSS_Soft` cùng `SPI_NSSInternalSoftwareConfig(..., SPI_NSSInternalSoft_Set)` cấu hình NSS bên trong SPI peripheral. **PB0 không phải phần cứng NSS tự động**, mà được điều khiển bằng `GPIO_ResetBits()` và `GPIO_SetBits()` trong `Select()` / `Deselect()`.
-
-**Vì sao init phải kiểm tra JEDEC?** Cắm sai chip, dây MISO lỗi hoặc SPI chưa hoạt động có thể làm mọi thao tác sau không đáng tin. Kiểm tra JEDEC giúp từ chối sớm thiết bị không thuộc loại hỗ trợ. Tuy vậy, một JEDEC ID hợp lệ **không đủ để kết luận** toàn bộ chip đã hoạt động hoàn hảo hoặc các vùng Flash đã ghi đúng.
-
-> **Phân biệt:** W25Q64 8 MiB được chấp nhận trên phần cứng thử nghiệm, nhưng **Memory Map OTA của repo vẫn chỉ sử dụng 4 MiB đầu tiên**. Đây là chính sách software, không phải giới hạn vật lý của W25Q64.
-
-#### Bước 5. `Transfer()` truyền một byte như thế nào? TXE, RXNE và BSY
-
-Trong driver, các thao tác đọc/ghi lệnh đều gọi hàm nội bộ **`Transfer(uint8_t tx, uint8_t *rx)`**.
-
-| Flag | Câu hỏi nó trả lời | Điều không nên suy diễn |
-|---|---|---|
-| `TXE` | Có thể ghi tiếp dữ liệu vào thanh ghi truyền? | **Không đồng nghĩa** bit cuối cùng đã ra hết trên dây. |
-| `RXNE` | Đã có dữ liệu nhận được để đọc? | Không tự bảo đảm byte đúng với opcode/địa chỉ mong muốn. |
-| `BSY` | Controller SPI còn đang bận truyền/nhận? | Không phải bit **WIP** báo W25Q đang Program/Erase. |
-| W25Q `WIP` | Chip Flash còn xử lý Program/Erase? | Không phải cờ trạng thái SPI peripheral của STM32. |
-
-**Trình tự thực tế của `Transfer()`:**
-
-```text
-Transfer(tx, &rx)
-    |
-    v
-Poll SPI_I2S_FLAG_TXE (có timeout theo vòng lặp)
-    |
-    v
-SPI_I2S_SendData(SPI1, tx)
-    |
-    v
-Poll SPI_I2S_FLAG_RXNE (có timeout theo vòng lặp)
-    |
-    v
-SPI_I2S_ReceiveData(SPI1)
-    |
-    +---- rx != NULL ? Lưu byte nhận : Bỏ byte nhận
-    v
-Trả về true; lỗi/timeout thì trả về false
-```
-
-**Mã minh họa bám sát nguyên tắc trong driver (đã rút gọn):**
-
-```c
-// Pseudocode để học: bỏ phần status enum và timeout-loop chi tiết.
-bool spi_transfer_byte(uint8_t tx, uint8_t *rx)
-{
-    if (!wait_flag_with_timeout(SPI_I2S_FLAG_TXE)) return false;
-    SPI_I2S_SendData(SPI1, tx);
-
-    if (!wait_flag_with_timeout(SPI_I2S_FLAG_RXNE)) return false;
-    uint8_t value = (uint8_t)SPI_I2S_ReceiveData(SPI1);
-    if (rx != NULL) *rx = value;
-    return true;
-}
-```
-
-Khi **kết thúc giao dịch**, `Deselect()` chờ `SPI_I2S_FLAG_BSY` hạ (có timeout vòng lặp) rồi mới đưa CS lên HIGH. Điều này tránh ngắt CS khi bộ điều khiển SPI vẫn chưa hoàn tất dịch byte cuối.
-
-**Lưu ý về timeout:** Các giá trị `200000`, `3000000`, `30000000` trong driver là **ngân sách số vòng lặp polling**, không phải số mili-giây đã hiệu chuẩn. Không diễn giải `SPI_FLASH_TRANSFER_TIMEOUT_LOOPS` thành `200000 ms`.
-
-**Một chi tiết cần nhận ra khi review code:** `Deselect()` có chờ BSY với timeout, nhưng hàm này không trả về `bool` để báo trực tiếp timeout BSY. Vì vậy không được khẳng định mọi tình huống CS/BSY đều có cùng cơ chế báo lỗi như `Transfer()`; cần phân tích riêng đường lỗi nếu muốn tăng độ chắc chắn cho driver.
-
-#### Bước 6. Phân tích một SPI transaction: CS + opcode + address + dummy/data
-
-SPI **không tự định nghĩa** opcode đọc Flash. W25Q dùng giao thức lệnh đặt trên SPI. Master phải giữ CS ở mức LOW xuyên suốt một command rồi thả HIGH khi kết thúc.
-
-**6.1. Đọc JEDEC ID bằng lệnh `0x9F`**
-
-```text
-/CS:  ________LOW________________________ HIGH
-MOSI: [0x9F] [0xFF] [0xFF] [0xFF]
-MISO: [ -- ] [0xEF] [0x40] [0x16]   (W25Q32)
-           hoặc 0xEF  0x40  0x17    (W25Q64)
-```
-
-**Giải thích:** STM32 phải gửi ba byte **dummy `0xFF`** để tạo thêm 24 xung clock và đọc ba byte ID trả về. Byte MISO đồng thời với opcode không được dùng làm manufacturer ID.
-
-**6.2. Đọc dữ liệu bằng lệnh `0x03` và địa chỉ 24-bit**
-
-```text
-/CS:  LOW ------------------------------------------------ HIGH
-MOSI: [0x03] [A23:A16] [A15:A8] [A7:A0] [0xFF] [0xFF] ...
-MISO: [ -- ] [  --   ] [  --  ] [ -- ] [DATA0] [DATA1] ...
-```
-
-Hàm `SendAddress24()` gửi byte **cao trước → giữa → thấp**; còn `SpiFlash_Read()` gửi dummy để clock ra từng byte Flash. Ví dụ, địa chỉ `0x0020F0` được đưa lên MOSI dưới dạng ba byte `0x00, 0x20, 0xF0`. Không nên nhầm đây với cách serialize các trường little-endian của **UART OTA** ở Chương 6.5.
-
-**6.3. Đọc Status Register-1 bằng `0x05`**
-
-```text
-MOSI: [0x05] [0xFF]
-MISO: [ -- ] [STATUS1]
-
-STATUS1 bit 0 (WIP/BUSY): 1 = W25Q đang bận
-STATUS1 bit 1 (WEL):      1 = Write Enable Latch đang được bật
-```
-
-**6.4. Page Program và Sector Erase** có dạng:
-
-```text
-Page Program:  /CS LOW → 0x02 → Address24 → DATA bytes → /CS HIGH
-Sector Erase: /CS LOW → 0x20 → Address24              → /CS HIGH
-```
-
-Trước hai lệnh làm thay đổi Flash phải có **Write Enable `0x06`** trong một transaction riêng; sau khi nhả CS, chip tiến hành hoạt động nội bộ và driver **poll WIP** đến khi hết BUSY.
-
-> **Ghi nhớ:** CS phải được thả giữa transaction `Write Enable` và transaction `Page Program`. Không ghép opcode `0x06` và `0x02` thành một dòng byte dưới cùng một CS rồi kỳ vọng Flash hiểu thành hai lệnh độc lập.
-
----
-#### Bước 7. Từ giao dịch SPI đến `Write Enable` → Erase / Program → Verify
-
-Đây là chỗ giao tiếp SPI trực tiếp ảnh hưởng tính an toàn của dữ liệu OTA. SPI chỉ đưa lệnh và byte đến chip; muốn ghi dữ liệu tin cậy phải tôn trọng quy tắc vật lý của **NOR Flash** và kiểm tra kết quả.
-
-**Trình tự ghi trong repository:**
-
-```mermaid
-flowchart TD
-    START["SpiFlash_Write(address, buffer, length)"] --> RANGE["Kiểm tra initialized / range / buffer"]
-    RANGE --> PF["PreflightProgrammable()<br/>Đọc cũ và kiểm tra 0→1"]
-    PF --> OK{"Có cần Erase?"}
-    OK -->|"Có"| FAIL["NEEDS_ERASE: từ chối ghi"]
-    OK -->|"Không"| CHUNK["Chia theo page 256-byte<br/>ExtFlash_PageChunkLength()"]
-    CHUNK --> WREN["CS LOW → 0x06 → CS HIGH<br/>Kiểm tra WEL"]
-    WREN --> PG["CS LOW → 0x02 → addr24 → data → CS HIGH"]
-    PG --> BUSY["Poll WIP qua 0x05 cho đến khi 0"]
-    BUSY --> VERIFY["Read-back Verify từng byte"]
-    VERIFY --> MORE{"Còn chunk?"}
-    MORE -->|"Có"| CHUNK
-    MORE -->|"Không"| DONE["Success"]
-```
-
-**7.1. Preflight: vì sao không phải lúc nào gửi `0x02` cũng ghi được?**
-
-NOR Flash sau Erase có các bit bằng `1`. Page Program chỉ có thể biến bit từ `1` sang `0`, không thể tự biến `0` thành `1`. Trước khi ghi, driver đọc dữ liệu cũ theo các đoạn tối đa **32 byte** và kiểm tra điều kiện:
-
-```c
-// Điều kiện thực sự có trong PreflightProgrammable():
-if ((existing_byte & new_byte) != new_byte) {
-    // SPI_FLASH_STATUS_NEEDS_ERASE
-    return false;
-}
-```
-
-| Byte hiện có | Muốn ghi | Có thể Program trực tiếp? | Lý do |
-|---|---|---|---|
-| `0xFF` | `0x3C` | Có | Chỉ chuyển `1 → 0`. |
-| `0xFE` | `0xFC` | Có | Hạ thêm một bit xuống 0. |
-| `0x00` | `0x01` | Không | Cần `0 → 1`, phải Erase trước. |
-| `0xA0` | `0xA0` | Có theo kiểm tra bit | Không có bit `0 → 1`; vẫn phải theo luồng kiểm soát của driver. |
-
-**7.2. Chia Page Program theo ranh giới 256 byte**
-
-Một lệnh Page Program **không vượt quá page vật lý**. Driver dùng hàm `ExtFlash_PageChunkLength()` để tính số byte còn lại đến cuối page.
-
-Ví dụ **40 byte bắt đầu từ địa chỉ `0x0000F0`**:
-
-```text
-Page #0: 0x000000 ... 0x0000FF
-                          |
-                 0xF0 ... 0xFF = 16 bytes
-
-Page #1: 0x000100 ... 0x0001FF
-          0x100 ... 0x117 = 24 bytes
-
-Tổng: 16 + 24 = 40 bytes → 2 lệnh Page Program.
-```
-
-**Ví dụ này cũng là cách bài self-test trong repo kiểm tra lỗi crossing page.**
-
-**7.3. `WriteEnable()` kiểm tra WEL trước mỗi thao tác thay đổi Flash**
-
-```text
-CS LOW → 0x06 → CS HIGH
-CS LOW → 0x05 → dummy 0xFF → đọc Status-1 → CS HIGH
-Kiểm tra bit WEL = 1
-```
-
-Nếu WEL không được bật, driver từ chối với trạng thái **`WRITE_ENABLE_FAILED`**. Sau một lần Page Program hoặc Erase, không giả định WEL vẫn bằng 1 cho lệnh kế tiếp: driver thực hiện lại Write Enable khi cần.
-
-**7.4. WIP/BUSY: Program và Erase có thời gian nội bộ**
-
-Sau khi command đã được nhận và CS lên HIGH, W25Q có thể cần thời gian để hoàn tất. Hàm `WaitReady()` liên tục đọc Status Register-1 bằng `0x05`, kiểm tra **bit 0** cho tới khi `WIP == 0` hoặc hết số vòng polling.
-
-Phải phân biệt:
-
-- **SPI peripheral BSY:** Chuỗi clock và shift dữ liệu trên SCK/MOSI/MISO còn diễn ra.
-- **W25Q WIP:** Chip Flash đang thực hiện thao tác nội bộ sau lệnh.
-- **ACK của UART OTA:** Application đã xử lý một DATA packet ở tầng giao thức cập nhật; không phải một flag SPI.
-
-**7.5. Read-back Verify**
-
-Sau khi Page Program thành công và WIP hết BUSY, `ProgramPageChunk()` gọi `SpiFlash_Verify()` để đọc lại bằng opcode `0x03` và so byte với buffer dự kiến. Thao tác này phát hiện lỗi lưu/truyền ở mức byte, nhưng **không thay thế** chữ ký ECDSA P-256 trên SDOT.
-
-**7.6. Erase theo sector 4 KiB**
-
-```text
-SpiFlash_EraseSector(address)
-    → Check initialized + 4 KiB alignment + range
-    → WriteEnable(), kiểm tra WEL
-    → CS LOW → 0x20 → Address24 → CS HIGH
-    → WaitReady() đọc WIP
-    → Return status
-```
-
-`SpiFlash_EraseSector()` **từ chối địa chỉ không căn chỉnh**, không âm thầm làm tròn xuống sector. Hàm này không tự gọi `SpiFlash_IsErased()` để blank-check sau khi Erase; các luồng kiểm thử/đọc cao hơn có thể chủ động gọi `SpiFlash_IsErased()` khi cần. Nêu đúng như vậy khi giải thích source code, không tự khẳng định driver luôn blank-check mọi sector sau Erase.
-
-> **Lưu ý:** Mặc dù preflight toàn vùng xảy ra trước khi bắt đầu lập trình, `SpiFlash_Write()` vẫn ghi **lần lượt từng page**. Nếu mất nguồn hoặc lỗi ở page sau, các page trước có thể đã được thay đổi. **Đây không phải một transaction nguyên tử cho toàn buffer**; tính an toàn OTA đến từ phân vùng, Metadata, Checkpoint và logic Recovery ở tầng trên.
-
-#### Bước 8. Phân tích ba tầng API: SPI peripheral → `SpiFlash_*` → `ExternalFlashStorage_*`
-
-Đọc mã nguồn theo thứ tự từ thấp đến cao:
-
-```text
-1. STM32 SPI1 peripheral + GPIO PB0 CS
-        |
-        v
-2. spi_flash.c (driver truy cập chip)
-   SpiFlash_Init()
-   SpiFlash_Read()
-   SpiFlash_Write()
-   SpiFlash_EraseSector()
-   SpiFlash_Verify()
-   SpiFlash_IsErased()
-        |
-        v
-3. external_flash_storage.c (ràng buộc partition)
-   ExternalFlashStorage_Read(partition, offset, ...)
-   ExternalFlashStorage_Write(partition, offset, ...)
-   ExternalFlashStorage_EraseRange(partition, offset, length)
-   ExternalFlashStorage_ErasePartition(partition)
-        |
-        v
-4. OTA Receiver / Bootloader
-   Incoming SDOT / Reconstructed / Backup / Logs
-```
-
-| Tầng | Biết điều gì? | Không tự biết điều gì? |
-|---|---|---|
-| SPI1 + GPIO | Clock, bit, dữ liệu byte, mức CS | Nội dung là SDOT hay Backup. |
-| `spi_flash.c` | Opcode, JEDEC, WIP/WEL, page/sector, absolute range | Partition nào tương ứng giai đoạn OTA. |
-| `external_flash_storage.c` | Partition ID, base address, relative offset, size | Firmware hợp lệ về chữ ký/phiên bản hay không. |
-| OTA / Bootloader | Trạng thái cập nhật, kiểm tra chữ ký, Checkpoint, Rollback | Không nên điều khiển từng bit clock bằng tay. |
-
-**Ví dụ về `ResolveRange()` và địa chỉ tương đối:**
-
-```c
-// Pseudocode phản ánh cách lớp storage tính địa chỉ.
-// Ví dụ: EXT_INCOMING_ADDRESS = 0x002000.
-if (!ExtFlash_IsRangeValid(partition_size, offset, length)) {
-    return false;
-}
-absolute_address = partition_base + offset;
-return SpiFlash_Write(absolute_address, data, length);
-```
-
-Giả sử Application muốn ghi 256 byte tại **offset `0x0100`** của phân vùng **Incoming**:
-
-```text
-Incoming base        = 0x002000
-Relative offset      = 0x000100
-Absolute W25Q addr   = 0x002100
-Write length         = 256 B
-```
-
-Nếu một đoạn ghi vượt **128 KiB** của Incoming, `ExternalFlashStorage_Write()` từ chối thông qua kiểm tra phạm vi; không để dữ liệu tràn sang Reconstructed Image. Đối với Erase, `ExternalFlashStorage_EraseRange()` còn yêu cầu cả **offset và length căn chỉnh theo 4 KiB sector**.
-
-**Vì sao cả Application và Bootloader cùng dùng driver?** Repo biên dịch lớp `spi_flash.c` dùng chung cho cả hai image. Application cần ghi gói SDOT vào W25Q; Bootloader cần đọc SDOT, ghi Reconstructed Image, Backup và đọc lại để Install/Rollback. Tách các lớp giúp tránh hai phiên bản code điều khiển chip có cách hiểu lệnh/giới hạn khác nhau.
-
-**Phân biệt Metadata:** `External Flash Metadata A/B` nằm trên W25Q có sector **4 KiB** phục vụ download Checkpoint và legacy handoff; **Internal Flash Metadata A/B** nằm trong STM32 Internal Flash có hai trang **1 KiB** và quyết định state của Bootloader. Lệnh `INSTALL` của đường signed SDOT mặc định dùng **Internal Flash Metadata A/B**; không được gọi hai loại này là một.
-
-#### Bước 9. Đặt SPI vào luồng cập nhật OTA và Power-loss Recovery
-
-**Khi STM32 Application đang chạy:**
-
-1. Nhận DATA packet từ ESP32 qua UART, giải COBS và kiểm tra CRC32/sequence/offset.
-2. Xác định vị trí tương ứng trong **phân vùng Incoming (gói SDOT)** của W25Q.
-3. Khi cần, xóa sector 4 KiB ở ranh giới an toàn trước khi ghi dữ liệu mới.
-4. Gọi `ExternalFlashStorage_Write()` → `SpiFlash_Write()` → SPI transaction.
-5. Read-back Verify thành công thì mới phản hồi ACK hợp lệ cho packet.
-6. Theo các mốc an toàn 4 KiB, lưu Download Checkpoint vào **External Flash Metadata A/B** để Resume sau reset.
-
-**Khi Bootloader xử lý UPDATE_ARTIFACT_READY:**
-
-```mermaid
-flowchart TD
-    I["W25Q Incoming: signed SDOT"] --> V["Bootloader đọc qua SPI<br/>Verify ECDSA/SHA-256"]
-    V --> P["Full: chuẩn bị image<br/>Delta: Verify Base + Apply Patch"]
-    P --> R["W25Q Reconstructed Image"]
-    R --> B["Backup Internal Application<br/>sang W25Q Backup"]
-    B --> F["Install firmware mới<br/>vào STM32 Internal Flash"]
-    F --> T["Trial Boot"]
-    T -->|"Confirm"| OK["IDLE / Active version mới"]
-    T -->|"Lỗi sau ngưỡng"| RB["W25Q Backup → Rollback"]
-```
-
-Trong sơ đồ, **SPI là đường dữ liệu đến/đi khỏi W25Q**, không trực tiếp quyết định image có được cài hay không. Chữ ký ECDSA/SHA-256, quyết định Boot State Machine và bảo vệ Internal Flash là logic riêng của Bootloader.
-
-**Mất nguồn trong lúc SPI Page Program:** Không thể mặc định byte/page vừa ghi hoàn toàn đúng; khi reset, kiểm tra Metadata/Checkpoint và chuẩn bị lại vùng chưa được commit an toàn. Với OTA receiver, mốc Download Checkpoint có thể thấp hơn offset đã từng ACK; tại Resume, có thể phải Erase rồi nhận lại sector chưa commit.
-
-**Mất nguồn trong lúc SPI Sector Erase:** Sector có thể ở trạng thái không bảo đảm; không đánh dấu quá trình đã hoàn tất chỉ vì đã gửi opcode `0x20`. Sau reset, kiểm tra trạng thái/cơ chế recovery và xử lý lại theo mốc an toàn.
-
-**Mất nguồn khi Bootloader đang Backup hoặc Rollback:** Các mốc có thể khác Download Checkpoint vì đó là những trạng thái Bootloader riêng. SPI driver chỉ báo thành công/thất bại từng thao tác; **Metadata + Checkpoint** ở tầng trên quyết định cần tiếp tục ở đâu.
-
-> **Điểm quan trọng:** **Read-back Verify ≠ CRC32 ≠ SHA-256 ≠ ECDSA.** Read-back so byte tại chip; CRC32 phát hiện lỗi truyền/lưu; SHA-256 tính hash nội dung; ECDSA xác thực chữ ký của bên phát hành. Mỗi cơ chế giải quyết vấn đề khác nhau.
-
-#### Bước 10. Debugging, logic analyzer, failure injection và kiểm thử thực tế
-
-**10.1. Đọc tín hiệu bằng logic analyzer**
-
-Đo đồng thời **SCK, MOSI, MISO, /CS**, cài decoder **SPI Mode 0, MSB-first, 8-bit**. Kiểm tra giao dịch đầu tiên của init:
-
-```text
-CS LOW
-  MOSI: 9F FF FF FF
-  MISO: ?? EF 40 16      (W25Q32)
-CS HIGH
-```
-
-Dấu `??` là byte MISO trong pha opcode, không yêu cầu khớp một giá trị cố định. Nếu decoder hiển thị toàn `FF` hoặc `00` bất thường, trước hết kiểm tra dây nguồn, GND, chân MISO, CS và Mode; chưa kết luận ngay là chip hỏng.
-
-**10.2. Bảng triệu chứng và hướng kiểm tra**
-
-| Triệu chứng | Nguyên nhân có thể | Hướng kiểm tra |
-|---|---|---|
-| `SpiFlash_Init()` báo `UNSUPPORTED_DEVICE` | ID sai do MISO/CS/mode, chip khác loại hỗ trợ | Đo JEDEC `0x9F`, chân PA5/PA6/PA7/PB0, VCC 3.3 V, /WP và /HOLD. |
-| Read toàn `0xFF` | MISO thả nổi/pull-up, CS không chọn chip, vùng đã Erase | Kiểm tra CS có LOW thật, ID và địa chỉ Read. |
-| Read sai lặp lại một bit | Sai Mode, tốc độ cao so với tín hiệu, nhiễu dây | Xác minh Mode 0, thử clock thấp hơn để chẩn đoán, kiểm signal integrity. |
-| `TRANSFER_TIMEOUT` | TXE/RXNE không tiến triển, SPI chưa chạy/clock sai | Kiểm tra RCC, SPI enable, vòng polling và trạng thái peripheral. |
-| `WRITE_ENABLE_FAILED` | Không đọc được WEL, protection/nguồn/wiring | Xem chuỗi `0x06` → `0x05`, kiểm bit WEL. |
-| `BUSY_TIMEOUT` | WIP không hạ, chip đang bận hoặc đọc status lỗi | Kiểm tra `0x05`, điều kiện nguồn và thao tác trước đó; không coi timeout là phép đo ms. |
-| `NEEDS_ERASE` | Ghi mới yêu cầu bit `0 → 1` | Erase đúng sector qua tầng storage an toàn, sau đó mới Program. |
-| `ALIGNMENT_ERROR` | Sector Erase không bắt đầu ở ranh 4 KiB | Căn chỉnh địa chỉ hoặc dùng API EraseRange đúng partition. |
-| `VERIFY_FAILED` | Byte Flash đọc lại khác dữ liệu muốn ghi | Kiểm tra dữ liệu, nguồn, page boundary, address và chip. |
-| W25Q đúng nhưng OTA thất bại | Có thể lỗi state, CRC, chữ ký, patch, Metadata hoặc Internal Flash | Debug theo tầng; không quy mọi lỗi OTA về SPI. |
-
-**10.3. Kiểm thử SPI Flash trong repository**
-
-Tài liệu `docs/external-spi-flash.md` mô tả bài **hardware self-test** dùng **sector cuối `0x3FF000`–`0x3FFFFF`**; đây là vùng riêng cho kiểm thử có xóa dữ liệu, không phải Incoming/Backup.
-
-Các bước chính:
-
-1. Đọc và xác minh JEDEC ID.
-2. Erase sector self-test và blank-check.
-3. Ghi **40 byte từ offset `0xF0`** để kiểm tra khi dữ liệu **vượt ranh page 256 byte**.
-4. Đọc/Verify dữ liệu vừa ghi.
-5. Kiểm tra giới hạn partition.
-6. Erase lại và blank-check cuối.
-
-Ví dụ đầu ra được mô tả trong tài liệu:
-
-```text
-FLASH_SELFTEST_STATUS=0x50415353
-FLASH_SELFTEST_JEDEC=0x00EF4016  # hoặc 0x00EF4017
-FLASH_SELFTEST_DRIVER_STATUS=0x00000000
-SPI Flash hardware test: PASS
-```
-
-**Lưu ý:** Đây là kết quả kỳ vọng của quy trình kiểm thử, **không phải kết quả đo tôi vừa thực hiện trên phần cứng của bạn**. Sau self-test cần nạp lại firmware thường theo hướng dẫn repository. Không áp dụng Erase thử nghiệm lên các phân vùng Incoming, Reconstructed, Backup hoặc Metadata đang có dữ liệu quan trọng.
-
-**10.4. Những phép đo hữu ích khi tối ưu:** đo SCK, thời gian CS LOW mỗi transaction, thời gian chờ WIP sau `0x02`/`0x20`, lỗi timeout/verify theo địa chỉ, thời gian lưu một DATA packet vào W25Q, throughput OTA end-to-end. Chỉ thay đổi prescaler khi đã kiểm datasheet, điện áp, chất lượng dây và timing thực tế; tránh tối ưu tốc độ bằng cách bỏ Verify hoặc Checkpoint.
-
----
-
-#### Bài nói khi phỏng vấn: SPI Communication (khoảng 90 giây)
-
-> Dạ, trong project **Secure Delta OTA Bootloader**, em sử dụng **SPI1 của STM32F103 ở Master Mode** để giao tiếp với **External Flash W25Q**. Kết nối gồm PA5 SCK, PA6 MISO, PA7 MOSI và PB0 làm Chip Select. Driver cấu hình **SPI Mode 0, 8-bit, MSB-first, prescaler chia 4**.
->
-> Khi STM32 muốn đọc hoặc ghi Flash, nó kéo CS xuống LOW, gửi opcode và địa chỉ 24-bit qua MOSI; khi đọc, STM32 gửi thêm byte dummy để nhận dữ liệu từ MISO. Hàm `Transfer()` dùng các cờ TXE và RXNE để truyền từng byte, còn lúc kết thúc transaction phải bảo đảm SPI không còn BUSY trước khi thả CS.
->
-> Với ghi Flash, driver thực hiện **Write Enable**, kiểm tra WEL, chia dữ liệu theo ranh giới Page 256 byte, chờ WIP hết bận rồi đọc lại Verify. Khi Erase, địa chỉ phải đúng ranh giới Sector 4 KiB.
->
-> Em tách driver SPI và tầng lưu trữ phân vùng. STM32 Application dùng SPI để ghi SDOT vào Incoming; Bootloader dùng SPI để đọc, tái tạo, sao lưu và phục hồi firmware. Nếu mất nguồn, hệ thống dựa vào Metadata và Checkpoint để phục hồi ở mốc an toàn, chứ không giả định thao tác SPI dở dang đã hoàn tất.
-
-#### Câu hỏi ôn tập: SPI Communication (30 câu kèm ý chính)
-
-| STT | Câu hỏi phỏng vấn | Ý chính cần trả lời |
-|---:|---|---|
-| 1 | SPI là đồng bộ hay bất đồng bộ? | **Đồng bộ**; STM32 Master cấp clock SCK. |
-| 2 | Master và Slave trong project là ai? | STM32F103 **Master**, W25Q **Slave**. |
-| 3 | Bốn đường SPI dùng trong project? | **PA5 SCK**, **PA6 MISO**, **PA7 MOSI**, **PB0 /CS**. |
-| 4 | MOSI/MISO có hướng như thế nào? | MOSI Master → Slave; MISO Slave → Master. |
-| 5 | Vì sao cần chung GND và nguồn 3.3 V? | Chung mốc mức logic và cấp nguồn đúng đặc tính thiết bị. |
-| 6 | Full-duplex nghĩa là gì? | Khi tạo clock, MCU đồng thời shift byte ra MOSI và nhận vào MISO. |
-| 7 | SPI khác UART cơ bản ở đâu? | SPI có clock chung và CS/command; UART không có SCK, khung byte start/stop. |
-| 8 | CPOL và CPHA là gì? | CPOL: mức idle SCK; CPHA: pha/cạnh lấy mẫu. |
-| 9 | Project dùng SPI Mode mấy? | **Mode 0: CPOL=0, CPHA=0** (`Low`, `1Edge`). |
-| 10 | Project dùng MSB-first hay LSB-first? | **MSB-first**, frame **8-bit**. |
-| 11 | SPI1 clock đến từ bus nào? | **APB2**, SCK do peripheral chia với prescaler `/4`. |
-| 12 | Nếu PCLK2 = 72 MHz thì SCK là bao nhiêu? | Theo giả định đó: **18 MHz**; không mặc định PCLK2 luôn 72 MHz. |
-| 13 | PB0 có phải SPI NSS phần cứng tự động không? | Không; **GPIO CS**, còn SPI dùng `NSS_Soft`. |
-| 14 | Khi nào CS active? | **LOW**, giữ LOW trong toàn bộ một command; HIGH để kết thúc. |
-| 15 | TXE khác RXNE và BSY thế nào? | TXE có chỗ để ghi data; RXNE có data nhận; BSY báo peripheral đang bận. |
-| 16 | SPI peripheral BSY khác W25Q WIP thế nào? | BSY: clock/transfer SPI; WIP: chip đang Program/Erase. |
-| 17 | Vì sao phải gửi dummy `0xFF` lúc Read? | Tạo xung SCK để W25Q đưa byte dữ liệu ra MISO. |
-| 18 | Lệnh đọc JEDEC ID là gì? | `0x9F`; W25Q32 `EF 40 16`, W25Q64 `EF 40 17`. |
-| 19 | `SendAddress24()` gửi byte theo thứ tự nào? | Address **MSB byte → middle → LSB byte**. |
-| 20 | Lệnh đọc Data và Read Status-1? | **`0x03`** (Read), **`0x05`** (Read Status-1). |
-| 21 | Trình tự gửi Write Enable? | CS LOW → `0x06` → CS HIGH; sau đó đọc `0x05` xác minh WEL. |
-| 22 | WEL và WIP là gì? | WEL cho phép ghi; WIP cho biết Flash đang bận nội bộ. |
-| 23 | Page Program và Sector Erase dùng opcode nào? | `0x02` và `0x20`. |
-| 24 | Page Program được vượt ranh giới 256 byte không? | **Không**; driver chia thành page chunks. |
-| 25 | Ghi 40 byte từ `0xF0` cần mấy page program? | **2** lần: 16 byte + 24 byte. |
-| 26 | `SpiFlash_Write()` có tự Erase không? | **Không**; preflight từ chối nếu muốn chuyển `0 → 1`. |
-| 27 | Erase cần căn chỉnh ra sao? | Địa chỉ **4 KiB-aligned**; `SpiFlash_EraseSector()` không làm tròn. |
-| 28 | Vì sao cần `ExternalFlashStorage_*`? | Ràng buộc `partition + relative offset` để không ghi tràn giữa các vùng OTA. |
-| 29 | `SPI_CRCPolynomial=7` có nghĩa SPI CRC đang bảo vệ SDOT? | **Không**; không được suy ra SPI CRC đã bật; SDOT được bảo vệ ở các tầng khác. |
-| 30 | Nếu mất nguồn giữa SPI Page Program thì điều gì quyết định Resume? | **Metadata/Checkpoint và recovery ở tầng trên**, không phải tự động bởi SPI peripheral. |
-
-#### Điểm cần ghi nhớ
-
-1. **SPI1 STM32 là Master, W25Q là Slave**; nối **PA5 SCK / PA6 MISO / PA7 MOSI / PB0 CS**, 3.3 V và chung GND.
-2. **SPI Mode 0, 8-bit, MSB-first, prescaler /4, NSS mềm** là cấu hình cụ thể trong repository; không trộn với UART 115200 8-N-1.
-3. **CS LOW** chọn W25Q và xác định ranh giới một transaction; `Write Enable` và `Page Program` là **hai transaction khác nhau**.
-4. **TXE/RXNE/BSY là flag SPI peripheral; WIP/WEL là bit trạng thái W25Q**; chúng không thay thế nhau.
-5. **Khi SPI Read cần tạo clock bằng dummy byte**, không phải W25Q tự phát byte mà không có SCK.
-6. **Opcode + 24-bit address** là giao thức chip Flash: `0x9F`, `0x05`, `0x03`, `0x06`, `0x02`, `0x20`.
-7. **Không suy ra SPI CRC phần cứng đang bật** chỉ vì `SPI_CRCPolynomial=7`; chữ ký SDOT do Bootloader xác thực ở tầng khác.
-8. **`SpiFlash_Write()` preflight trước, Program theo từng page 256 byte và Verify sau Program; không tự Erase**, không bảo đảm nguyên tử cả buffer.
-9. **Sector Erase theo 4 KiB, kiểm tra alignment/range**, còn việc blank-check sau Erase được thực hiện ở nơi chủ động gọi `SpiFlash_IsErased()`.
-10. **ExternalFlashStorage_* bảo vệ partition**; nó không quyết định phiên bản firmware hay trạng thái Boot State Machine.
-11. **Trong OTA, Application nhận qua UART rồi lưu SDOT qua SPI; Bootloader đọc W25Q qua SPI và cài firmware vào Internal Flash**.
-12. **Mất nguồn giữa giao dịch SPI không có nghĩa byte đã an toàn**; phải dựa vào Verify, Metadata, Checkpoint và Recovery.
-13. **Clock SPI hiệu dụng phụ thuộc PCLK2 thực**, không được khẳng định chắc chắn là 18 MHz nếu chưa biết clock tree đang chạy.
-14. **Timeout polling loops không phải mili-giây**, và JEDEC ID hợp lệ chỉ là bước kiểm tra thiết bị ban đầu, không phải bằng chứng data OTA hợp lệ.
-
-#### Các file mã nguồn và tài liệu nên đọc
-
-| File / tài liệu | Vai trò và câu hỏi nên tự trả lời |
+| Tình huống | Cách kiểm tra liên quan đến project |
 |---|---|
-| [`docs/external-spi-flash.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/external-spi-flash.md) | Sơ đồ chân, Mode 0, lệnh SPI, self-test và ranh giới W25Q. |
-| [`node-stm32f103/common/drivers/spi_flash.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/drivers/spi_flash.c) | **Đọc đầu tiên:** `SpiFlash_Init`, `Select/Deselect`, `Transfer`, `ReadStatus1`, `WaitReady`, `WriteEnable`, `ReadJedecIdRaw`. |
-| [`node-stm32f103/common/include/spi_flash.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/include/spi_flash.h) | Public API và status code của SPI Flash driver. |
-| [`shared/src/ext_flash_layout.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/src/ext_flash_layout.c) | `ExtFlash_IsRangeValid`, `ExtFlash_IsSectorAligned`, `ExtFlash_PageChunkLength`. |
-| [`shared/include/memory_map.h`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/shared/include/memory_map.h) | Kích thước sector/page, base address và giới hạn Flash. |
-| [`node-stm32f103/common/storage/external_flash_storage.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/common/storage/external_flash_storage.c) | `ResolveRange`, `ExternalFlashStorage_Read/Write/EraseRange` theo partition. |
-| [`node-stm32f103/application/src/ota_receiver.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/application/src/ota_receiver.c) | Ứng dụng nhận DATA UART rồi gọi storage/Flash để lưu SDOT trước khi ACK. |
-| [`node-stm32f103/bootloader/src/boot_manager.c`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/node-stm32f103/bootloader/src/boot_manager.c) | Boot State Machine sử dụng dữ liệu bên W25Q để verify, backup, install/rollback. |
-| [`docs/memory-map.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/memory-map.md) | Phân biệt External W25Q với Internal Flash, Incoming/Reconstructed/Backup/Metadata. |
-| [`docs/uart-ota-protocol.md`](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/uart-ota-protocol.md) | Hiểu vị trí UART ở trước SPI trong đường dữ liệu OTA. |
-| ST **RM0008** và datasheet **Winbond W25Q32JV/W25Q64JV** | Kiến thức nền về SPI flags/timing, Flash command, WIP/WEL, điều kiện tín hiệu; đối chiếu datasheet theo chip thực tế. |
+| JEDEC ID không hợp lệ | `SpiFlash_Init()` không đánh dấu driver sẵn sàng; không tiếp tục ghi OTA |
+| W25Q còn BUSY | `WaitReady()` giới hạn polling; không mặc định thao tác đã xong |
+| Ghi yêu cầu xóa | `PreflightProgrammable()` từ chối nếu dữ liệu không thể program trực tiếp |
+| Reset giữa Page Program | Phân tích `Download Checkpoint`/Backup Checkpoint, không tin trang ghi dở |
+| Ghi tràn partition | `ExternalFlashStorage_*` kiểm tra phạm vi trước khi xuống driver |
 
-> **Tự kiểm tra cuối chương:** STM32 Application nhận DATA qua UART để ghi **40 byte** vào W25Q tại offset tương đối `0x0000F0` của Incoming. Hãy giải thích (1) chân SCK/MOSI/MISO/CS sử dụng, (2) tính địa chỉ tuyệt đối từ Incoming base `0x002000`, (3) vì sao cần **hai** lần Page Program, (4) mỗi lần CS được kéo LOW/HIGH khi nào, (5) tại sao phải Write Enable và đọc WEL, (6) tại sao phải chờ WIP rồi Verify mới ACK UART, (7) nếu mất nguồn trước mốc Checkpoint thì Resume thế nào và (8) việc SPI ghi đúng có chứng minh chữ ký SDOT hợp lệ chưa. Sau đó mở `spi_flash.c` và tự chỉ ra từng hàm thực hiện các bước vừa nói.
+**Mã nguồn nên đọc:** `node-stm32f103/common/drivers/spi_flash.c`, `node-stm32f103/common/storage/external_flash_storage.c`, `node-stm32f103/application/src/ota_receiver.c`, `node-stm32f103/bootloader/src/image_installer.c`.
+
+**Đọc tiếp:** [6.4 – W25Q và phân vùng OTA](#chuong-6-4), [6.5 – Giao thức OTA](#chuong-6-5), [6.9 – Metadata/Checkpoint](#chuong-6-9).
 
 ---
-
 
 <a id="chuong-6-7"></a>
 ### 6.7. Full OTA, Delta OTA & JojoDiff
@@ -6296,7 +5319,7 @@ Sau reset:
 ---
 
 <a id="chuong-6-10"></a>
-### 6.10. Watchdog, Debugging & Testing
+### 6.10. Trial Boot, Debugging & Testing
 
 #### Sơ đồ tổng quan: Từ Trial Boot đến bằng chứng kiểm thử
 
@@ -6321,21 +5344,11 @@ flowchart TD
 
 **Điểm cốt lõi:** **Watchdog không quyết định phiên bản nào được cài**, cũng không tự thực hiện Rollback. Watchdog tạo reset nếu chương trình không đáp ứng; **Metadata + Boot Decision + ImageInstaller** mới quyết định Trial lại hay phục hồi image cũ.
 
-#### Bước 1. Hiểu Watchdog và vì sao OTA cần giới hạn thời gian
+#### Bước 1. Vai trò IWDG trong Trial Boot của project
 
-**Watchdog timer** là phần cứng giám sát tính sống của phần mềm. Firmware phải tạo tiến triển hợp lệ trong một khoảng thời gian; nếu không, MCU có thể reset. Với **Independent Watchdog (IWDG)** trên STM32F1, bộ đếm dùng clock LSI nên khác SysTick/timer dựa trên clock ứng dụng.
+Bootloader chỉ cho firmware ứng viên chạy khi đã ghi `UPDATE_TRIAL_BOOT` và lưu bền vững `boot_attempts`. `TrialBoot_StartWatchdog()` bật IWDG trước `ApplicationJump_Execute()`; nếu firmware không Confirm và bị reset, Bootloader đọc lại Metadata để quyết định thử tiếp hay Rollback.
 
-| Cơ chế | Ý nghĩa | Rủi ro nếu dùng sai |
-|---|---|---|
-| **IWDG** | Reset khi quá thời hạn không được reload hợp lệ | Firmware treo vĩnh viễn hoặc reset quá sớm |
-| **SysTick** | Thường tạo tick cho main loop/timekeeping | Không thay thế watchdog độc lập |
-| **Health Check** | Điều kiện Application cần đạt trước khi Confirm | Confirm quá sớm khi ứng dụng chưa sẵn sàng |
-| **Boot Attempts** | Bộ đếm số lần thử khởi động ứng viên | Trial reset loop không có điểm kết thúc |
-| **Backup Image** | Ảnh firmware cũ để khôi phục khi thử thất bại | Rollback vô dụng nếu backup không tồn tại/hỏng |
-
-**Tình huống:** Application mới khởi động được Reset Handler nhưng kẹt ngay trong khởi tạo UART. Nếu không có watchdog và giới hạn Trial, thiết bị có thể treo ở image mới. Có IWDG, reset đưa quyền điều khiển về Bootloader; với số lần thử đã persist, Bootloader có cơ sở tránh vòng lặp vô hạn.
-
-**Cảnh báo quan trọng:** Một watchdog reset **không chứng minh nguyên nhân root cause** là UART; nguyên nhân có thể là HardFault, deadlock, clock, chương trình quá chậm hoặc mất nguồn. Cần dùng log, debugger và trạng thái boot để chẩn đoán.
+**Điều cần phân biệt:** IWDG không tự sao chép Backup và không chứng minh nguyên nhân lỗi; đoạn code thực sự quyết định Rollback nằm ở **Boot Decision/Trial Boot/Image Installer**. Chương này tập trung vào **hàm, dấu vết trạng thái và kết quả kiểm thử**, không ôn nguyên lý timer/LSI.
 
 #### Bước 2. Phân tích `TrialBoot_StartWatchdog()` theo source thực tế
 
@@ -6396,41 +5409,13 @@ ApplicationJump_Execute()       [chạy image ứng viên]
 
 **Cũng cần phân biệt:** `Rollback` có nghĩa trở lại firmware Backup đã được chấp nhận, còn `anti-rollback` là chính sách hạn chế **cài đặt bản cũ không được phép**; Rollback có kiểm soát sau Trial thất bại **không tự động** là lỗ hổng downgrade.
 
-#### Bước 4. SWD, OpenOCD và GDB: quan sát CPU mà không đoán
+#### Bước 4. Đọc bằng chứng debug của project (không ôn công cụ SWD/GDB)
 
-**SWD (Serial Wire Debug)** là giao diện debug phần cứng của ARM Cortex-M. Kết hợp **debug probe + OpenOCD/GDB** có thể tạm dừng CPU, đọc register, kiểm tra PC/MSP/VTOR, memory và đặt breakpoint.
+Khi một lần OTA không khởi động đúng, cần kiểm tra **đúng ELF**, vị trí `PC`, hai word vector tại `0x08006000`, hai vùng Metadata `0x0800F800`/`0x0800FC00` và trạng thái `SCB->VTOR` để xác định hỏng ở Jump, Install hay Boot Decision.
 
-| Công cụ | Dùng để làm gì | Lưu ý |
-|---|---|---|
-| **SWD probe** | Kết nối debug từ PC tới STM32 | Cần dây SWDIO, SWCLK, GND, tham chiếu điện áp/nguồn phù hợp |
-| **OpenOCD** | Trung gian giao tiếp board/debug server | Tùy interface và target config |
-| **arm-none-eabi-gdb** | Breakpoint, backtrace, register, memory | Tải symbol từ đúng ELF đang chạy |
-| **Serial log** | Quan sát ESP32/UART/OTA status | Phân biệt log Gateway với hành vi Bootloader |
-| **LED diagnostic** | Kiểm tra đường lỗi khi không còn UART App | Chỉ là tín hiệu gợi ý; nên đối chiếu Metadata |
-| **`make dump-metadata`** | Đọc persistent Metadata trên board | Mục tiêu chẩn đoán được mô tả trong repo |
+**Điểm tra cứu trong repo:** `make dump-metadata` hỗ trợ đọc trạng thái bền vững trên board; `docs/boot-jump.md` mô tả dấu hiệu Application đã vào đúng Reset Handler. Với `UPDATE_FAILED`, nhánh hiện tại là STAY_RECOVERY/LED fatal, không tự chạy UART receiver của Application.
 
-**Ví dụ thao tác GDB mang tính hướng dẫn chung** (phụ thuộc script OpenOCD, ELF và board thực tế; **không phải lệnh sẵn của repo**):
-
-```gdb
-# Chỉ dùng sau khi đã chạy GDB server/OpenOCD phù hợp
-target remote :3333
-monitor reset halt
-info registers
-x/2wx 0x08006000
-x/13wx 0x0800F800
-x/13wx 0x0800FC00
-p/x $pc
-continue
-```
-
-**Cách đọc nhanh:**
-
-- `x/2wx 0x08006000`: hai word đầu của Application Vector Table gồm initial MSP và Reset Handler; cần kiểm tra range/Thumb bit trước Jump.
-- `x/13wx ...`: xem sơ bộ 13 word của `BootMetadata_t` theo struct trong tài liệu; **không thay thế parser và CRC validation**.
-- Nếu PC ở HardFault Handler, cần phân tích stack frame, CFSR/HFSR và `SCB->VTOR` theo tình huống; đừng chỉ sửa bằng tăng timeout.
-- Breakpoint trong Flash driver hoặc Metadata commit có thể thay đổi timing; một fault tái hiện dưới debugger **chưa chắc** giống khi chạy tự do.
-
-**Không nên tuyên bố repo đã khóa SWD/RDP cho production:** `VALIDATION.md` liệt kê debug-port security/production RDP là phạm vi chưa được xác nhận.
+**Lưu ý phân tích:** Cấu hình debugger hay breakpoint có thể làm đổi thời điểm xuất hiện lỗi; không suy ra vấn đề bảo mật đã được xử lý chỉ vì debug được. Không khẳng định repo đã khóa SWD/RDP ở production.
 
 #### Bước 5. Debugging theo hướng state-first, data-first
 
