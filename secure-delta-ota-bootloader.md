@@ -468,7 +468,7 @@ Dạ, về **System Architecture**, hệ thống của em gồm **Developer/CI**
 
 - Bootloader cho Application mới chạy ở chế độ **Trial Boot**. Nếu Application xác nhận thành công thì chấp nhận bản cập nhật; nếu không, Bootloader có thể **Rollback** từ bản sao lưu. **Metadata và Checkpoint** hỗ trợ tiếp tục các bước cập nhật an toàn sau mất nguồn hoặc reset bất ngờ.
 
-### 2.2. High-level System Architecture Diagram
+### 2.2. System Architecture Diagram
 
 ```mermaid
 flowchart TD
@@ -490,8 +490,6 @@ flowchart TD
 > **Lưu ý 2:** `FINISH` chỉ xác nhận **đã nhận đủ gói SDOT** (kích thước và CRC32). Sau lệnh `INSTALL`, STM32 Application mới commit `UPDATE_ARTIFACT_READY` vào **Internal Flash Metadata A/B** và reset. **STM32 Bootloader** mới là thành phần quyết định xác thực và cài đặt.
 >
 > **Lưu ý 3:** **External Flash W25Q** chứa gói SDOT nhận được, firmware tái tạo và bản Backup; **Internal Flash** chứa Application đang chạy. **CRC32** giúp phát hiện lỗi dữ liệu, còn **ECDSA P-256 + SHA-256** phục vụ xác thực và kiểm tra tính toàn vẹn firmware. **Power-loss Recovery** không đồng nghĩa với **Rollback**.
-
-**Nguồn đối chiếu:** [Repository README](https://github.com/haikevins/secure-delta-ota-bootloader), [System Architecture](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/architecture.md), [UART OTA Protocol](https://github.com/haikevins/secure-delta-ota-bootloader/blob/main/docs/uart-ota-protocol.md).
 
 ---
 
