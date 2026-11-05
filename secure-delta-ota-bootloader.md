@@ -38,7 +38,7 @@
 ## Phụ lục A. Các khái niệm, công nghệ và thuật toán cốt lõi của project
 
 <a id="phu-luc-a-0"></a>
-### A.0. Quy ước thuật ngữ thống nhất cho toàn tài liệu
+### A.1. Quy ước thuật ngữ thống nhất cho toàn tài liệu
 
 | Thuật ngữ chuẩn | Ý nghĩa / quy tắc sử dụng | Không đánh đồng với |
 |---|---|---|
