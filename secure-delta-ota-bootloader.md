@@ -135,7 +135,8 @@
 
 **Ví dụ / tình huống:** Giữa v1 và v2 chỉ có một số vùng byte thay đổi. Delta Patch có thể nhỏ hơn nhiều so với file v2 đầy đủ; nhưng nếu hai image khác nhau quá nhiều, chi phí patch có thể không đáng để sử dụng.
 
-**Trong project:** Bên phát hành **luôn chuẩn bị Full OTA** và chỉ chọn phát hành Delta OTA khi vượt ngưỡng tiết kiệm đã cấu hình (mặc định **20%**). **Full và Delta đều đi qua trạng thái bền vững `UPDATE_PATCHING`**: Full copy payload, Delta áp dụng patch.
+**Trong project:** Hệ thống luôn tạo gói Full OTA. Với Delta OTA, sau khi tạo và kiểm tra bản vá bằng JojoDiff, công cụ sẽ so sánh kích thước gói Delta SDOT đã ký với gói Full SDOT đã ký.
+Nếu Delta SDOT giúp tiết kiệm ít nhất 20% dung lượng thì hệ thống mới đưa nó vào bản phát hành. Nếu không đạt ngưỡng, hệ thống chỉ phát hành Full OTA. Mục đích là đảm bảo Delta OTA mang lại lợi ích đủ lớn về dung lượng truyền để bù lại chi phí kiểm tra firmware gốc và tái tạo firmware trên STM32.
 
 **Câu hỏi phỏng vấn:** Delta OTA giảm dung lượng bằng cách nào? Khi nào nên dùng Full OTA? Tại sao Full OTA vẫn có `UPDATE_PATCHING`?
 
