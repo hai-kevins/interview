@@ -37,16 +37,6 @@
 <a id="phu-luc-a"></a>
 ## Phụ lục A. Các khái niệm và nguyên lý hoạt động về công nghệ và thuật toán cốt lõi
 
-> **Mục tiêu:** Hiểu **nó là gì → hoạt động như thế nào → được dùng ở đâu trong Secure Delta OTA Bootloader** trước khi đọc các phần phân tích kiến trúc và source code. Đây là kiến thức nền trực tiếp phục vụ project, không phải giáo trình Embedded tổng quát.
->
-> **Phạm vi:** Tập trung vào các thuật toán và cơ chế quyết định sự đúng đắn, bảo mật và khả năng phục hồi của OTA. **Không mở mục dạy nguyên lý UART hoặc SPI** trong phụ lục; các giao tiếp này đã được phân tích tại [Chương 6.5](#chuong-6-5) và [Chương 6.6](#chuong-6-6). Tên giao tiếp có thể xuất hiện khi cần mô tả đúng luồng dữ liệu của project.
->
-> **Cách đọc:** Mỗi mục gồm **Khái niệm**, **Nguyên lý hoạt động**, **Ví dụ / tình huống**, **Trong project** và **Câu hỏi phỏng vấn**. Các ví dụ nhỏ dùng để minh họa cơ chế, **không phải trích nguyên văn thuật toán hay mã nguồn**. Mỗi nhóm có liên kết đến chương chuyên sâu.
-
-**Đi nhanh đến từng nhóm:** [A.1. Bootloader và bộ nhớ](#phu-luc-a-1) · [A.2. Công nghệ OTA](#phu-luc-a-2) · [A.3. Đóng khung và kiểm tra dữ liệu](#phu-luc-a-3) · [A.4. Bảo mật firmware](#phu-luc-a-4) · [A.5. Trạng thái và phục hồi](#phu-luc-a-5) · [A.6. Khởi động thử và Watchdog](#phu-luc-a-6).
-
-**Các nhóm cần ưu tiên giải thích nguyên lý khi phỏng vấn:** Flash Programming; Application Jump; Full/Delta OTA và JojoDiff/JANPatch; COBS; CRC32; SHA-256; ECDSA P-256; Metadata A/B; Checkpoint/Power-loss Recovery; Trial Boot/Watchdog/Rollback.
-
 <a id="phu-luc-a-1"></a>
 ### A.1. Bootloader và bộ nhớ
 
@@ -190,11 +180,11 @@ Base Image + Patch → A B X Y E F (= Target Image)
 ```text
 Gói SDOT đã ký trong project:
 ┌─────────────────────────────────────────┐
-│ Header cố định 120 B + SCX1 20 B       │ ← 140 B thuộc vùng được ký
+│ Header cố định 120 B + SCX1 20 B         │ ← 140 B thuộc vùng được ký
 ├─────────────────────────────────────────┤
 │ Payload: Full firmware hoặc Delta Patch │ ← thuộc vùng được ký
 ├─────────────────────────────────────────┤
-│ ECDSA P-256 Signature: r[32] || s[32] │ ← 64 B
+│ ECDSA P-256 Signature: r[32] || s[32]   │ ← 64 B
 └─────────────────────────────────────────┘
 ```
 
