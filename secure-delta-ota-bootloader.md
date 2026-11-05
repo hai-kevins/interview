@@ -70,11 +70,11 @@
 #### A.2.1. Firmware và Application
 
 - **Firmware** là chương trình máy được biên dịch thành image (ví dụ `.bin`) để chạy trên MCU. 
-- **Application** là firmware thực hiện chức năng bình thường của thiết bị
+- **Application** là firmware thực hiện chức năng bình thường của thiết bị.
 
 #### A.2.2. Bootloader, Reset Vector, Vector Table, MSP và VTOR
 
-- **Bootloader**, chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
+- **Bootloader* là chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
 - **Bootloader** chạy sau reset tại vùng Flash khởi động, đọc **Metadata**, chọn Boot Action, xác thực/cài đặt firmware khi cần, hoặc chuyển quyền sang Application. Trong project: Bootloader tại `0x08000000`, Application tại `0x08006000`.
 - **Vector Table** là bảng các địa chỉ phục vụ khởi động và xử lý ngắt. Word đầu là **giá trị MSP ban đầu** (Main Stack Pointer), word kế tiếp là địa chỉ **Reset Handler**. **VTOR** (Vector Table Offset Register) chỉ vị trí bảng vector dùng khi phát sinh exception/interrupt.
 - **Application Jump** không chỉ là gọi một hàm: Bootloader cần kiểm tra vector hợp lệ, dọn trạng thái ngoại vi/ngắt phù hợp, thiết lập MSP/VTOR đúng và chuyển đến Reset Handler của Application. Nếu bỏ qua, một interrupt cũ có thể gọi sai handler.
@@ -93,7 +93,6 @@
 - **Erase:** Xóa theo đơn vị vật lý (trong project, trang **Internal Flash STM32 1 KiB**, sector **W25Q 4 KiB**).
 - **Program:** Ghi dữ liệu; STM32F103 lập trình Flash theo **half-word 16 bit**, W25Q **Page Program tối đa 256 byte** trong một trang.
 - **Read-back Verify:** Đọc lại dữ liệu đã ghi để xác minh trước khi đánh dấu thao tác thành công.
-- **WIP/WEL (trên W25Q):** **WIP** báo thiết bị Flash đang bận với thao tác nội bộ; **WEL** cho biết lệnh ghi/xóa đã được cho phép. **WIP không phải cờ BSY của ngoại vi SPI trong STM32**.
 
 <a id="phu-luc-a-3"></a>
 ### A.3. Công nghệ OTA, thuật toán Delta và bản phát hành
@@ -128,16 +127,12 @@ Target firmware v2 ┘                          │
                                       Verify Target SHA-256
 ```
 
-> **Điểm trong repo:** Cả **Full** và **Delta** đều đi qua trạng thái bền vững `UPDATE_PATCHING`. Với **Full**, bước này chuẩn bị image bằng cách copy payload; với **Delta**, bước này áp dụng patch lên base đã xác minh. Không diễn giải rằng Full OTA bỏ qua trạng thái đó.
-
 #### A.3.3. SDOT Container, SCX1, Manifest và Release
 
 - **SDOT (Secure Delta OTA Container)** là tệp cập nhật SDOT mang **Header + Payload (Full hoặc Delta) + Digital Signature**. Header chứa loại gói, version, product/hardware identity, hash và thông tin để Bootloader xác thực/cài đặt đúng.
 - **SCX1** là phần mở rộng header bắt buộc trong profile SDOT có chữ ký đang triển khai: **120 byte header cố định + 20 byte SCX1 = 140 byte signed header**, sau đó đến Payload và chữ ký ECDSA P-256 dạng raw `r||s` **64 byte**. Đây là đặc tả của project, không phải định dạng OTA phổ quát.
 - **Manifest** (`manifest.json`) là **bảng mô tả release**: phiên bản, sản phẩm, các gói cập nhật, size/hash, URL...; nó **không phải** Payload SDOT. Manifest được ký riêng. ESP32 trong luồng hiện tại nhận **URL SDOT trực tiếp trong lệnh MQTTS**, không bắt buộc tự tải/parse Manifest để chọn gói.
 - **CI / Release Tooling** là chuỗi thao tác build, test, tạo Full/Delta, đóng gói, ký và kiểm tra các tệp cập nhật. **Release Server** phân phối các tệp cập nhật đã chuẩn bị; không phải thành phần tạo mã máy firmware.
-
-**Học kỹ:** [4.1 – Developer/CI](#luong-1) · [4.2 – Release Server](#luong-2) · [6.7 – Full/Delta/JojoDiff](#chuong-6-7).
 
 <a id="phu-luc-a-4"></a>
 ### A.4. Giao tiếp, đóng khung và truyền dữ liệu tin cậy
@@ -150,8 +145,6 @@ Target firmware v2 ┘                          │
 | **SPI** (Serial Peripheral Interface) | Giao tiếp **đồng bộ** dùng SCK, MOSI, MISO, CS; phía Master tạo clock | STM32 ↔ W25Q; SPI1 **Mode 0**. |
 | **HTTPS** | HTTP chạy trên TLS, hỗ trợ bảo vệ kết nối tải dữ liệu | ESP32 tải file SDOT từ server. |
 | **MQTTS** | MQTT chạy trên TLS, thường dùng publish/subscribe | Server thông báo lệnh cập nhật; gateway báo trạng thái. |
-
-**UART 8-N-1** = **8 data bits**, **No parity**, **1 stop bit**, cộng start bit; **baud rate** là tốc độ ký hiệu đường truyền (với UART thông thường, một ký hiệu tương ứng một bit). **SPI Mode 0** = `CPOL=0`, `CPHA=0`: trạng thái nghỉ clock thấp, dữ liệu được lấy mẫu ở cạnh lên đầu tiên theo quy tắc mode này.
 
 #### A.4.2. Packet, Framing, COBS và byte `0x00`
 
@@ -172,12 +165,8 @@ Target firmware v2 ┘                          │
 
 Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **1500 ms**, retry tối đa **5** và Checkpoint nhận được lưu theo ranh giới **sector 4 KiB**. MQTTS với QoS 1 có thể giao thông điệp nhiều hơn một lần; lệnh cần được xử lý an toàn khi trùng.
 
-**Học kỹ:** [4.3 – ESP32 ↔ STM32](#luong-3) · [6.5 – UART OTA Protocol](#chuong-6-5) · [6.6 – SPI](#chuong-6-6).
-
 <a id="phu-luc-a-5"></a>
 ### A.5. Mật mã, kiểm tra toàn vẹn và xác thực nguồn phát hành
-
-> **Thứ tự cần nhớ:** **COBS** đóng khung → **CRC32** phát hiện lỗi byte → **SHA-256** tạo digest mật mã → **ECDSA P-256** xác minh chữ ký bằng khóa tin cậy. Những công cụ này giải quyết **các bài toán khác nhau**.
 
 #### A.5.1. CRC32 (Cyclic Redundancy Check 32-bit)
 
@@ -244,8 +233,6 @@ sequenceDiagram
 - **Key ID** là mã định danh khóa để chọn/đối chiếu khóa cấu hình; **Key ID một mình không phải chữ ký** và không tạo ra sự tin cậy.
 - **Anti-rollback / Anti-downgrade** là chính sách **ngăn cài phiên bản thấp hơn mức cho phép**. Khác với **Rollback** (khôi phục bản Backup cũ đã được chấp nhận nếu bản thử nghiệm không chạy tốt).
 - **Signed OTA ≠ hardware Secure Boot / encryption:** Hệ thống xác minh gói cập nhật trước Install, nhưng không đồng nghĩa có **hardware Root of Trust bất biến**, chống đọc Flash vật lý hoặc mã hóa payload SDOT.
-
-**Học kỹ:** [6.8 – Cryptography & Firmware Security](#chuong-6-8) · [4.4 – Bootloader xác thực SDOT](#luong-4).
 
 <a id="phu-luc-a-6"></a>
 ### A.6. State Machine, lưu trạng thái bền vững và phục hồi
