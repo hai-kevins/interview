@@ -32,7 +32,7 @@
    - [6.10. Watchdog, Debugging & Testing](#chuong-6-10)
 7. [Câu hỏi phỏng vấn trọng tâm](#phan-7)
 
-**Phụ lục tra cứu nhanh:** [Phụ lục A – Khái niệm, công nghệ và thuật toán chính](#phu-luc-a)
+[Phụ lục A – Khái niệm, công nghệ và thuật toán chính](#phu-luc-a)
 
 <a id="phu-luc-a"></a>
 ## Phụ lục A. Các khái niệm, công nghệ và thuật toán cốt lõi của project
@@ -76,7 +76,6 @@
 
 - **Full OTA:** Gói chứa **toàn bộ firmware mục tiêu**. Ưu điểm: không phụ thuộc image hiện tại. Nhược điểm: thường truyền nhiều byte hơn.
 - **Delta OTA:** Gói chứa **Delta Patch** — mô tả cách biến đổi **Base Image** (firmware cũ chính xác) thành **Target Image** (firmware mới). Ưu điểm: thường nhỏ hơn nếu hai bản giống nhau nhiều; đổi lại cần kiểm tra đúng base và thực hiện tái tạo.
-- **Base/Target SHA-256:** Hai giá trị băm để đối chiếu **firmware gốc** và **firmware tái tạo**. Với Delta OTA, chỉ cùng số phiên bản là **chưa đủ**: Base Image phải trùng byte/hash với image đã dùng để tạo patch.
 
 #### A.3.2. Binary Diff, JojoDiff, JANPatch và Round-trip
 
@@ -151,7 +150,7 @@ Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **150
 - **Ưu điểm:** Nhanh, chi phí thấp, phù hợp cho UART packet, SDOT payload và Metadata.
 - **Giới hạn:** Kẻ tấn công có thể sửa dữ liệu và **tính lại CRC**. Một số mẫu lỗi cũng có thể không bị phát hiện. **CRC32 không chứng minh tính xác thực**.
 
-#### A.5.2. Cryptographic Hash và SHA-256 (Secure Hash Algorithm 256-bit)
+#### A.5.2. Cryptographic Hash và SHA-256
 
 **Hash function** ánh xạ dữ liệu có kích thước bất kỳ thành **giá trị băm** có kích thước cố định. **SHA-256** là hàm băm mật mã sinh **256 bit = 32 byte**. Các tính chất quan trọng để hiểu ở mức phỏng vấn:
 
@@ -174,7 +173,7 @@ Trong protocol v1: payload `DATA` tối đa **256 byte**, response timeout **150
 
 **Digital Signature (chữ ký số)** cung cấp bằng chứng rằng nội dung đã ký khớp với một Private Key tương ứng với Public Key tin cậy. **Chữ ký không mã hóa firmware** và không làm cho firmware trở nên bí mật.
 
-#### A.5.4. ECDSA P-256 (Elliptic Curve Digital Signature Algorithm)
+#### A.5.4. ECDSA P-256
 
 - **ECDSA** là thuật toán **ký/xác minh chữ ký số** dựa trên elliptic curve, không phải thuật toán băm và không phải mã hóa nội dung.
 - **P-256** là đường cong elliptic chuẩn với khóa/bài toán có kích thước danh nghĩa **256 bit**.
