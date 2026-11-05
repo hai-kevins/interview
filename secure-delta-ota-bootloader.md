@@ -65,17 +65,16 @@
 | **Verify / Validation / xác thực / kiểm tra** | Nêu rõ đối tượng: **CRC32 check**, **SHA-256 hash check**, **ECDSA signature verification**, **Flash read-back Verify**, hoặc **Release Validation**. | Không coi mọi từ "Verify" là xác thực chữ ký số. |
 
 <a id="phu-luc-a-2"></a>
-### A.2. Bootloader và bộ nhớ Flash
+### A.2. Application, Bootloader và bộ nhớ Flash
 
 #### A.2.1. Firmware và Application
 
 - **Firmware** là chương trình máy được biên dịch thành image (ví dụ `.bin`) để chạy trên MCU. 
 - **Application** là firmware thực hiện chức năng bình thường của thiết bị
-- **Bootloader**, chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
-- **Gateway** là thiết bị trung gian nối hai miền giao tiếp. ESP32 dùng Wi-Fi/HTTPS/MQTTS ở phía server và UART ở phía STM32; gateway **không phải** nơi quyết định một gói SDOT có chữ ký đủ tin cậy để cài đặt hay không.
 
 #### A.2.2. Bootloader, Reset Vector, Vector Table, MSP và VTOR
 
+- **Bootloader**, chương trình chạy trước để quyết định có chuyển sang Application hay xử lý cập nhật.
 - **Bootloader** chạy sau reset tại vùng Flash khởi động, đọc **Metadata**, chọn Boot Action, xác thực/cài đặt firmware khi cần, hoặc chuyển quyền sang Application. Trong project: Bootloader tại `0x08000000`, Application tại `0x08006000`.
 - **Vector Table** là bảng các địa chỉ phục vụ khởi động và xử lý ngắt. Word đầu là **giá trị MSP ban đầu** (Main Stack Pointer), word kế tiếp là địa chỉ **Reset Handler**. **VTOR** (Vector Table Offset Register) chỉ vị trí bảng vector dùng khi phát sinh exception/interrupt.
 - **Application Jump** không chỉ là gọi một hàm: Bootloader cần kiểm tra vector hợp lệ, dọn trạng thái ngoại vi/ngắt phù hợp, thiết lập MSP/VTOR đúng và chuyển đến Reset Handler của Application. Nếu bỏ qua, một interrupt cũ có thể gọi sai handler.
