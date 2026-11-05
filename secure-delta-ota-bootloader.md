@@ -629,9 +629,11 @@ flowchart TD
 
 #### Bước 1. Developer/CI build firmware
 
-Developer chỉnh sửa mã nguồn **STM32 Application** rồi build để tạo file binary firmware mới, ví dụ **`application-v2.bin`**. Đây là firmware dự kiến được cài đặt vào vùng Application của **STM32 Internal Flash**.
+Developer chỉnh sửa mã nguồn **STM32 Application** (ví dụ từ v1 lên v2), có thể **build thử trên máy** để kiểm tra, sau đó **commit và push mã nguồn lên GitHub**.
 
-**CI (Continuous Integration)** có thể tự động hóa các công việc **build, kiểm tra và chuẩn bị bản phát hành**. Trong luồng này, Developer/CI là phía **tạo firmware**, chưa phải phía phân phối firmware đến thiết bị.
+Nếu repository đã cấu hình **GitHub Actions**, các file workflow `.yml`/`.yaml` trong thư mục `.github/workflows/` có thể tự chạy khi có sự kiện `push`. **CI (Continuous Integration)** thực hiện các lệnh đã khai báo, chẳng hạn **build firmware** để tạo **`application-v2.bin`**, kiểm thử và chuẩn bị các tệp phát hành. Vì vậy, Developer **không bắt buộc tự build `.bin` trước khi push**; các bước tự động thực tế phụ thuộc vào nội dung YAML.
+
+> **Phân biệt:** Developer/CI chịu trách nhiệm **tạo và kiểm tra firmware**; việc đưa các tệp cập nhật lên **Release Server** là bước riêng, chỉ tự động nếu workflow đã cấu hình triển khai.
 
 #### Bước 2. Tạo Full OTA và Delta OTA
 
