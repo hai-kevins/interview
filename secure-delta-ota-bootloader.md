@@ -708,6 +708,25 @@ Cả hai loại dữ liệu cập nhật được đóng gói theo định dạn
 
 Hệ thống dùng **SHA-256** để tạo các giá trị hash phục vụ kiểm tra tính toàn vẹn và **ECDSA P-256** để ký số SDOT bằng **private key**.
 
+**Ví dụ minh họa: cập nhật firmware v1 lên v2**
+
+Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là **v1** và firmware mới là **v2**. Các trường chính trong **Header cố định** được điền như sau:
+
+| Trường trong Header | Full OTA (v2) | Delta OTA (v1 → v2) |
+|---|---|---|
+| `Firmware Type` | `1` (FULL) | `2` (DELTA) |
+| `Base Version` | `0` (không yêu cầu firmware gốc) | `1` |
+| `Target Version` | `2` | `2` |
+| `Base SHA-256` | 32 byte `0x00` | `SHA-256(v1.bin)` |
+| `Target SHA-256` | `SHA-256(v2.bin)` | `SHA-256(v2.bin)` |
+| `Product ID` | `0x00001001` | `0x00001001` |
+
+**Payload tương ứng:** Full OTA chứa toàn bộ firmware v2; Delta OTA chứa Delta Patch từ v1 sang v2.
+
+**Cách Bootloader sử dụng:** Với **Full OTA**, Bootloader không cần kiểm tra firmware gốc mà chuẩn bị image từ payload rồi đối chiếu `Target SHA-256`. Với **Delta OTA**, Bootloader phải kiểm tra `Base Version` và `Base SHA-256` của firmware hiện tại trước khi áp dụng patch; sau khi tái tạo v2, nó tiếp tục kiểm tra `Target SHA-256`.
+
+> **Lưu ý:** `0x00001001` và tên file là giá trị minh họa cho ví dụ; các giá trị SHA-256 thực tế là **32 byte hash được tính từ nội dung nhị phân**, không phải chuỗi chữ `SHA-256(v1.bin)` hay `SHA-256(v2.bin)` được ghi nguyên vào gói.
+
 > **Ghi nhớ:** **Private key** được sử dụng ở phía phát hành firmware, **không truyền xuống ESP32 Gateway hoặc STM32**. Chữ ký SDOT sẽ được STM32 Bootloader xác thực trước khi cài đặt.
 
 #### Bước 4. Tạo và ký số Manifest
