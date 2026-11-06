@@ -646,6 +646,36 @@ Từ firmware mới, release tooling chuẩn bị các gói cập nhật tương
 
 Repository luôn tạo **Full OTA**, nhưng chỉ đưa **Delta OTA** vào phát hành khi mức tiết kiệm đạt ngưỡng cấu hình, mặc định **20%**.
 
+**Ví dụ minh họa cách tính ngưỡng tiết kiệm 20%**
+
+Giả sử STM32 đang sử dụng firmware **v1** và cần cập nhật lên **v2**. Sau khi đóng gói và ký số, hệ thống có:
+
+- **Full SDOT:** 20 KB (chứa toàn bộ firmware v2).
+- **Delta SDOT:** 12 KB (chứa bản vá từ v1 sang v2).
+
+Mức tiết kiệm được tính dựa trên **kích thước toàn bộ hai gói SDOT đã ký**, không chỉ riêng Delta Patch:
+
+$$
+\text{Tiết kiệm} = \frac{\text{Full SDOT} - \text{Delta SDOT}}{\text{Full SDOT}} \times 100\%
+$$
+
+Thay số:
+
+$$
+\frac{20 - 12}{20} \times 100\% = 40\%
+$$
+
+**Kết quả:** Delta SDOT tiết kiệm **40%**, lớn hơn ngưỡng **20%** nên **được đưa vào bản phát hành**.
+
+**Nếu Delta SDOT chỉ tiết kiệm 10% thì sao?** Giả sử Full SDOT vẫn là **20 KB**, nhưng Delta SDOT là **18 KB**:
+
+$$
+\frac{20 - 18}{20} \times 100\% = 10\%
+$$
+
+**Kết quả:** Chỉ tiết kiệm **10%**, không đạt ngưỡng **20%**, nên **không phát hành gói Delta SDOT**; gói **Full SDOT** vẫn được phát hành.
+
+
 > **Ghi nhớ:** Delta Patch phụ thuộc vào **firmware gốc**. Khi cài đặt, STM32 Bootloader vẫn phải kiểm tra firmware gốc có đúng với bản được dùng để tạo patch hay không.
 
 #### Bước 3. Đóng gói và ký số SDOT
