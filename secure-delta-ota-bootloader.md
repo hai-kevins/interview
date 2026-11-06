@@ -685,20 +685,25 @@ Cả hai loại dữ liệu cập nhật được đóng gói theo định dạn
 **Cấu trúc cơ bản của SDOT Container:**
 
 ```text
-+-----------------------------+
-| Header                      |
-| - Firmware type             |
-| - Base version              |
-| - Target version            |
-| - Base SHA-256              |
-| - Target SHA-256            |
-| - Product ID                |
-+-----------------------------+
-| Payload                     |
-| Full firmware / Delta Patch |
-+-----------------------------+
-| ECDSA P-256 Signature       |
-+-----------------------------+
++----------------------------------+
+| Header cố định (120 bytes)       |
+| - Firmware type                  |
+| - Base version                   |
+| - Target version                 |
+| - Base SHA-256                   |
+| - Target SHA-256                 |
+| - Product ID                     |
++----------------------------------+
+| SCX1 Extension (20 bytes)        |
+| - Key ID                         |
+| - Base Image Size                |
+| - Target Image CRC32             |
++----------------------------------+
+| Payload                          |
+| Full firmware / Delta Patch      |
++----------------------------------+
+| ECDSA P-256 Signature (64 bytes) |
++----------------------------------+
 ```
 
 Hệ thống dùng **SHA-256** để tạo các giá trị hash phục vụ kiểm tra tính toàn vẹn và **ECDSA P-256** để ký số SDOT bằng **private key**.
