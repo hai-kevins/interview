@@ -190,7 +190,7 @@ Base Image + Patch → A B X Y E F (= Target Image)
 
 **Khái niệm:** **SDOT (Secure Delta OTA Container)** là gói cập nhật chứa thông tin điều khiển, payload Full/Delta và chữ ký số. **Manifest** (`manifest.json`) là tệp mô tả bản phát hành và các gói có thể phân phối; Manifest không chứa thay cho payload SDOT.
 
-**Nguyên lý hoạt động:** Header cho biết loại cập nhật, phiên bản, thông tin thiết bị, kích thước/hash và các trường để áp dụng chính sách. Payload mang firmware đầy đủ hoặc Delta Patch. Chữ ký bảo vệ vùng dữ liệu được quy định; Bootloader xác minh chữ ký **trước khi cài đặt**.
+**Nguyên lý hoạt động:** **Header cố định (120 byte)** là phần thông tin chính của gói SDOT, chứa loại cập nhật (Full/Delta), phiên bản gốc và đích, thông tin thiết bị (Product ID), kích thước và các giá trị SHA-256 để Bootloader kiểm tra điều kiện cập nhật. **SCX1 Extension (20 byte)** là phần mở rộng của Header, bổ sung **Key ID**, **Base Image Size** và **Target Image CRC32**. **Payload** mang toàn bộ firmware mới hoặc Delta Patch. **Chữ ký ECDSA P-256 (64 byte)** bảo vệ **Header cố định + SCX1 + Payload**; Bootloader xác minh chữ ký **trước khi cài đặt**.
 
 ```text
 Gói SDOT đã ký trong project:
