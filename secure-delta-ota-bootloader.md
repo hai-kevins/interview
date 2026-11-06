@@ -712,7 +712,7 @@ Hệ thống dùng **SHA-256** để tạo các giá trị hash phục vụ ki�
 
 Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là **v1** và firmware mới là **v2**. 
 
-**Các trường chính trong Header cố định (120 byte):**
+Các trường chính trong Header cố định (120 byte):
 
 | Trường trong Header | Full OTA (v2) | Delta OTA (v1 → v2) |
 |---|---|---|
@@ -723,7 +723,7 @@ Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là
 | `Target SHA-256` | `SHA-256(v2.bin)` | `SHA-256(v2.bin)` |
 | `Product ID` | `0x00001001` | `0x00001001` |
 
-**Các trường chính trong SCX1 Extension (20 byte):**
+Các trường chính trong SCX1 Extension (20 byte):
 
 | Trường trong SCX1 | Full OTA (v2) | Delta OTA (v1 → v2) |
 |---|---|---|
