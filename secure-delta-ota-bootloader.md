@@ -710,7 +710,9 @@ Hệ thống dùng **SHA-256** để tạo các giá trị hash phục vụ ki�
 
 **Ví dụ minh họa: cập nhật firmware v1 lên v2**
 
-Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là **v1** và firmware mới là **v2**. Các trường chính trong **Header cố định** được điền như sau:
+Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là **v1** và firmware mới là **v2**. 
+
+**Các trường chính trong Header cố định (120 byte):**
 
 | Trường trong Header | Full OTA (v2) | Delta OTA (v1 → v2) |
 |---|---|---|
