@@ -710,9 +710,7 @@ Hệ thống dùng **SHA-256** để tạo các giá trị hash phục vụ ki�
 
 **Ví dụ minh họa: cập nhật firmware v1 lên v2**
 
-Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là **v1** và firmware mới là **v2**. 
-
-Các trường chính trong Header cố định (120 byte):
+Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là **v1** và firmware mới là **v2**. Các trường chính trong **Header cố định** được điền như sau:
 
 | Trường trong Header | Full OTA (v2) | Delta OTA (v1 → v2) |
 |---|---|---|
@@ -723,7 +721,7 @@ Các trường chính trong Header cố định (120 byte):
 | `Target SHA-256` | `SHA-256(v2.bin)` | `SHA-256(v2.bin)` |
 | `Product ID` | `0x00001001` | `0x00001001` |
 
-Các trường chính trong SCX1 Extension (20 byte):
+**Các trường chính trong SCX1 Extension (20 byte):**
 
 | Trường trong SCX1 | Full OTA (v2) | Delta OTA (v1 → v2) |
 |---|---|---|
@@ -738,6 +736,23 @@ Trong ví dụ, **`Key ID = 1`** là mã khóa ký giả định và phải kh�
 **Cách Bootloader sử dụng:** Với **Full OTA**, Bootloader không cần kiểm tra firmware gốc mà chuẩn bị image từ payload rồi đối chiếu `Target SHA-256`. Với **Delta OTA**, Bootloader phải kiểm tra `Base Version` và `Base SHA-256` của firmware hiện tại trước khi áp dụng patch; sau khi tái tạo v2, nó tiếp tục kiểm tra `Target SHA-256`.
 
 > **Lưu ý:** `0x00001001` và tên file là giá trị minh họa cho ví dụ; các giá trị SHA-256 thực tế là **32 byte hash được tính từ nội dung nhị phân**, không phải chuỗi chữ `SHA-256(v1.bin)` hay `SHA-256(v2.bin)` được ghi nguyên vào gói.
+
+**Ví dụ: Quá trình ký và xác minh chữ ký ECDSA khi cập nhật firmware v2**
+
+**Phía Developer – Tạo Signature A:** Developer lấy đúng vùng dữ liệu **Header cố định (120 byte) + SCX1 (20 byte) + Payload**, tính **SHA-256** để thu được **Hash A**. Thuật toán **ECDSA P-256** sử dụng **Hash A và Private Key A** để tạo **Signature A (64 byte, gồm `r[32] || s[32]`)**. Chữ ký được gắn vào cuối gói SDOT; SCX1 mang **Key ID = 1** để định danh khóa ký.
+
+**Phía STM32 Bootloader – Xác minh Signature A:**
+
+1. **Chọn khóa tin cậy:** Đọc **Key ID = 1** trong SCX1 và tìm **Trusted Public Key A** đã được cấu hình sẵn tương ứng. Nếu không có khóa tin cậy phù hợp, Bootloader từ chối gói SDOT; không tự tin một Public Key do bên gửi cung cấp.
+2. **Tính lại hash:** Đọc **Header cố định + SCX1 + Payload** của gói SDOT vừa nhận, tính **SHA-256** để thu được **Hash B**. Đây phải là đúng vùng dữ liệu Developer đã ký, không bao gồm 64 byte Signature ở cuối.
+3. **Kiểm tra ECDSA:** Đưa **Hash B**, **Signature A** lấy từ SDOT và **Trusted Public Key A** vào thuật toán **ECDSA Verify**. Thuật toán kiểm tra quan hệ toán học giữa ba giá trị này; Bootloader **không cần Private Key A** và **không trực tiếp so sánh Hash B với Hash A** (vì Hash A không được gửi riêng để đối chiếu).
+
+**Kết quả xác minh:**
+
+- **Hợp lệ:** Signature A phù hợp với **Hash B** và **Trusted Public Key A**. Điều này chứng tỏ dữ liệu được xác minh phù hợp với chữ ký của khóa bí mật tương ứng (giả sử khóa chưa bị lộ). Bootloader **tiếp tục kiểm tra** loại gói, phiên bản, firmware gốc nếu là Delta và các điều kiện khác; **chưa có nghĩa là lập tức cài đặt**.
+- **Không hợp lệ:** Nếu dữ liệu bị sửa sau khi ký, Bootloader tính được hash khác với dữ liệu ban đầu nên **Signature A cũ không còn hợp lệ**. Nếu kẻ tấn công ký bằng **Private Key B** nhưng giả mạo **Key ID = 1**, chữ ký đó cũng không thể được xác minh bằng **Trusted Public Key A**; Bootloader từ chối gói SDOT.
+
+**Tình huống dễ nhớ:** Developer ký **Hash A** của firmware v2 bằng **Private Key A** → tạo **Signature A**. Nếu Payload bị sửa một byte, STM32 tính được **Hash B khác Hash A**; dùng **Hash B + Signature A + Trusted Public Key A** để Verify sẽ **thất bại**. **Key ID chỉ giúp chọn khóa; ECDSA mới xác minh chữ ký.**
 
 > **Ghi nhớ:** **Private key** được sử dụng ở phía phát hành firmware, **không truyền xuống ESP32 Gateway hoặc STM32**. Chữ ký SDOT sẽ được STM32 Bootloader xác thực trước khi cài đặt.
 
