@@ -721,6 +721,16 @@ Giả sử thiết bị có `Product ID = 0x00001001`, firmware đang chạy là
 | `Target SHA-256` | `SHA-256(v2.bin)` | `SHA-256(v2.bin)` |
 | `Product ID` | `0x00001001` | `0x00001001` |
 
+**Các trường chính trong SCX1 Extension (20 byte):**
+
+| Trường trong SCX1 | Full OTA (v2) | Delta OTA (v1 → v2) |
+|---|---|---|
+| `Key ID` | `0x00000001` | `0x00000001` |
+| `Base Image Size` | `0` (không dùng firmware gốc) | Kích thước thực tế của `v1.bin` |
+| `Target Image CRC32` | `CRC32(v2.bin)` | `CRC32(v2.bin)` |
+
+Trong ví dụ, **`Key ID = 1`** là mã khóa ký giả định và phải khớp với khóa công khai tin cậy được cấu hình ở Bootloader. **`Base Image Size`** bằng `0` với Full OTA, còn Delta OTA sử dụng kích thước firmware v1; **`Target Image CRC32`** được tính trên toàn bộ firmware v2, không phải riêng Delta Patch.
+
 **Payload tương ứng:** Full OTA chứa toàn bộ firmware v2; Delta OTA chứa Delta Patch từ v1 sang v2.
 
 **Cách Bootloader sử dụng:** Với **Full OTA**, Bootloader không cần kiểm tra firmware gốc mà chuẩn bị image từ payload rồi đối chiếu `Target SHA-256`. Với **Delta OTA**, Bootloader phải kiểm tra `Base Version` và `Base SHA-256` của firmware hiện tại trước khi áp dụng patch; sau khi tái tạo v2, nó tiếp tục kiểm tra `Target SHA-256`.
