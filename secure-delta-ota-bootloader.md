@@ -644,7 +644,7 @@ Từ firmware mới, release tooling chuẩn bị các gói cập nhật tương
 
 Đối với **Delta OTA**, công cụ dùng **JojoDiff** để tạo Delta Patch, sau đó **áp dụng thử patch lên firmware v1** và so sánh kết quả với firmware v2 để kiểm tra tính đúng đắn.
 
-Repository luôn tạo **Full OTA**, nhưng chỉ đưa **Delta OTA** vào release khi mức tiết kiệm đạt ngưỡng cấu hình, mặc định **20%**.
+Repository luôn tạo **Full OTA**, nhưng chỉ đưa **Delta OTA** vào phát hành khi mức tiết kiệm đạt ngưỡng cấu hình, mặc định **20%**.
 
 > **Ghi nhớ:** Delta Patch phụ thuộc vào **firmware gốc**. Khi cài đặt, STM32 Bootloader vẫn phải kiểm tra firmware gốc có đúng với bản được dùng để tạo patch hay không.
 
