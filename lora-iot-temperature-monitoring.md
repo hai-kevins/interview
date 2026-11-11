@@ -68,19 +68,6 @@ ESP32 Gateway                         STM32 Node
 
 Đây là cơ chế **Gateway chủ động thăm dò (polling)**, không phải Node tự động phát liên tục theo một lịch truyền độc lập. Giao thức điều khiển giao dịch nằm trong `main.c`; các module bên dưới đảm nhận thao tác cụ thể.
 
-### 1.2. Tổ chức mã nguồn và trách nhiệm từng module
-
-| Module | Vai trò trong chương trình | Hàm/điểm cần xem |
-|---|---|---|
-| `main.c` | Khởi động, đợi POLL, lấy kết quả đo, đóng DATA, retry và xác nhận ACK | `main()`, `WaitForAcknowledgement()`, `SendTemperatureWithRetry()` |
-| `adc_driver.c/.h` (Node 01/02) | ADC1 + DMA, lấy burst, chuyển đổi NTC, lọc và quản lý lỗi | `ADC_DMA_Init()`, `ADC_GetStableAverageTemp()`, `ADC_GetStatusBitmask()` |
-| `mcp3208.c/.h` (Node 03) | Đọc MCP3208 qua SPI, bù khuếch đại, xử lý nhiệt độ và lỗi | `MCP3208_Init()`, `MCP3208_GetStableAverageTemp()` |
-| `sx1278.c/.h` | Cấu hình LoRa, giao tiếp FIFO, tạo/giải mã frame, CRC8 | `SX1278_Init()`, `SX1278_SendPacket()`, `SX1278_ReceivePacket()` |
-| `spi_driver.c/.h` | Truyền/nhận byte SPI1 cho SX1278; Node 03 còn dùng cho MCP3208 | `SPI1_Transfer()` |
-| `systick_driver.c/.h`, `systick_utils.c/.h` | Cung cấp thời gian mili giây, delay, tính timeout và độ tuổi mẫu | `SysTick_Init()`, `millis()`, `Delay_Ms()` |
-
-**Điểm phân tách quan trọng:** `main.c` không chứa thuật toán NTC chi tiết. Ngược lại, module đo cảm biến không tự gửi LoRa. Cách tách này giúp thay ADC1 + DMA bằng MCP3208 mà vẫn giữ hầu hết logic giao tiếp.
-
 ### 1.3. Trình tự khởi tạo trong `main()`
 
 Ở Node 01/02, thứ tự gọi là:
@@ -133,16 +120,6 @@ LẶP VÔ HẠN:
 ```
 
 **Vì sao phải kiểm tra `ADDR`, `TYPE`, `LEN` trước khi đo?** Một Node có thể nghe được bản tin dành cho Node khác; kiểm tra này tránh lấy mẫu/gửi nhầm. `POLL` không mang payload nên `LEN` phải bằng `0`. Còn `SEQ` từ POLL được giữ nguyên trong DATA và ACK để gắn ba bản tin vào **cùng một giao dịch**.
-
-### 1.5. Cách các module phối hợp mà không đo thừa
-
-`main()` gọi `ADC_GetStableAverageTemp()` (hoặc `MCP3208_GetStableAverageTemp()`); hàm này gọi module cập nhật dữ liệu cảm biến. Sau đó `main()` tiếp tục gọi hàm lấy status và mã lỗi từng cảm biến. Trong module đo có điều kiện **chỉ cập nhật lại khi đã qua `SENSOR_UPDATE_MS = 1000 ms`**, vì thế các hàm getter kế tiếp thường dùng cùng kết quả đã tính, thay vì lấy một burst mới cho từng giá trị.
-
-Điều này quan trọng để `temperature`, `status` và `fault_S1..S6` mô tả **cùng một đợt dữ liệu**. Nếu có một thời gian rất dài trôi qua giữa các getter (ví dụ khi debug), cần nhớ rằng các getter vẫn có cơ chế tự cập nhật theo thời gian.
-
-**Tự kiểm tra:** Chỉ ra dòng trong `main.c` kiểm tra POLL và dòng lấy nhiệt độ; giải thích vì sao Node 03 thay hàm `ADC_*` bằng `MCP3208_*` nhưng cấu trúc giao dịch gần như giữ nguyên.
-
-**Đối chiếu nguồn:** [`node01/USER/main.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/main.c), [`node03/USER/main.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node03/USER/main.c).
 
 ---
 
