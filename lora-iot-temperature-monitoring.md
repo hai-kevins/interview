@@ -37,12 +37,6 @@ Hệ thống có luồng dữ liệu chính như sau:
 
 # STM32 Node
 
-> **Phạm vi:** Tài liệu ôn tập **kiến thức và luồng xử lý đã được triển khai trong mã nguồn** `node01/`, `node02/`, `node03/`. Không trình bày lại lý thuyết ngoại vi STM32 cơ bản. Các đoạn **giả mã** nhằm diễn giải logic, không phải bản sao nguyên văn code. Các ví dụ số học được ghi rõ là ví dụ minh họa.
->
-> **Cách đọc:** Nghiên cứu Node 01 trước; đối chiếu Node 02 (địa chỉ LoRa khác); sau đó đọc phần riêng của Node 03 (MCP3208). Những thông số trong tài liệu là giá trị đang khai báo trong mã nguồn, không phải kết quả hiệu chuẩn/đo kiểm độc lập.
-
-**Mã nguồn tham khảo:** [Node 01](https://github.com/haikevins/lora-iot-temperature-monitoring/tree/main/node01/USER) · [Node 02](https://github.com/haikevins/lora-iot-temperature-monitoring/tree/main/node02/USER) · [Node 03](https://github.com/haikevins/lora-iot-temperature-monitoring/tree/main/node03/USER)
-
 ## Phần 1. Kiến trúc Firmware và luồng hoạt động chính
 
 ### 1.1. Vai trò của STM32 Node trong hệ thống
@@ -221,8 +215,6 @@ raw12 = ((highByte & 0x0F) << 8) | lowByte
 
 **Tự kiểm tra:** Tìm được vòng lặp 16 lượt, chứng minh vì sao bộ đệm DMA 6 phần tử vẫn đủ dùng để dựng 16 mẫu/kênh; giải thích ba byte truyền SPI được dùng để đọc một kênh MCP3208.
 
-**Đối chiếu nguồn:** [`node01/USER/adc_driver.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/adc_driver.c), [`node01/USER/adc_driver.h`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/adc_driver.h), [`node03/USER/mcp3208.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node03/USER/mcp3208.c).
-
 ---
 
 ## Phần 3. Xử lý tín hiệu và tính toán nhiệt độ
@@ -385,8 +377,6 @@ Nếu **không có kênh nào được chấp nhận**, hàm trả về `TEMP_ER
 
 **Tự kiểm tra:** Giải thích kết quả khi một kênh lỗi, khi cả sáu kênh lỗi, và tại sao phải tính `spread` trước khi loại mẫu cực trị.
 
-**Đối chiếu nguồn:** [`node01/USER/adc_driver.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/adc_driver.c), [`node03/USER/mcp3208.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node03/USER/mcp3208.c).
-
 ---
 
 ## Phần 4. Phát hiện và quản lý lỗi cảm biến
@@ -511,8 +501,6 @@ Ví dụ minh họa: `fault_S3 = 0x05` nghĩa là S3 đang có **SHORT và SIGNA
 - **Thông tin chẩn đoán:** trạng thái tổng hợp và sáu mã lỗi chi tiết được gửi cùng gói DATA cho Gateway.
 
 **Tự kiểm tra:** Giải thích tại sao phải có `observedFaults` và `latchedFaults` riêng; với một kênh lỗi SHORT chỉ một lần rồi phục hồi, liệu `STATUS` có nhất thiết bật không?
-
-**Đối chiếu nguồn:** [`node01/USER/adc_driver.h`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/adc_driver.h), [`node01/USER/adc_driver.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/adc_driver.c), [`node03/USER/mcp3208.h`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node03/USER/mcp3208.h).
 
 ---
 
@@ -702,8 +690,5 @@ Sau khi hàm driver xác nhận frame hợp lệ, `main()` vẫn kiểm tra **ng
 
 **Tự kiểm tra:** Giải mã một DATA có `TEMP_L=0xAF`, `TEMP_H=0x0A`, `STATUS=0x02`; nêu điều kiện chính xác để Node nhận ACK và giải thích vì sao `sampleAgeMs` phải cập nhật khi retry.
 
-**Đối chiếu nguồn:** [`node01/USER/main.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/main.c), [`node01/USER/sx1278.c`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/sx1278.c), [`node01/USER/sx1278.h`](https://github.com/haikevins/lora-iot-temperature-monitoring/blob/main/node01/USER/sx1278.h).
-
 ---
 
-**Kết thúc phần STM32 Node.** Đọc hiểu theo trình tự: `main.c` → đường lấy mẫu (`adc_driver.c`/`mcp3208.c`) → lọc/tính nhiệt độ → chẩn đoán lỗi → `sx1278.c` → quay lại `main.c` để nắm giao dịch từ đầu đến cuối. Những cơ chế Gateway, FreeRTOS, LittleFS và Backend sẽ được nghiên cứu ở phần riêng của hệ thống, tránh trùng nội dung.
