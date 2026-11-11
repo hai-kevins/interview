@@ -62,7 +62,7 @@ ESP32 Gateway                         STM32 Node
 
 Đây là cơ chế **Gateway chủ động thăm dò (polling)**, không phải Node tự động phát liên tục theo một lịch truyền độc lập. Giao thức điều khiển giao dịch nằm trong `main.c`; các module bên dưới đảm nhận thao tác cụ thể.
 
-### 1.3. Trình tự khởi tạo trong `main()`
+### 1.2. Trình tự khởi tạo trong `main()`
 
 Ở Node 01/02, thứ tự gọi là:
 
@@ -90,7 +90,7 @@ SysTick_Init() → SX1278_Init() → MCP3208_Init() → while (1)
 
 Chưa có một scheduler/RTOS riêng trong phần firmware STM32 Node đang phân tích; chương trình được tổ chức theo vòng lặp và các hàm xử lý đồng bộ. FreeRTOS nằm ở **ESP32 Gateway**, không phải đây.
 
-### 1.4. Luồng `while (1)` từ nhận POLL đến phản hồi DATA
+### 1.3. Luồng `while (1)` từ nhận POLL đến phản hồi DATA
 
 Có thể hiểu logic trong `main()` bằng giả mã sau:
 
