@@ -35,23 +35,9 @@ Hệ thống có luồng dữ liệu chính như sau:
 
 # STM32 Node
 
-> **Phạm vi:** Phân tích firmware của ba STM32 Sensor Node, tập trung vào những gì cần để hiểu luồng chương trình và mã nguồn. Node 01/02 dùng ADC1 + DMA; Node 03 dùng ADC ngoài MCP3208. Phần xử lý nhiệt độ, phát hiện lỗi và giao thức LoRa có nhiều logic tương đồng, vì vậy chỉ phân tích điểm chung một lần.
-
 ## Phần 1. Kiến trúc Firmware và luồng hoạt động chính
 
-### 1.1. Các module và trách nhiệm
-
-| Mã nguồn | Vai trò trong chương trình |
-|---|---|
-| `main.c` | Khởi tạo hệ thống, nhận `POLL`, gọi xử lý cảm biến, đóng gói `DATA` và chờ `ACK`. |
-| `adc_driver.c/.h` (Node 01/02) | Lấy mẫu ADC1 + DMA, lọc, tính nhiệt độ và quản lý lỗi cảm biến. |
-| `mcp3208.c/.h` (Node 03) | Đọc ADC ngoài qua SPI; xử lý nhiệt độ và lỗi theo luồng tương tự. |
-| `sx1278.c/.h`, `spi_driver.c/.h` | Điều khiển SX1278, tạo/nhận frame LoRa, truyền byte qua SPI. |
-| `systick_driver.c/.h`, `systick_utils.c/.h` | Cung cấp mốc thời gian, delay và timeout để phối hợp các thao tác. |
-
-Firmware STM32 Node chạy bằng **vòng lặp chính**, không sử dụng FreeRTOS; FreeRTOS thuộc ESP32 Gateway.
-
-### 1.2. Luồng xử lý từ `main()` đến khi gửi dữ liệu
+### 1.1. Luồng xử lý từ `main()` đến khi gửi dữ liệu
 
 Thứ tự khởi tạo được triển khai như sau:
 
@@ -79,8 +65,6 @@ Gửi DATA → Chờ ACK đúng ADDR, TYPE, SEQ, LEN
 Ba kiểm tra đầu vào quan trọng là: `ADDR` phải là địa chỉ Node, `TYPE` phải là `POLL` và `LEN` phải bằng `0`. `SEQ` gắn `POLL`, `DATA` và `ACK` với **cùng một giao dịch**. Node không tự phát dữ liệu theo lịch độc lập mà phản hồi yêu cầu của Gateway.
 
 ## Phần 2. Thu thập dữ liệu từ cảm biến NTC
-
-> **Cách đọc sơ đồ:** Tài liệu phân biệt (1) **kết nối được firmware/README xác nhận**, (2) **cách mắc suy ra từ công thức đo**, và (3) **mạch ví dụ để hiểu nguyên lý**. Code cho biết chân MCU và cách tính ADC nhưng không thay thế được sơ đồ nguyên lý của bo mạch thực tế. Các sơ đồ ASCII bên dưới thể hiện **mạng điện**, không thể hiện số chân vật lý của linh kiện NTC hoặc đầu nối bo mạch.
 
 ### 2.1. Node 01 và Node 02 – Nối từng NTC, điện trở 10 kΩ và chân ADC
 
